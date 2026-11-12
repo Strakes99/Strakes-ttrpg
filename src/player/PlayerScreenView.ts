@@ -1,0 +1,375 @@
+import { Component, ItemView, MarkdownRenderer, Notice, resolveSubpath, setIcon, setTooltip, TFile, WorkspaceLeaf } from "obsidian";
+import type StrakesTTRPG from "../main";
+import { renderConditionChips } from "../initiative/conditionUi";
+import { DEAD_ID } from "../initiative/conditions";
+import { renderPortrait } from "../initiative/portrait";
+import { resizeObserverFor } from "../ui/dom";
+import { Combatant, VIEW_TYPE_PLAYER } from "../types";
+
+/**
+ * Vista que se abre en una ventana emergente y que ven los jugadores.
+ * Muestra el contenido enviado (nota, sección, texto o imagen) y,
+ * opcionalmente, el orden de iniciativa como overlay o a pantalla completa.
+ */
+export class PlayerScreenView extends ItemView {
+	private contentHost!: HTMLElement;
+	private initHost!: HTMLElement;
+	private initBox: HTMLElement | null = null;
+	private renderComp: Component | null = null;
+	private renderToken = 0;
+
+	constructor(leaf: WorkspaceLeaf, private plugin: StrakesTTRPG) {
+		super(leaf);
+	}
+
+	getViewType(): string {
+		return VIEW_TYPE_PLAYER;
+	}
+	getDisplayText(): string {
+		return "Pantalla de jugadores";
+	}
+	getIcon(): string {
+		return "monitor";
+	}
+
+	async onOpen(): Promise<void> {
+		const root = this.contentEl;
+		root.empty();
+		root.addClass("strakes-player");
+		this.contentHost = root.createDiv("strakes-player-content");
+		this.initHost = root.createDiv("strakes-player-initiative");
+
+		const toolbar = root.createDiv("strakes-player-toolbar");
+		const fs = toolbar.createEl("button", { cls: "clickable-icon" });
+		setIcon(fs, "maximize");
+		setTooltip(fs, "Pantalla completa (doble clic también)");
+		fs.onclick = () => this.toggleFullscreen();
+		const clear = toolbar.createEl("button", { cls: "clickable-icon" });
+		setIcon(clear, "eraser");
+		setTooltip(clear, "Limpiar pantalla");
+		clear.onclick = () => this.plugin.sendToPlayers(null);
+
+		root.addEventListener("dblclick", () => this.toggleFullscreen());
+
+		// Si está en su propia ventana, ocultamos las pestañas de Obsidian.
+		if (this.containerEl.win !== window) this.containerEl.doc.body.addClass("strakes-player-window");
+
+		this.registerEvent(this.plugin.events.on("player-content", () => void this.renderContent()));
+		this.registerEvent(this.plugin.events.on("combat", () => this.renderInitiative()));
+		this.registerEvent(
+			this.plugin.events.on("settings", () => {
+				this.applySettings();
+				this.renderInitiative();
+			}),
+		);
+		// Recarga en vivo si se edita la nota que se está mostrando.
+		this.registerEvent(
+			this.app.vault.on("modify", (f) => {
+				const c = this.plugin.playerContent;
+				if (c && c.kind === "note" && c.path === f.path) void this.renderContent();
+			}),
+		);
+
+		// Recalcula la escala al redimensionar la ventana o entrar en pantalla completa.
+		const ro = resizeObserverFor(root, () => this.layoutInitiative());
+		ro.observe(root);
+		this.register(() => ro.disconnect());
+
+		this.applySettings();
+		await this.renderContent();
+		this.renderInitiative();
+	}
+
+	async onClose(): Promise<void> {
+		if (this.containerEl.win !== window) this.containerEl.doc.body.removeClass("strakes-player-window");
+		this.renderComp?.unload();
+	}
+
+	toggleFullscreen(): void {
+		const doc = this.containerEl.doc;
+		if (doc.fullscreenElement) {
+			void doc.exitFullscreen();
+		} else {
+			this.contentEl.requestFullscreen().catch(() => {
+				new Notice("No se pudo activar la pantalla completa. Haz doble clic en la pantalla de jugadores.");
+			});
+		}
+	}
+
+	private applySettings(): void {
+		const s = this.plugin.settings;
+		this.contentEl.style.setProperty("--strakes-player-bg", s.playerBackground);
+		this.contentEl.style.setProperty("--strakes-player-font", `${s.playerFontSize}px`);
+	}
+
+	// ---------- Contenido ----------
+
+	private async renderContent(): Promise<void> {
+		const token = ++this.renderToken;
+		const host = this.contentHost;
+		const content = this.plugin.playerContent;
+
+		const comp = new Component();
+		comp.load();
+		const target = createDiv();
+
+		if (!content) {
+			target.addClass("strakes-player-empty");
+		} else if (content.kind === "image") {
+			const file = this.app.vault.getAbstractFileByPath(content.path);
+			if (file instanceof TFile) {
+				target.addClass("strakes-player-image-wrap");
+				target.createEl("img", { cls: "strakes-player-image", attr: { src: this.app.vault.getResourcePath(file) } });
+			} else {
+				target.setText(`Imagen no encontrada: ${content.path}`);
+			}
+		} else {
+			let markdown = "";
+			let sourcePath = "";
+			target.addClass("strakes-player-note", "markdown-rendered");
+			if (content.kind === "text") {
+				markdown = content.markdown;
+				sourcePath = content.sourcePath;
+			} else {
+				const file = this.app.vault.getAbstractFileByPath(content.path);
+				if (!(file instanceof TFile)) {
+					markdown = `*Nota no encontrada: ${content.path}*`;
+				} else {
+					sourcePath = file.path;
+					markdown = await this.readNote(file, content.subpath);
+					// Nota completa: su título arriba, como al abrirla en Obsidian (título en línea).
+					// Una sección ya empieza por su propio encabezado.
+					if (!content.subpath) target.createDiv({ cls: "inline-title strakes-player-title", text: file.basename });
+				}
+			}
+			await MarkdownRenderer.render(this.app, markdown, target, sourcePath, comp);
+		}
+
+		// Si llegó otro envío mientras renderizábamos, descartamos este.
+		if (token !== this.renderToken) {
+			comp.unload();
+			return;
+		}
+		this.renderComp?.unload();
+		this.renderComp = comp;
+		host.empty();
+		host.appendChild(target);
+		host.scrollTop = 0;
+		// Al vaciar/llenar la pantalla, la iniciativa pasa de ampliada a overlay y viceversa.
+		this.layoutInitiative();
+	}
+
+	/** Lee la nota sin frontmatter y, si hay subpath (#encabezado o #^bloque), solo esa sección. */
+	private async readNote(file: TFile, subpath?: string): Promise<string> {
+		const text = await this.app.vault.cachedRead(file);
+		const cache = this.app.metadataCache.getFileCache(file);
+		if (subpath && cache) {
+			const res = resolveSubpath(cache, subpath);
+			if (res) return text.slice(res.start.offset, res.end ? res.end.offset : undefined);
+		}
+		const fm = cache?.frontmatterPosition;
+		return fm ? text.slice(fm.end.offset).replace(/^\s+/, "") : text;
+	}
+
+	// ---------- Iniciativa ----------
+
+	private renderInitiative(): void {
+		const s = this.plugin.settings;
+		const host = this.initHost;
+		host.empty();
+		this.initBox = null;
+		const tracker = this.plugin.tracker;
+		const visible = tracker.combatants.filter((c) => !c.hidden);
+
+		host.className = `strakes-player-initiative pos-${s.overlayPosition}`;
+		if (s.initiativeDisplay === "off" || !visible.length) {
+			host.hide();
+			return;
+		}
+		host.show();
+		if (s.initiativeDisplay === "cards") {
+			this.renderCards(host, visible);
+			return;
+		}
+
+		const box = host.createDiv("strakes-pi-box");
+		this.initBox = box;
+		box.createDiv({ cls: "strakes-pi-round", text: `Ronda ${tracker.state.round}` });
+		const list = box.createDiv("strakes-pi-list");
+		for (const c of visible) {
+			const row = list.createDiv("strakes-pi-row");
+			row.toggleClass("is-current", c.id === tracker.state.currentId);
+			row.toggleClass("is-player", c.isPlayer);
+			// Tachado solo para enemigos: un PJ/aliado a 0 PV queda Inconsciente, no muerto.
+			const down = !c.isPlayer && c.hp !== null && c.hp <= 0;
+			row.toggleClass("is-down", down);
+			row.createSpan({ cls: "strakes-pi-name", text: c.name });
+			const extra = this.hpText(c);
+			if (extra) row.createSpan({ cls: "strakes-pi-hp", text: extra });
+			// Condiciones: solo iconos, sin interacción. Incluye Ensangrentado (automática por PV),
+			// que sustituye al antiguo «estado de los enemigos». Un enemigo tachado solo muestra
+			// Muerto a los jugadores; las demás condiciones, solo en el panel del DM.
+			const conds = row.createSpan("strakes-pi-cond");
+			renderConditionChips(conds, c, { interactive: false, plugin: this.plugin, onlyIds: down ? [DEAD_ID] : undefined });
+			if (!conds.childElementCount) conds.remove();
+		}
+		this.layoutInitiative();
+	}
+
+	/** PV como «30(18)/45» (actuales (temporales) / máximos), si se muestran para ese tipo. */
+	private hpText(c: Combatant): string {
+		const s = this.plugin.settings;
+		const showHp = c.isPlayer ? s.showPlayerHp : s.showNpcHp;
+		if (!showHp || c.hp === null) return "";
+		// Un enemigo a 0 PV o menos (tachado) deja de mostrar sus PV aunque esté activado.
+		if (!c.isPlayer && c.hp <= 0) return "";
+		return `${c.hp}${c.tempHp ? `(${c.tempHp})` : ""}${c.maxHp !== null ? `/${c.maxHp}` : ""}`;
+	}
+
+	/**
+	 * Modo Tarjetas: una tarjeta por combatiente, una al lado de otra (con filas extra si
+	 * no caben). Cada tarjeta: nombre encima, retrato cuadrado, PV (si se muestran) y
+	 * condiciones. El turno actual lleva un recuadro blanco brillante.
+	 */
+	private renderCards(host: HTMLElement, visible: Combatant[]): void {
+		const s = this.plugin.settings;
+		const tracker = this.plugin.tracker;
+		host.addClass("mode-cards");
+		host.style.setProperty("--card-gap", `${Math.max(0, s.cardGap)}px`);
+		const wrap = host.createDiv("strakes-pc-wrap");
+		wrap.createDiv({ cls: "strakes-pi-round strakes-pc-round", text: `Ronda ${tracker.state.round}` });
+		const grid = wrap.createDiv("strakes-pc-grid");
+		for (const c of visible) {
+			const down = !c.isPlayer && c.hp !== null && c.hp <= 0;
+			const card = grid.createDiv("strakes-pc-card");
+			card.toggleClass("is-down", down);
+			card.toggleClass("is-player", c.isPlayer);
+			// Recuadro del turno actual: nombre + retrato + PV.
+			const frame = card.createDiv("strakes-pc-frame");
+			frame.toggleClass("is-current", c.id === tracker.state.currentId);
+			const name = frame.createDiv({ cls: "strakes-pc-name" });
+			name.dataset.full = c.name;
+			name.setText(c.name);
+			renderPortrait(this.app, frame.createDiv("strakes-pc-portrait"), c);
+			const hp = this.hpText(c);
+			if (hp) frame.createDiv({ cls: "strakes-pc-hp", text: hp });
+			// Un enemigo tachado solo muestra Muerto (las demás condiciones, solo en el panel del DM).
+			const conds = card.createDiv("strakes-pc-conds");
+			renderConditionChips(conds, c, { interactive: false, plugin: this.plugin, onlyIds: down ? [DEAD_ID] : undefined });
+			if (!conds.childElementCount) conds.remove();
+		}
+		this.layoutInitiative();
+	}
+
+	/** Tamaño del texto de la iniciativa (fijo: no se escala nunca). */
+	private textSize(): number {
+		return Math.max(8, this.plugin.settings.initiativeTextSize);
+	}
+
+	/**
+	 * Tarjetas: el texto (nombres y PV) tiene siempre el tamaño configurado. Las tarjetas
+	 * se reparten en filas según el ancho de la ventana, y el número de filas según su
+	 * altura completa (también con una nota o imagen en pantalla). Se respeta el tamaño de
+	 * retrato configurado; solo si así no caben, se reduce el retrato lo justo (mínimo
+	 * 24 px). Si ni así caben, como último recurso se permite desplazar.
+	 */
+	private autoFitCards(): void {
+		const s = this.plugin.settings;
+		const host = this.initHost;
+		const wrap = host.querySelector<HTMLElement>(".strakes-pc-wrap");
+		const availH = this.contentEl.clientHeight;
+		const max = Math.max(24, s.cardSize);
+		host.style.setProperty("--card-size", `${max}px`);
+		host.style.setProperty("--init-text", `${this.textSize()}px`);
+		host.removeClass("can-scroll");
+		if (!wrap || !availH) return;
+		const fits = () => wrap.offsetHeight <= availH;
+		if (fits()) return;
+		let lo = 24;
+		let hi = max;
+		while (lo < hi) {
+			const mid = Math.ceil((lo + hi) / 2);
+			host.style.setProperty("--card-size", `${mid}px`);
+			if (fits()) lo = mid;
+			else hi = mid - 1;
+		}
+		host.style.setProperty("--card-size", `${lo}px`);
+		host.toggleClass("can-scroll", !fits());
+	}
+
+	/**
+	 * Lista: el texto tiene siempre el tamaño configurado. Los combatientes se reparten en
+	 * columnas (en orden de iniciativa: de arriba abajo y luego a la siguiente columna),
+	 * con tantas filas por columna como quepan en la altura disponible.
+	 *  - Pantalla vacía: casi toda la pantalla.
+	 *  - Con una nota o imagen: caja en la esquina elegida (hasta 45 % × 80 % de la pantalla).
+	 * Si las columnas no caben a lo ancho, como último recurso se permite desplazar.
+	 */
+	private fitList(box: HTMLElement, expanded: boolean): void {
+		const list = box.querySelector<HTMLElement>(".strakes-pi-list");
+		const area = this.contentEl;
+		if (!list || !area.clientWidth || !area.clientHeight) return;
+		const availW = area.clientWidth * (expanded ? 0.92 : 0.45);
+		const availH = area.clientHeight * (expanded ? 0.92 : 0.8);
+		box.style.fontSize = `${this.textSize()}px`;
+		box.removeClass("can-scroll");
+		list.style.gridTemplateRows = "";
+		const first = list.firstElementChild as HTMLElement | null;
+		if (!first) return;
+		// Filas por columna según la altura disponible (descontando la cabecera).
+		const rowH = first.offsetHeight || 1;
+		const chrome = box.offsetHeight - list.offsetHeight;
+		const rows = Math.max(1, Math.floor((availH - chrome) / rowH));
+		list.style.gridTemplateRows = `repeat(${rows}, auto)`;
+		box.toggleClass("can-scroll", box.offsetWidth > availW + 1 || box.offsetHeight > availH + 1);
+		if (box.hasClass("can-scroll")) {
+			box.style.maxWidth = `${availW}px`;
+			box.style.maxHeight = `${availH}px`;
+		} else {
+			box.style.maxWidth = "";
+			box.style.maxHeight = "";
+		}
+	}
+
+	/**
+	 * Recorta los nombres que no caben y los termina en un solo punto («Strahd von Zarov.»).
+	 * Se mide con el elemento real, así que respeta la fuente y el tamaño de la tarjeta.
+	 */
+	private fitCardNames(): void {
+		for (const el of Array.from(this.initHost.querySelectorAll<HTMLElement>(".strakes-pc-name"))) {
+			const full = el.dataset.full ?? "";
+			el.setText(full);
+			if (!el.clientWidth || el.scrollWidth <= el.clientWidth) continue;
+			let lo = 0;
+			let hi = full.length;
+			while (lo < hi) {
+				const mid = Math.ceil((lo + hi) / 2);
+				el.setText(`${full.slice(0, mid).trimEnd()}.`);
+				if (el.scrollWidth <= el.clientWidth) lo = mid;
+				else hi = mid - 1;
+			}
+			el.setText(`${full.slice(0, lo).trimEnd()}.`);
+		}
+	}
+
+	/**
+	 * Lista: en columnas y con el tamaño de letra que quepa (ver fitList); sin contenido
+	 * ocupa toda la pantalla, con contenido una caja en la esquina elegida.
+	 * Tarjetas: sin contenido ocupan toda la pantalla; con contenido, la parte superior.
+	 * En ningún modo hay desplazamiento.
+	 */
+	private layoutInitiative(): void {
+		const host = this.initHost;
+		if (host.hasClass("mode-cards")) {
+			host.toggleClass("has-content", this.plugin.playerContent !== null);
+			this.autoFitCards();
+			this.fitCardNames();
+			return;
+		}
+		const box = this.initBox;
+		if (!box) return;
+		const expanded = this.plugin.playerContent === null;
+		host.toggleClass("is-expanded", expanded);
+		this.fitList(box, expanded);
+	}
+}
