@@ -14,8 +14,8 @@ Desktop only (it uses a pop-out window for the player screen).
 
 ## Player screen
 
-- **Open** it with the ribbon icon or the command *Abrir pantalla de jugadores* (open player screen). It opens in its own window: drag it to your second monitor or projector.
-- **Send content**: right-click a note or image → *Enviar a la pantalla de jugadores* (send to player screen), or use the commands to send:
+- **Open** it with the ribbon icon or the command *Open player screen*. It opens in its own window: drag it to your second monitor or projector.
+- **Send content**: right-click a note or image → *Send to player screen*, or use the commands to send:
   - the active note or image;
   - the section under the cursor (the heading the cursor is in);
   - the selected text;
@@ -32,7 +32,7 @@ Opens in the right sidebar.
   - Initiative accepts a fixed number (`15`), a modifier (`+3` rolls 1d20+3), dice (`d20+2`, `2d6-1`) or nothing (1d20).
   - `Goblin x3` adds Goblin 1, 2 and 3, each with its own roll.
   - **Undo / redo** buttons revert or restore the last batch of added combatants.
-  - The *PJ/Aliado* (PC/ally) checkbox clears itself after each addition.
+  - The *PC/Ally* checkbox clears itself after each addition.
 - **Turns**:
   - Next/previous turn and a round counter.
   - Defeated enemies (0 HP or less) are skipped automatically; PCs and allies are never skipped.
@@ -60,7 +60,7 @@ Opens in the right sidebar.
 
 ## Maps (`.smap` files)
 
-- **Create** a map: right-click an image → *Crear mapa con esta imagen* (create map from this image), or use the command *Crear mapa nuevo desde una imagen*.
+- **Create** a map: right-click an image → *Create map from this image*, or use the command *Create new map from an image*.
 - **Markers**:
   - Optional link to a note or heading, stored as a wikilink. Left-click opens it; Ctrl+hover shows a preview with the note title.
   - **Portal / stairs**: right-click moves the camera to another point or another marker.
