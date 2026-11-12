@@ -1,4 +1,5 @@
 import { Notice } from "obsidian";
+import { T } from "../i18n";
 import type StrakesTTRPG from "../main";
 import { activeConditions, CONCENTRATION_ID, concentrationDC, INCAPACITATED_ID, REMAINS_AFTER, UNCONSCIOUS_ID } from "./conditions";
 import { Combatant, CombatState, Portrait, uid } from "../types";
@@ -132,7 +133,13 @@ export class InitiativeTracker {
 		// Concentración y daño: tirada de Constitución con CD = máx(10, daño/2), hasta 30.
 		if ("hp" in patch && oldHp !== null && c.hp !== null && c.hp < oldHp && this.hasConcentration(c) && c.hp > 0) {
 			const damage = oldHp - c.hp;
-			new Notice(`${c.name} recibe ${damage} de daño: tirada de salvación de Constitución CD ${concentrationDC(damage)} para mantener la Concentración.`, 8000);
+			new Notice(
+				T(
+					`${c.name} recibe ${damage} de daño: tirada de salvación de Constitución CD ${concentrationDC(damage)} para mantener la Concentración.`,
+					`${c.name} takes ${damage} damage: DC ${concentrationDC(damage)} Constitution saving throw to maintain Concentration.`,
+				),
+				8000,
+			);
 		}
 		this.syncUnconscious(c);
 		this.checkConcentration(c);
@@ -173,7 +180,13 @@ export class InitiativeTracker {
 		const rest = amount - fromTemp;
 		if (rest && c.hp !== null) c.hp = c.hp - rest;
 		if (this.hasConcentration(c) && (c.hp === null || c.hp > 0))
-			new Notice(`${c.name} recibe ${amount} de daño: tirada de salvación de Constitución CD ${concentrationDC(amount)} para mantener la Concentración.`, 8000);
+			new Notice(
+				T(
+					`${c.name} recibe ${amount} de daño: tirada de salvación de Constitución CD ${concentrationDC(amount)} para mantener la Concentración.`,
+					`${c.name} takes ${amount} damage: DC ${concentrationDC(amount)} Constitution saving throw to maintain Concentration.`,
+				),
+				8000,
+			);
 		this.syncUnconscious(c);
 		this.checkConcentration(c);
 		this.changed();
@@ -189,13 +202,13 @@ export class InitiativeTracker {
 		const down = c.isPlayer && c.hp !== null && c.hp <= 0;
 		if (down && !c.conditions.some((e) => e.id === UNCONSCIOUS_ID)) {
 			c.conditions.push({ id: UNCONSCIOUS_ID, auto: true });
-			new Notice(`${c.name} cae a ${c.hp} PV: queda Inconsciente.`, 6000);
+			new Notice(T(`${c.name} cae a ${c.hp} PG: queda Inconsciente.`, `${c.name} drops to ${c.hp} HP and falls Unconscious.`), 6000);
 		} else if (!down && autoIdx >= 0) {
 			c.conditions.splice(autoIdx, 1);
 			// Si dejó de ser PJ/aliado no es que recupere la consciencia: solo se quita.
 			if (c.isPlayer) {
 				for (const r of REMAINS_AFTER[UNCONSCIOUS_ID] ?? []) if (!c.conditions.some((e) => e.id === r)) c.conditions.push({ id: r });
-				new Notice(`${c.name} recupera la consciencia (sigue Derribado).`, 6000);
+				new Notice(T(`${c.name} recupera la consciencia (sigue Derribado).`, `${c.name} regains consciousness (still Prone).`), 6000);
 			}
 		}
 	}
@@ -209,8 +222,9 @@ export class InitiativeTracker {
 		if (!c || amount < 0) return;
 		const prev = c.tempHp ?? 0;
 		c.tempHp = amount > 0 ? amount : null;
-		if (prev > 0 && amount > 0) new Notice(`${c.name}: los PV temporales no se acumulan. ${prev} → ${amount}.`, 6000);
-		else if (prev > 0 && amount === 0) new Notice(`${c.name}: PV temporales quitados (${prev}).`);
+		if (prev > 0 && amount > 0)
+			new Notice(T(`${c.name}: los PG temporales no se acumulan. ${prev} → ${amount}.`, `${c.name}: temporary HP doesn't stack. ${prev} → ${amount}.`), 6000);
+		else if (prev > 0 && amount === 0) new Notice(T(`${c.name}: PG temporales quitados (${prev}).`, `${c.name}: temporary HP removed (${prev}).`));
 		this.changed();
 	}
 
@@ -222,11 +236,11 @@ export class InitiativeTracker {
 	private checkConcentration(c: Combatant): void {
 		if (!this.hasConcentration(c)) return;
 		let reason = "";
-		if (c.hp !== null && c.hp <= 0) reason = "0 PV";
-		else if (activeConditions(c.conditions, this.plugin.settings).some((a) => a.info.id === INCAPACITATED_ID)) reason = "Incapacitado";
+		if (c.hp !== null && c.hp <= 0) reason = T("0 PG", "0 HP");
+		else if (activeConditions(c.conditions, this.plugin.settings).some((a) => a.info.id === INCAPACITATED_ID)) reason = T("Incapacitado", "Incapacitated");
 		if (!reason) return;
 		c.conditions = c.conditions.filter((e) => e.id !== CONCENTRATION_ID);
-		new Notice(`${c.name} pierde la Concentración (${reason}).`, 6000);
+		new Notice(T(`${c.name} pierde la Concentración (${reason}).`, `${c.name} loses Concentration (${reason}).`), 6000);
 	}
 
 	// ---------- Condiciones ----------

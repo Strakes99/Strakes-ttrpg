@@ -1,4 +1,5 @@
 import { App, FileSystemAdapter, normalizePath, Notice } from "obsidian";
+import { T } from "../i18n";
 
 /**
  * Iconos SVG personalizados para los pines.
@@ -53,9 +54,9 @@ export class IconLibrary {
 				try {
 					const clean = sanitizeSvg(await adapter.read(path));
 					if (clean) next.set(path.slice(this.dir.length + 1).replace(/\.svg$/i, ""), clean);
-					else console.warn(`Strakes TTRPG: «${path}» no es un SVG válido.`);
+					else console.warn(`Strakes TTRPG: "${path}" is not a valid SVG.`);
 				} catch (e) {
-					console.warn(`Strakes TTRPG: no se pudo leer «${path}»`, e);
+					console.warn(`Strakes TTRPG: couldn't read "${path}"`, e);
 				}
 			}
 			if (depth < 8) for (const sub of listing.folders) await walk(sub, depth + 1);
@@ -77,7 +78,7 @@ export class IconLibrary {
 			if (!file.name.toLowerCase().endsWith(".svg")) continue;
 			const text = await file.text();
 			if (!sanitizeSvg(text)) {
-				new Notice(`«${file.name}» no es un SVG válido; se omitió.`);
+				new Notice(T(`«${file.name}» no es un SVG válido; se omitió.`, `"${file.name}" isn't a valid SVG; skipped.`));
 				continue;
 			}
 			const name = basename(file.name).replace(/[\\/:*?"<>|#^[\]]/g, "-").trim() || "icono";
@@ -97,7 +98,7 @@ export class IconLibrary {
 			const electron = (window as unknown as { require: (m: string) => { shell: { openPath(p: string): Promise<string> } } }).require("electron");
 			void electron.shell.openPath(full);
 		} catch {
-			new Notice(`Carpeta de iconos: ${full}`);
+			new Notice(T(`Carpeta de iconos: ${full}`, `Icons folder: ${full}`));
 		}
 	}
 

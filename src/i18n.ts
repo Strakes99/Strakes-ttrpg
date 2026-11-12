@@ -1,8 +1,8 @@
 import { moment } from "obsidian";
 
 /**
- * Idioma del contenido bilingüe del plugin (por ahora, las condiciones).
- * Sigue el idioma de la interfaz de Obsidian: español si es «es…», inglés en otro caso.
+ * Idioma de la interfaz: español si Obsidian está en español; inglés en cualquier otro
+ * caso (también para idiomas sin traducción, p. ej. turco).
  */
 export type Lang = "es" | "en";
 
@@ -18,4 +18,17 @@ export function lang(): Lang {
 
 export function tr(text: Localized): string {
 	return text[lang()];
+}
+
+/**
+ * Texto de la interfaz en los dos idiomas: `T("Abrir mapa", "Open map")`.
+ * En mayúscula para no chocar con los parámetros `t` (p. ej. `addText((t) => …)`).
+ */
+export function T(es: string, en: string): string {
+	return lang() === "es" ? es : en;
+}
+
+/** Locale para formatear números (separador decimal, etc.). */
+export function numberLocale(): string {
+	return lang() === "es" ? "es" : "en";
 }

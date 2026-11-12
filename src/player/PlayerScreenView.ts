@@ -1,4 +1,5 @@
 import { Component, ItemView, MarkdownRenderer, Notice, resolveSubpath, setIcon, setTooltip, TFile, WorkspaceLeaf } from "obsidian";
+import { T } from "../i18n";
 import type StrakesTTRPG from "../main";
 import { renderConditionChips } from "../initiative/conditionUi";
 import { DEAD_ID } from "../initiative/conditions";
@@ -26,7 +27,7 @@ export class PlayerScreenView extends ItemView {
 		return VIEW_TYPE_PLAYER;
 	}
 	getDisplayText(): string {
-		return "Pantalla de jugadores";
+		return T("Pantalla de jugadores", "Player screen");
 	}
 	getIcon(): string {
 		return "monitor";
@@ -42,11 +43,11 @@ export class PlayerScreenView extends ItemView {
 		const toolbar = root.createDiv("strakes-player-toolbar");
 		const fs = toolbar.createEl("button", { cls: "clickable-icon" });
 		setIcon(fs, "maximize");
-		setTooltip(fs, "Pantalla completa (doble clic también)");
+		setTooltip(fs, T("Pantalla completa (doble clic también)", "Fullscreen (or double-click)"));
 		fs.onclick = () => this.toggleFullscreen();
 		const clear = toolbar.createEl("button", { cls: "clickable-icon" });
 		setIcon(clear, "eraser");
-		setTooltip(clear, "Limpiar pantalla");
+		setTooltip(clear, T("Limpiar pantalla", "Clear screen"));
 		clear.onclick = () => this.plugin.sendToPlayers(null);
 
 		root.addEventListener("dblclick", () => this.toggleFullscreen());
@@ -91,7 +92,7 @@ export class PlayerScreenView extends ItemView {
 			void doc.exitFullscreen();
 		} else {
 			this.contentEl.requestFullscreen().catch(() => {
-				new Notice("No se pudo activar la pantalla completa. Haz doble clic en la pantalla de jugadores.");
+				new Notice(T("No se pudo activar la pantalla completa. Haz doble clic en la pantalla de jugadores.", "Couldn't enter fullscreen. Double-click the player screen."));
 			});
 		}
 	}
@@ -121,7 +122,7 @@ export class PlayerScreenView extends ItemView {
 				target.addClass("strakes-player-image-wrap");
 				target.createEl("img", { cls: "strakes-player-image", attr: { src: this.app.vault.getResourcePath(file) } });
 			} else {
-				target.setText(`Imagen no encontrada: ${content.path}`);
+				target.setText(T(`Imagen no encontrada: ${content.path}`, `Image not found: ${content.path}`));
 			}
 		} else {
 			let markdown = "";
@@ -133,7 +134,7 @@ export class PlayerScreenView extends ItemView {
 			} else {
 				const file = this.app.vault.getAbstractFileByPath(content.path);
 				if (!(file instanceof TFile)) {
-					markdown = `*Nota no encontrada: ${content.path}*`;
+					markdown = T(`*Nota no encontrada: ${content.path}*`, `*Note not found: ${content.path}*`);
 				} else {
 					sourcePath = file.path;
 					markdown = await this.readNote(file, content.subpath);
@@ -194,7 +195,7 @@ export class PlayerScreenView extends ItemView {
 
 		const box = host.createDiv("strakes-pi-box");
 		this.initBox = box;
-		box.createDiv({ cls: "strakes-pi-round", text: `Ronda ${tracker.state.round}` });
+		box.createDiv({ cls: "strakes-pi-round", text: T(`Ronda ${tracker.state.round}`, `Round ${tracker.state.round}`) });
 		const list = box.createDiv("strakes-pi-list");
 		for (const c of visible) {
 			const row = list.createDiv("strakes-pi-row");
@@ -237,7 +238,7 @@ export class PlayerScreenView extends ItemView {
 		host.addClass("mode-cards");
 		host.style.setProperty("--card-gap", `${Math.max(0, s.cardGap)}px`);
 		const wrap = host.createDiv("strakes-pc-wrap");
-		wrap.createDiv({ cls: "strakes-pi-round strakes-pc-round", text: `Ronda ${tracker.state.round}` });
+		wrap.createDiv({ cls: "strakes-pi-round strakes-pc-round", text: T(`Ronda ${tracker.state.round}`, `Round ${tracker.state.round}`) });
 		const grid = wrap.createDiv("strakes-pc-grid");
 		for (const c of visible) {
 			const down = !c.isPlayer && c.hp !== null && c.hp <= 0;

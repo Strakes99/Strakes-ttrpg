@@ -1,4 +1,5 @@
 import { App, ColorComponent, Modal, Notice, Setting } from "obsidian";
+import { T } from "../i18n";
 import { uid } from "../types";
 import { FileInputSuggest, isImageFile, promptText } from "../ui/modals";
 import { IconColorControl, IconPicker } from "../ui/iconPicker";
@@ -24,7 +25,8 @@ export function editSegmentDialog(app: App, data: MapData, route: MapRoute, i: n
 		const estDist = data.scale ? segmentDistance(data, { ...route, segments: route.segments.map(() => null) }, i, nodes).value : null;
 		const estTime = segmentTime(data, { ...route, segments: [...route.segments], times: [] }, i, "normal", nodes).hours;
 
-		modal.titleEl.setText(`Tramo ${i + 1}${route.name.trim() ? ` · ${route.name}` : ""}`);
+		const routeName = route.name.trim() ? ` · ${route.name}` : "";
+		modal.titleEl.setText(T(`Tramo ${i + 1}${routeName}`, `Segment ${i + 1}${routeName}`));
 		const el = modal.contentEl;
 		const save = () => {
 			done = true;
@@ -41,8 +43,12 @@ export function editSegmentDialog(app: App, data: MapData, route: MapRoute, i: n
 
 		let distInput: HTMLInputElement | null = null;
 		new Setting(el)
-			.setName(`Distancia (${data.unit || "sin unidad"})`)
-			.setDesc(data.scale ? "Vacío = la estimada por la escala del mapa." : "El mapa no tiene escala: escribe la distancia real.")
+			.setName(T(`Distancia (${data.unit || "sin unidad"})`, `Distance (${data.unit || "no unit"})`))
+			.setDesc(
+				data.scale
+					? T("Vacío = la estimada por la escala del mapa.", "Empty = estimated from the map scale.")
+					: T("El mapa no tiene escala: escribe la distancia real.", "The map has no scale: enter the real distance."),
+			)
 			.addText((t) => {
 				distInput = t.inputEl;
 				t.inputEl.type = "number";
@@ -56,8 +62,13 @@ export function editSegmentDialog(app: App, data: MapData, route: MapRoute, i: n
 				onEnter(t.inputEl);
 			});
 		new Setting(el)
-			.setName("Tiempo de viaje (paso normal)")
-			.setDesc("Horas, ej. 6, 6,5 o 6h 30m. Vacío = se calcula desde la distancia. Los pasos lento y rápido se ajustan a partir de este tiempo.")
+			.setName(T("Tiempo de viaje (paso normal)", "Travel time (normal pace)"))
+			.setDesc(
+				T(
+					"Horas, ej. 6, 6,5 o 6h 30m. Vacío = se calcula desde la distancia. Los pasos lento y rápido se ajustan a partir de este tiempo.",
+					"Hours, e.g. 6, 6.5 or 6h 30m. Empty = calculated from the distance. Slow and fast paces are adjusted from this time.",
+				),
+			)
 			.addText((t) => {
 				t.setPlaceholder(estTime !== null ? `≈ ${formatHours(estTime)}` : "?");
 				t.setValue(result.time === null ? "" : formatHours(result.time));
@@ -70,8 +81,8 @@ export function editSegmentDialog(app: App, data: MapData, route: MapRoute, i: n
 				onEnter(t.inputEl);
 			});
 		new Setting(el)
-			.addButton((b) => b.setButtonText("Cancelar").onClick(() => modal.close()))
-			.addButton((b) => b.setButtonText("Guardar").setCta().onClick(save));
+			.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => modal.close()))
+			.addButton((b) => b.setButtonText(T("Guardar", "Save")).setCta().onClick(save));
 
 		modal.onClose = () => {
 			if (!done) resolve(null);
@@ -94,13 +105,13 @@ function layerDropdown(
 	rerender: () => void,
 ): void {
 	setting.addDropdown((dd) => {
-		dd.addOption("", "— Sin capa —");
+		dd.addOption("", T("— Sin capa —", "— No layer —"));
 		for (const l of data.layers) dd.addOption(l.id, l.name);
-		dd.addOption("__new__", "➕ Nueva capa…");
+		dd.addOption("__new__", T("➕ Nueva capa…", "➕ New layer…"));
 		dd.setValue(value ?? "");
 		dd.onChange(async (v) => {
 			if (v !== "__new__") return onChange(v || null);
-			const name = await promptText(app, "Nueva capa", { placeholder: "Nombre de la capa" });
+			const name = await promptText(app, T("Nueva capa", "New layer"), { placeholder: T("Nombre de la capa", "Layer name") });
 			if (name && name.trim()) {
 				const layer = { id: uid(), name: name.trim(), visible: true };
 				data.layers.push(layer);
@@ -146,7 +157,7 @@ export class PinModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.titleEl.setText(this.isNew ? "Nuevo marcador" : "Editar marcador");
+		this.titleEl.setText(this.isNew ? T("Nuevo marcador", "New marker") : T("Editar marcador", "Edit marker"));
 		this.render();
 	}
 
@@ -155,7 +166,7 @@ export class PinModal extends Modal {
 		el.empty();
 		const p = this.pin;
 
-		new Setting(el).setName("Nombre").addText((t) => {
+		new Setting(el).setName(T("Nombre", "Name")).addText((t) => {
 			t.setValue(p.name).onChange((v) => (p.name = v));
 			this.nameInput = t.inputEl;
 			if (this.firstRender) window.setTimeout(() => t.inputEl.focus(), 10);
@@ -167,9 +178,15 @@ export class PinModal extends Modal {
 
 		// Portal / escalera: se usa con clic derecho. Al activarlo, las opciones de
 		// destino aparecen en esta misma fila (antes del interruptor).
-		const portal = new Setting(el).setName("Portal / escalera");
+		const portal = new Setting(el).setName(T("Portal / escalera", "Portal / stairs"));
 		if (p.portal) this.addPortalControls(portal);
-		else portal.setDesc("Con clic derecho, la cámara viaja a su destino (en el editor, desde el menú; en notas, directamente).");
+		else
+			portal.setDesc(
+				T(
+					"Con clic derecho, la cámara viaja a su destino (en el editor, desde el menú; en notas, directamente).",
+					"On right-click, the camera travels to its destination (in the editor, from the menu; in notes, directly).",
+				),
+			);
 		portal.addToggle((t) =>
 			t.setValue(p.portal).onChange((v) => {
 				p.portal = v;
@@ -189,17 +206,17 @@ export class PinModal extends Modal {
 		});
 
 		// Colores del marcador y del icono, lado a lado en una sola fila.
-		const colors = new Setting(el).setName("Colores");
+		const colors = new Setting(el).setName(T("Colores", "Colors"));
 		colors.controlEl.addClass("strakes-color-row");
 		const pinGroup = colors.controlEl.createDiv("strakes-color-group");
-		pinGroup.createSpan({ cls: "strakes-color-label", text: "Marcador" });
+		pinGroup.createSpan({ cls: "strakes-color-label", text: T("Marcador", "Marker") });
 		new ColorComponent(pinGroup).setValue(p.color).onChange((v) => {
 			p.color = v;
 			// Los recuadros del selector usan el color del marcador de fondo.
 			this.iconPicker?.setBackground(v);
 		});
 		this.iconColor = new IconColorControl(colors.controlEl.createDiv("strakes-color-group"), {
-			label: "Icono",
+			label: T("Icono", "Icon"),
 			getIcon: () => p.icon ?? "",
 			color: p.iconColor,
 			defaultColor: DEFAULT_ICON_COLOR,
@@ -209,20 +226,20 @@ export class PinModal extends Modal {
 			},
 		});
 
-		layerDropdown(this.app, new Setting(el).setName("Capa"), this.data, p.layerId, (id) => (p.layerId = id), () => this.render());
+		layerDropdown(this.app, new Setting(el).setName(T("Capa", "Layer")), this.data, p.layerId, (id) => (p.layerId = id), () => this.render());
 
 		const buttons = new Setting(el);
 		if (!this.isNew)
 			buttons.addButton((b) =>
 				b
-					.setButtonText("Eliminar")
+					.setButtonText(T("Eliminar", "Delete"))
 					.setWarning()
 					.onClick(() => this.finish("delete")),
 			);
-		buttons.addButton((b) => b.setButtonText("Cancelar").onClick(() => this.close()));
+		buttons.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => this.close()));
 		buttons.addButton((b) =>
 			b
-				.setButtonText("Guardar")
+				.setButtonText(T("Guardar", "Save"))
 				.setCta()
 				.onClick(() => this.finish("save")),
 		);
@@ -234,10 +251,15 @@ export class PinModal extends Modal {
 		// todo el diálogo (eso haría perder el clic en «Guardar» tras escribir).
 		let headingHost: HTMLElement;
 		new Setting(el)
-			.setName("Nota")
-			.setDesc("Opcional. Se guarda como wikilink, ej. [[Nota]] o [[Nota#Encabezado]]. Clic en el marcador abre la nota (Ctrl/Cmd+clic: en pestaña nueva).")
+			.setName(T("Nota", "Note"))
+			.setDesc(
+				T(
+					"Opcional. Se guarda como wikilink, ej. [[Nota]] o [[Nota#Encabezado]]. Clic en el marcador abre la nota (Ctrl/Cmd+clic: en pestaña nueva).",
+					"Optional. Saved as a wikilink, e.g. [[Note]] or [[Note#Heading]]. Clicking the marker opens the note (Ctrl/Cmd+click: in a new tab).",
+				),
+			)
 			.addText((t) => {
-				t.setPlaceholder("[[Nota]]").setValue(p.link ?? "");
+				t.setPlaceholder(T("[[Nota]]", "[[Note]]")).setValue(p.link ?? "");
 				t.inputEl.addClass("strakes-wide-input");
 				this.linkInput = t.inputEl;
 				new FileInputSuggest(
@@ -287,7 +309,7 @@ export class PinModal extends Modal {
 			const headings = this.app.metadataCache.getFileCache(file)?.headings ?? [];
 			if (headings.length) {
 				new Setting(host).setName("Encabezado (opcional)").addDropdown((dd) => {
-					dd.addOption("", "— Nota completa —");
+					dd.addOption("", T("— Nota completa —", "— Whole note —"));
 					for (const h of headings) dd.addOption(`#${h.heading}`, `${"\u00a0\u00a0".repeat(h.level - 1)}${h.heading}`);
 					dd.setValue(parseWikilink(p.link!).subpath);
 					dd.onChange((v) => {
@@ -297,7 +319,7 @@ export class PinModal extends Modal {
 				});
 			}
 		} else if (p.link && !file) {
-			host.createDiv({ cls: "strakes-warning", text: "⚠ No se encuentra esa nota." });
+			host.createDiv({ cls: "strakes-warning", text: T("⚠ No se encuentra esa nota.", "⚠ That note can't be found.") });
 		}
 	}
 
@@ -308,14 +330,17 @@ export class PinModal extends Modal {
 		setting
 			.setDesc(
 				p.targetPinId
-					? "Destino: el marcador elegido. Se usa con clic derecho."
+					? T("Destino: el marcador elegido. Se usa con clic derecho.", "Destination: the chosen marker. Used with right-click.")
 					: p.target
-						? `Destino: punto fijo (x ${Math.round(p.target.x)}, y ${Math.round(p.target.y)}). Se usa con clic derecho.`
-						: "Elige el destino: otro marcador o un punto del mapa.",
+						? T(
+								`Destino: punto fijo (x ${Math.round(p.target.x)}, y ${Math.round(p.target.y)}). Se usa con clic derecho.`,
+								`Destination: fixed point (x ${Math.round(p.target.x)}, y ${Math.round(p.target.y)}). Used with right-click.`,
+							)
+						: T("Elige el destino: otro marcador o un punto del mapa.", "Choose the destination: another marker or a point on the map."),
 			)
 			.addDropdown((dd) => {
-				dd.addOption("", p.target ? "— Punto fijo —" : "— Ninguno —");
-				for (const o of others) dd.addOption(o.id, o.name || "(sin nombre)");
+				dd.addOption("", p.target ? T("— Punto fijo —", "— Fixed point —") : T("— Ninguno —", "— None —"));
+				for (const o of others) dd.addOption(o.id, o.name || T("(sin nombre)", "(unnamed)"));
 				dd.setValue(p.targetPinId ?? "");
 				dd.onChange((v) => {
 					p.targetPinId = v || undefined;
@@ -324,15 +349,15 @@ export class PinModal extends Modal {
 			})
 			.addButton((b) =>
 				b
-					.setButtonText("Elegir en el mapa…")
-					.setTooltip("Cierra este diálogo; haz clic en el mapa para fijar el destino con el zoom actual.")
+					.setButtonText(T("Elegir en el mapa…", "Pick on the map…"))
+					.setTooltip(T("Cierra este diálogo; haz clic en el mapa para fijar el destino con el zoom actual.", "Closes this dialog; click the map to set the destination with the current zoom."))
 					.onClick(() => this.finish("pick-target")),
 			);
 	}
 
 	private finish(action: PinModalResult["action"]): void {
 		if (action !== "delete" && !this.pin.name.trim()) {
-			new Notice("Ponle un nombre al marcador");
+			new Notice(T("Ponle un nombre al marcador", "Give the marker a name"));
 			return;
 		}
 		this.onDone({ action, pin: this.pin });
@@ -360,7 +385,7 @@ export class RouteModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.titleEl.setText("Ruta");
+		this.titleEl.setText(T("Ruta", "Route"));
 		this.render();
 	}
 
@@ -368,33 +393,35 @@ export class RouteModal extends Modal {
 		const el = this.contentEl;
 		el.empty();
 		const r = this.route;
-		new Setting(el).setName("Nombre").addText((t) => t.setValue(r.name).onChange((v) => (r.name = v)));
-		new Setting(el).setName("Color").addColorPicker((c) => c.setValue(r.color).onChange((v) => (r.color = v)));
-		layerDropdown(this.app, new Setting(el).setName("Capa"), this.data, r.layerId, (id) => (r.layerId = id), () => this.render());
+		new Setting(el).setName(T("Nombre", "Name")).addText((t) => t.setValue(r.name).onChange((v) => (r.name = v)));
+		new Setting(el).setName(T("Color", "Color")).addColorPicker((c) => c.setValue(r.color).onChange((v) => (r.color = v)));
+		layerDropdown(this.app, new Setting(el).setName(T("Capa", "Layer")), this.data, r.layerId, (id) => (r.layerId = id), () => this.render());
 		new Setting(el)
-			.setName("Curvas suaves")
-			.setDesc("La línea pasa por los puntos de curva con una curva suave. Desactívalo para usar líneas quebradas.")
+			.setName(T("Curvas suaves", "Smooth curves"))
+			.setDesc(T("La línea pasa por los puntos de curva con una curva suave. Desactívalo para usar líneas quebradas.", "The line passes through the curve points with a smooth curve. Turn it off to use straight segments."))
 			.addToggle((t) => t.setValue(r.smooth !== false).onChange((v) => (r.smooth = v)));
 
-		el.createEl("h4", { text: "Tramos" });
+		el.createEl("h4", { text: T("Tramos", "Segments") });
 		el.createDiv({
 			cls: "setting-item-description",
 			text:
 				(this.data.scale
-					? "Distancia: vacío = la estimada por la escala del mapa. "
-					: "Distancia: el mapa no tiene escala, escribe la distancia real de cada tramo. ") +
-				"Tiempo: horas a paso normal (ej. 6, 6,5 o 6h 30m); vacío = se calcula desde la distancia. " +
-				"Los pasos lento y rápido se ajustan a partir de este tiempo.",
+					? T("Distancia: vacío = la estimada por la escala del mapa. ", "Distance: empty = estimated from the map scale. ")
+					: T("Distancia: el mapa no tiene escala, escribe la distancia real de cada tramo. ", "Distance: the map has no scale, enter the real distance of each segment. ")) +
+				T(
+					"Tiempo: horas a paso normal (ej. 6, 6,5 o 6h 30m); vacío = se calcula desde la distancia. Los pasos lento y rápido se ajustan a partir de este tiempo.",
+					"Time: hours at normal pace (e.g. 6, 6.5 or 6h 30m); empty = calculated from the distance. Slow and fast paces are adjusted from this time.",
+				),
 		});
 		const nodes = nodeMap(this.data);
 		const box = el.createDiv("strakes-seg-list");
 		r.times ??= [];
 		for (let i = 0; i < r.nodeIds.length - 1; i++) {
 			const est = this.data.scale ? segmentDistance(this.data, { ...r, segments: r.segments.map(() => null) }, i, nodes).value : null;
-			const row = new Setting(box).setName(`Tramo ${i + 1}`);
+			const row = new Setting(box).setName(T(`Tramo ${i + 1}`, `Segment ${i + 1}`));
 			row.controlEl.addClass("strakes-seg-inputs");
 
-			row.controlEl.createSpan({ cls: "strakes-seg-input-label", text: this.data.unit || "dist." });
+			row.controlEl.createSpan({ cls: "strakes-seg-input-label", text: this.data.unit || T("dist.", "dist.") });
 			row.addText((t) => {
 				t.setPlaceholder(est !== null ? `≈ ${formatDistance(est, "")}` : "?");
 				t.setValue(r.segments[i] === null ? "" : String(r.segments[i]));
@@ -425,17 +452,17 @@ export class RouteModal extends Modal {
 		new Setting(el)
 			.addButton((b) =>
 				b
-					.setButtonText("Eliminar ruta")
+					.setButtonText(T("Eliminar ruta", "Delete route"))
 					.setWarning()
 					.onClick(() => {
 						this.onDone(null, true);
 						this.close();
 					}),
 			)
-			.addButton((b) => b.setButtonText("Cancelar").onClick(() => this.close()))
+			.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => this.close()))
 			.addButton((b) =>
 				b
-					.setButtonText("Guardar")
+					.setButtonText(T("Guardar", "Save"))
 					.setCta()
 					.onClick(() => {
 						this.onDone(this.route, false);
@@ -472,21 +499,21 @@ export class MapPropsModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.titleEl.setText("Propiedades del mapa");
+		this.titleEl.setText(T("Propiedades del mapa", "Map properties"));
 		const el = this.contentEl;
 		const p = this.props;
-		new Setting(el).setName("Imagen").addText((t) => {
+		new Setting(el).setName(T("Imagen", "Image")).addText((t) => {
 			t.setValue(p.image).onChange((v) => (p.image = v.trim()));
 			t.inputEl.addClass("strakes-wide-input");
 			new FileInputSuggest(this.app, t.inputEl, isImageFile, (f) => (p.image = f.path));
 		});
 		new Setting(el)
-			.setName("Unidad de distancia")
-			.setDesc("km, millas, leguas, días de viaje…")
+			.setName(T("Unidad de distancia", "Distance unit"))
+			.setDesc(T("km, millas, leguas, días de viaje…", "km, miles, leagues, days of travel…"))
 			.addText((t) => t.setValue(p.unit).onChange((v) => (p.unit = v.trim())));
 		new Setting(el)
-			.setName("Escala")
-			.setDesc("Unidades por píxel de la imagen. Vacío = mapa sin escala (solo distancias manuales por tramo).")
+			.setName(T("Escala", "Scale"))
+			.setDesc(T("Unidades por píxel de la imagen. Vacío = mapa sin escala (solo distancias manuales por tramo).", "Units per image pixel. Empty = map without scale (only manual distances per segment)."))
 			.addText((t) => {
 				t.setValue(p.scale === null ? "" : String(p.scale));
 				t.inputEl.type = "number";
@@ -497,19 +524,19 @@ export class MapPropsModal extends Modal {
 				});
 			})
 			.addButton((b) =>
-				b.setButtonText("Calibrar en el mapa…").onClick(() => {
+				b.setButtonText(T("Calibrar en el mapa…", "Calibrate on the map…")).onClick(() => {
 					this.close();
 					this.onCalibrate();
 				}),
 			);
 		new Setting(el)
-			.setName("Mostrar etiquetas de los tramos")
+			.setName(T("Mostrar etiquetas de los tramos", "Show segment labels"))
 			.addToggle((t) => t.setValue(p.showDistances).onChange((v) => (p.showDistances = v)));
 		new Setting(el)
-			.addButton((b) => b.setButtonText("Cancelar").onClick(() => this.close()))
+			.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => this.close()))
 			.addButton((b) =>
 				b
-					.setButtonText("Guardar")
+					.setButtonText(T("Guardar", "Save"))
 					.setCta()
 					.onClick(() => {
 						this.onSave(this.props);

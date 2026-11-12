@@ -1,3 +1,4 @@
+import { numberLocale, T } from "../i18n";
 import { uid } from "../types";
 import { nearestOnPolyline, polylineLength, Pt, smoothPath } from "./geometry";
 
@@ -251,14 +252,38 @@ export function routeTotal(data: MapData, route: MapRoute, nodes = nodeMap(data)
 
 export function formatDistance(value: number, unit: string): string {
 	const rounded = value >= 100 ? Math.round(value) : Math.round(value * 10) / 10;
-	return `${rounded.toLocaleString("es")} ${unit}`.trim();
+	return `${rounded.toLocaleString(numberLocale())} ${unit}`.trim();
 }
 
-export function formatTotal(t: RouteTotal, unit: string): string {
+export const KM_PER_MILE = 1.609344;
+
+/** Unidad para mostrar: la del mapa, kilómetros o millas. */
+export type DisplayUnit = "map" | "km" | "mi";
+
+/**
+ * Distancia guardada en la unidad del mapa, lista para mostrar en la unidad elegida.
+ * Solo se convierte el texto: el valor guardado no cambia, así que alternar de unidad
+ * nunca acumula redondeos. Las unidades que no son de longitud (p. ej. «días») se
+ * muestran tal cual.
+ */
+export function displayDistance(value: number, unit: string, display: DisplayUnit): string {
+	if (display !== "map") {
+		const mpu = milesPerUnit(unit);
+		if (mpu !== null) {
+			const miles = value * mpu;
+			return display === "mi" ? formatDistance(miles, "mi") : formatDistance(miles * KM_PER_MILE, "km");
+		}
+	}
+	return formatDistance(value, unit);
+}
+
+export function formatTotal(t: RouteTotal, unit: string, display: DisplayUnit = "map"): string {
 	if (!t.segments) return "—";
-	if (t.unknown === t.segments) return "sin distancias";
-	const base = formatDistance(t.total, unit);
-	return t.unknown ? `${base} + ${t.unknown} tramo${t.unknown > 1 ? "s" : ""} sin distancia` : base;
+	if (t.unknown === t.segments) return T("sin distancias", "no distances");
+	const base = displayDistance(t.total, unit, display);
+	if (!t.unknown) return base;
+	const s = t.unknown > 1 ? "s" : "";
+	return T(`${base} + ${t.unknown} tramo${s} sin distancia`, `${base} + ${t.unknown} segment${s} without distance`);
 }
 
 // ---------- Tiempos de viaje ----------
@@ -267,9 +292,9 @@ export type Pace = "slow" | "normal" | "fast";
 
 /** Pasos de viaje: millas por hora y horas de marcha por día. */
 export const PACES: Record<Pace, { label: string; mph: number; hoursPerDay: number }> = {
-	slow: { label: "Lento", mph: 2, hoursPerDay: 9 },
-	normal: { label: "Normal", mph: 3, hoursPerDay: 8 },
-	fast: { label: "Rápido", mph: 4, hoursPerDay: 7.5 },
+	slow: { get label() { return T("Lento", "Slow"); }, mph: 2, hoursPerDay: 9 },
+	normal: { get label() { return T("Normal", "Normal"); }, mph: 3, hoursPerDay: 8 },
+	fast: { get label() { return T("Rápido", "Fast"); }, mph: 4, hoursPerDay: 7.5 },
 };
 
 /**
@@ -280,9 +305,9 @@ export const PACES: Record<Pace, { label: string; mph: number; hoursPerDay: numb
 export function milesPerUnit(unit: string): number | null {
 	const u = unit.trim().toLowerCase().replace(/\.$/, "");
 	if (["mi", "milla", "millas", "mile", "miles"].includes(u)) return 1;
-	if (["km", "kms", "kilómetro", "kilómetros", "kilometro", "kilometros", "kilometer", "kilometers"].includes(u)) return 0.621371;
+	if (["km", "kms", "kilómetro", "kilómetros", "kilometro", "kilometros", "kilometer", "kilometers"].includes(u)) return 1 / KM_PER_MILE;
 	if (["legua", "leguas", "league", "leagues"].includes(u)) return 3;
-	if (["m", "metro", "metros", "meter", "meters"].includes(u)) return 0.000621371;
+	if (["m", "metro", "metros", "meter", "meters"].includes(u)) return 1 / (KM_PER_MILE * 1000);
 	if (["ft", "pie", "pies", "foot", "feet"].includes(u)) return 1 / 5280;
 	return null;
 }
@@ -351,17 +376,22 @@ export function formatTravelTime(hours: number, pace: Pace): string {
 	const days = Math.floor(hours / perDay + 1e-9);
 	const rest = hours - days * perDay;
 	if (!days) return formatHours(hours);
-	const dayTxt = `${days} día${days > 1 ? "s" : ""}`;
-	const restTxt = rest * 60 >= 1 ? ` y ${formatHours(rest)}` : "";
-	return `${dayTxt}${restTxt} (${formatHours(hours)} de marcha, ${perDay.toLocaleString("es")} h/día)`;
+	const s = days > 1 ? "s" : "";
+	const dayTxt = T(`${days} día${s}`, `${days} day${s}`);
+	const restTxt = rest * 60 >= 1 ? T(` y ${formatHours(rest)}`, ` and ${formatHours(rest)}`) : "";
+	const perDayTxt = perDay.toLocaleString(numberLocale());
+	return T(
+		`${dayTxt}${restTxt} (${formatHours(hours)} de marcha, ${perDayTxt} h/día)`,
+		`${dayTxt}${restTxt} (${formatHours(hours)} of travel, ${perDayTxt} h/day)`,
+	);
 }
 
-/** Interpreta «6», «6,5», «6h», «6 h 30 min», «45 min», «1h30» → horas. */
+/** Interpreta «6», «6,5», «6h», «6 h 30 min», «45 min», «1h30», «2 hours 15 minutes» → horas. */
 export function parseHoursInput(s: string): number | null {
 	const t = s.trim().toLowerCase().replace(",", ".");
 	if (!t) return null;
 	if (/^\d+(\.\d+)?$/.test(t)) return parseFloat(t);
-	const m = t.match(/^(?:(\d+(?:\.\d+)?)\s*h(?:oras?)?)?\s*(?:(\d+)\s*(?:m|min|minutos?)?)?$/);
+	const m = t.match(/^(?:(\d+(?:\.\d+)?)\s*h(?:oras?|ours?|rs?)?)?\s*(?:(\d+)\s*(?:m|mins?|minutos?|minutes?)?)?$/);
 	if (!m || (!m[1] && !m[2])) return null;
 	return (m[1] ? parseFloat(m[1]) : 0) + (m[2] ? parseInt(m[2], 10) / 60 : 0);
 }

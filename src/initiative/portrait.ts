@@ -1,4 +1,5 @@
 import { App, Modal, Notice, Setting, TFile } from "obsidian";
+import { T } from "../i18n";
 import type StrakesTTRPG from "../main";
 import { Combatant, Portrait } from "../types";
 import { ImagePickerModal, loadImageSize } from "../ui/modals";
@@ -93,9 +94,9 @@ function pickPortraitImage(app: App, onPicked: (p: Portrait) => void): void {
 		(file) => {
 			void loadImageSize(app.vault.getResourcePath(file))
 				.then(({ width, height }) => onPicked(coverCrop(file.path, width, height)))
-				.catch(() => new Notice("No se pudo cargar la imagen"));
+				.catch(() => new Notice(T("No se pudo cargar la imagen", "Couldn't load the image")));
 		},
-		"Elige la imagen del retrato…",
+		T("Elige la imagen del retrato…", "Choose the portrait image…"),
 	).open();
 }
 
@@ -130,10 +131,10 @@ export class PortraitModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.titleEl.setText("Encuadrar retrato");
+		this.titleEl.setText(T("Encuadrar retrato", "Frame portrait"));
 		this.modalEl.addClass("strakes-portrait-modal");
 		const el = this.contentEl;
-		el.createDiv({ cls: "setting-item-description", text: "Arrastra para mover la imagen y usa la rueda (o la barra) para acercar o alejar. Lo que queda dentro del marco es el retrato." });
+		el.createDiv({ cls: "setting-item-description", text: T("Arrastra para mover la imagen y usa la rueda (o la barra) para acercar o alejar. Lo que queda dentro del marco es el retrato.", "Drag to move the image and use the wheel (or the slider) to zoom in or out. Whatever stays inside the frame is the portrait.") });
 
 		const F = PortraitModal.FRAME;
 		const S = PortraitModal.STAGE;
@@ -170,7 +171,7 @@ export class PortraitModal extends Modal {
 		// Zoom: barra a todo el ancho (escala logarítmica, muchos pasos) y porcentaje editable,
 		// sincronizados en tiempo real con la rueda y los botones.
 		const zoomRow = el.createDiv("strakes-portrait-zoom");
-		zoomRow.createSpan({ cls: "strakes-portrait-zoom-label", text: "Zoom" });
+		zoomRow.createSpan({ cls: "strakes-portrait-zoom-label", text: T("Zoom", "Zoom") });
 		const slider = zoomRow.createEl("input", { type: "range", cls: "slider strakes-portrait-zoom-slider" });
 		slider.min = String(PortraitModal.ZOOM_MIN_LOG);
 		slider.max = String(PortraitModal.ZOOM_MAX_LOG);
@@ -191,20 +192,20 @@ export class PortraitModal extends Modal {
 		});
 
 		new Setting(el)
-			.addButton((b) => b.setButtonText("Cambiar imagen…").onClick(() => pickPortraitImage(this.app, (np) => this.setImage(np))))
-			.addButton((b) => b.setButtonText("Encajar").setTooltip("Imagen completa dentro del marco").onClick(() => this.preset(fitCrop)))
-			.addButton((b) => b.setButtonText("Rellenar").setTooltip("La imagen cubre todo el marco").onClick(() => this.preset(coverCrop)));
+			.addButton((b) => b.setButtonText(T("Cambiar imagen…", "Change image…")).onClick(() => pickPortraitImage(this.app, (np) => this.setImage(np))))
+			.addButton((b) => b.setButtonText(T("Encajar", "Fit")).setTooltip(T("Imagen completa dentro del marco", "Whole image inside the frame")).onClick(() => this.preset(fitCrop)))
+			.addButton((b) => b.setButtonText(T("Rellenar", "Fill")).setTooltip(T("La imagen cubre todo el marco", "The image covers the whole frame")).onClick(() => this.preset(coverCrop)));
 		new Setting(el)
 			.addButton((b) =>
 				b
-					.setButtonText("Quitar retrato")
+					.setButtonText(T("Quitar retrato", "Remove portrait"))
 					.setWarning()
 					.onClick(() => this.finish(null)),
 			)
-			.addButton((b) => b.setButtonText("Cancelar").onClick(() => this.close()))
+			.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => this.close()))
 			.addButton((b) =>
 				b
-					.setButtonText("Guardar")
+					.setButtonText(T("Guardar", "Save"))
 					.setCta()
 					.onClick(() => this.finish(this.p)),
 			);

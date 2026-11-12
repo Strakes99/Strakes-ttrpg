@@ -1,5 +1,6 @@
 import * as L from "leaflet";
 import { Keymap, Menu, Notice, Scope, setIcon, setTooltip, TextFileView, TFile, WorkspaceLeaf } from "obsidian";
+import { numberLocale, T } from "../i18n";
 import type StrakesTTRPG from "../main";
 import { uid, VIEW_TYPE_MAP } from "../types";
 import { confirmDialog, loadImageSize, promptText } from "../ui/modals";
@@ -13,8 +14,9 @@ import {
 	legsTime,
 	deleteNode,
 	distanceTime,
-	formatDistance,
+	displayDistance,
 	formatTotal,
+	KM_PER_MILE,
 	formatHours,
 	formatTravelTime,
 	MapData,
@@ -46,15 +48,31 @@ import { editSegmentDialog, MapPropsModal, PinModal, RouteModal } from "./mapMod
 
 type Mode = "navigate" | "pin" | "route" | "measure" | "calibrate" | "pick-target";
 
-const MODE_HINTS: Record<Mode, string> = {
-	navigate: "",
-	pin: "Clic en el mapa para colocar un marcador. Esc para salir.",
-	route:
-		"Clic: añadir nodo (clic en un nodo existente lo conecta). Mayús+clic: punto de curva, sin crear nodo. Enter o Esc para terminar.",
-	measure: "Clic en dos nodos para calcular la distancia por las rutas visibles (o dos puntos si el mapa tiene escala).",
-	calibrate: "Clic en dos puntos cuya distancia real conozcas.",
-	"pick-target": "Clic en el mapa (o en otro marcador) para fijar el destino del portal / escalera; se guarda también el zoom actual.",
-};
+function modeHint(mode: Mode): string {
+	switch (mode) {
+		case "navigate":
+			return "";
+		case "pin":
+			return T("Clic en el mapa para colocar un marcador. Esc para salir.", "Click the map to place a marker. Esc to exit.");
+		case "route":
+			return T(
+				"Clic: añadir nodo (clic en un nodo existente lo conecta). Mayús+clic: punto de curva, sin crear nodo. Enter o Esc para terminar.",
+				"Click: add a node (clicking an existing node connects it). Shift+click: curve point, without creating a node. Enter or Esc to finish.",
+			);
+		case "measure":
+			return T(
+				"Clic en dos nodos para calcular la distancia por las rutas visibles (o dos puntos si el mapa tiene escala).",
+				"Click two nodes to calculate the distance along the visible routes (or two points if the map has a scale).",
+			);
+		case "calibrate":
+			return T("Clic en dos puntos cuya distancia real conozcas.", "Click two points whose real distance you know.");
+		case "pick-target":
+			return T(
+				"Clic en el mapa (o en otro marcador) para fijar el destino del portal / escalera; se guarda también el zoom actual.",
+				"Click the map (or another marker) to set the portal / stairs destination; the current zoom is saved too.",
+			);
+	}
+}
 
 /** Vista de los archivos .smap: mapa de imagen con pines, capas, rutas y portales. */
 export class MapView extends TextFileView {
@@ -115,7 +133,7 @@ export class MapView extends TextFileView {
 		return VIEW_TYPE_MAP;
 	}
 	getDisplayText(): string {
-		return this.file?.basename ?? "Mapa";
+		return this.file?.basename ?? T("Mapa", "Map");
 	}
 	getIcon(): string {
 		return "map";
@@ -135,7 +153,7 @@ export class MapView extends TextFileView {
 		this.panelEl = body.createDiv("strakes-map-panel");
 		this.statusEl = root.createDiv("strakes-map-status");
 
-		this.addAction("settings", "Propiedades del mapa", () => this.openProps());
+		this.addAction("settings", T("Propiedades del mapa", "Map properties"), () => this.openProps());
 	}
 
 	async onClose(): Promise<void> {
@@ -156,7 +174,7 @@ export class MapView extends TextFileView {
 		try {
 			raw = text.trim() ? JSON.parse(text) : {};
 		} catch (e) {
-			new Notice("El archivo del mapa no es JSON válido.");
+			new Notice(T("El archivo del mapa no es JSON válido.", "The map file isn't valid JSON."));
 			console.error(e);
 		}
 		this.mapData = normalizeMap(raw);
@@ -290,7 +308,9 @@ export class MapView extends TextFileView {
 			this.loadedImage = data.image;
 			const file = this.app.vault.getAbstractFileByPath(data.image);
 			if (!(file instanceof TFile)) {
-				this.statusEl.setText(`⚠ Imagen no encontrada: "${data.image}". Ábrela en Propiedades del mapa (⚙).`);
+				this.statusEl.setText(
+					T(`⚠ Imagen no encontrada: "${data.image}". Ábrela en Propiedades del mapa (⚙).`, `⚠ Image not found: "${data.image}". Open it in Map properties (⚙).`),
+				);
 			} else {
 				const src = this.app.vault.getResourcePath(file);
 				if (!data.width || !data.height) {
@@ -302,7 +322,7 @@ export class MapView extends TextFileView {
 						this.lastSnapshot = JSON.stringify(this.mapData);
 						this.requestSave();
 					} catch {
-						new Notice("No se pudo leer el tamaño de la imagen.");
+						new Notice(T("No se pudo leer el tamaño de la imagen.", "Couldn't read the image size."));
 						return;
 					}
 				}
@@ -333,6 +353,13 @@ export class MapView extends TextFileView {
 	}
 
 	// ---------- Render ----------
+
+	/** Vuelve a pintar los textos de distancia tras cambiar la unidad para mostrar. */
+	refreshUnits(): void {
+		if (!this.mapData) return;
+		if (this.lastMeasure) this.measureText = this.describeMeasure();
+		this.renderAll();
+	}
 
 	private renderAll(): void {
 		const data = this.mapData;
@@ -411,8 +438,18 @@ export class MapView extends TextFileView {
 		// Tooltip: nombre, distancia total y tiempo al paso elegido en la herramienta Medir.
 		const pace = this.plugin.settings.travelPace;
 		const time = routeTime(data, route, pace);
-		const timeTxt = time.unknown === route.segments.length ? "" : ` · ${formatHours(time.hours)} a paso ${PACES[pace].label.toLowerCase()}${time.unknown ? " (incompleto)" : ""}`;
-		line.bindTooltip(`${route.name} · ${formatTotal(total, data.unit)}${timeTxt}`, { sticky: true, className: "strakes-map-tooltip" });
+		const paceName = PACES[pace].label.toLowerCase();
+		const timeTxt =
+			time.unknown === route.segments.length
+				? ""
+				: T(
+						` · ${formatHours(time.hours)} a paso ${paceName}${time.unknown ? " (incompleto)" : ""}`,
+						` · ${formatHours(time.hours)} at ${paceName} pace${time.unknown ? " (incomplete)" : ""}`,
+					);
+		line.bindTooltip(`${route.name} · ${formatTotal(total, data.unit, this.plugin.settings.displayUnit)}${timeTxt}`, {
+			sticky: true,
+			className: "strakes-map-tooltip",
+		});
 		line.on("click", (e: L.LeafletMouseEvent) => {
 			if (this.mode === "pin" || this.mode === "calibrate" || this.mode === "pick-target" || this.mode === "measure") {
 				this.onMapClick(e);
@@ -494,7 +531,7 @@ export class MapView extends TextFileView {
 			bends.forEach((b, j) => {
 				const m = L.marker(this.ll(b), { icon: handleIcon("strakes-bend"), draggable: true, keyboard: false });
 				setColor(m);
-				m.bindTooltip("Punto de curva · doble clic para quitar", { direction: "top", offset: [0, -8], className: "strakes-map-tooltip" });
+				m.bindTooltip(T("Punto de curva · doble clic para quitar", "Curve point · double-click to remove"), { direction: "top", offset: [0, -8], className: "strakes-map-tooltip" });
 				m.on("drag", () => {
 					bends[j] = this.pt(m.getLatLng());
 					this.redrawRouteLine(route, nodes);
@@ -511,10 +548,10 @@ export class MapView extends TextFileView {
 				m.on("contextmenu", (e: L.LeafletMouseEvent) => {
 					L.DomEvent.stop(e.originalEvent);
 					const menu = new Menu();
-					menu.addItem((it) => it.setTitle("Quitar punto de curva").setIcon("x").onClick(remove));
+					menu.addItem((it) => it.setTitle(T("Quitar punto de curva", "Remove curve point")).setIcon("x").onClick(remove));
 					menu.addItem((it) =>
 						it
-							.setTitle("Convertir en nodo")
+							.setTitle(T("Convertir en nodo", "Convert to node"))
 							.setIcon("circle-dot")
 							.onClick(() => {
 								bends.splice(j, 1);
@@ -535,7 +572,7 @@ export class MapView extends TextFileView {
 						: curvePoint(ctrl, k, 0.5);
 				const ghost = L.marker(this.ll(mid), { icon: handleIcon("strakes-bend-ghost"), draggable: true, keyboard: false });
 				setColor(ghost);
-				ghost.bindTooltip("Arrastra para curvar", { direction: "top", offset: [0, -8], className: "strakes-map-tooltip" });
+				ghost.bindTooltip(T("Arrastra para curvar", "Drag to curve"), { direction: "top", offset: [0, -8], className: "strakes-map-tooltip" });
 				let inserted = false;
 				ghost.on("dragstart", () => {
 					bends.splice(k, 0, this.pt(ghost.getLatLng()));
@@ -562,21 +599,26 @@ export class MapView extends TextFileView {
 			b.toggleClass("is-active", this.mode === mode || (mode === "route" && this.mode === "route"));
 		};
 		// Deshacer / rehacer los cambios del mapa.
-		this.undoBtn = this.toolButton(tb, "undo-2", "Deshacer", () => this.undo());
-		this.redoBtn = this.toolButton(tb, "redo-2", "Rehacer", () => this.redo());
+		this.undoBtn = this.toolButton(tb, "undo-2", T("Deshacer", "Undo"), () => this.undo());
+		this.redoBtn = this.toolButton(tb, "redo-2", T("Rehacer", "Redo"), () => this.redo());
 		this.updateHistoryButtons();
 		tb.createDiv("strakes-toolbar-sep");
-		tool("navigate", "hand", "Navegar");
-		tool("pin", "map-pin", "Añadir marcador");
-		tool("route", "route", "Crear ruta");
-		tool("measure", "ruler", "Medir distancia y tiempo de viaje");
+		tool("navigate", "hand", T("Navegar", "Navigate"));
+		tool("pin", "map-pin", T("Añadir marcador", "Add marker"));
+		tool("route", "route", T("Crear ruta", "Create route"));
+		tool("measure", "ruler", T("Medir distancia y tiempo de viaje", "Measure distance and travel time"));
 		if (this.mode === "measure") {
 			// Paso del viaje: cambia el tiempo calculado (se recuerda entre sesiones).
 			const seg = tb.createDiv("strakes-segmented strakes-pace");
 			for (const pace of ["slow", "normal", "fast"] as Pace[]) {
 				const b = seg.createEl("button", { text: PACES[pace].label });
 				b.toggleClass("is-active", this.plugin.settings.travelPace === pace);
-				setTooltip(b, `${PACES[pace].mph} millas/h · ${PACES[pace].hoursPerDay.toLocaleString("es")} h de marcha al día`);
+				const perDay = PACES[pace].hoursPerDay.toLocaleString(numberLocale());
+				const kmh = this.plugin.settings.displayUnit === "km";
+				const speed = kmh
+					? `${(PACES[pace].mph * KM_PER_MILE).toLocaleString(numberLocale(), { maximumFractionDigits: 1 })} km/h`
+					: T(`${PACES[pace].mph} millas/h`, `${PACES[pace].mph} miles/h`);
+				setTooltip(b, T(`${speed} · ${perDay} h de marcha al día`, `${speed} · ${perDay} h of travel per day`));
 				b.onclick = () => {
 					this.plugin.settings.travelPace = pace;
 					void this.plugin.saveSettings();
@@ -586,27 +628,30 @@ export class MapView extends TextFileView {
 			}
 		}
 		if (this.mode === "route") {
-			const done = this.toolButton(tb, "check", "Terminar ruta (Enter)", () => this.finishRoute());
+			const done = this.toolButton(tb, "check", T("Terminar ruta (Enter)", "Finish route (Enter)"), () => this.finishRoute());
 			done.addClass("mod-cta");
 		}
 		tb.createDiv("strakes-toolbar-sep");
-		this.toolButton(tb, this.editing ? "unlock" : "lock", this.editing ? "Edición activa: arrastra marcadores y nodos" : "Bloqueado (activar edición)", () => {
+		const lockTip = this.editing
+			? T("Edición activa: arrastra marcadores y nodos", "Editing on: drag markers and nodes")
+			: T("Bloqueado (activar edición)", "Locked (turn on editing)");
+		this.toolButton(tb, this.editing ? "unlock" : "lock", lockTip, () => {
 			this.editing = !this.editing;
 			this.renderAll();
 		}).toggleClass("is-active", this.editing);
-		this.toolButton(tb, "tag", "Mostrar nombres de los marcadores", () => {
+		this.toolButton(tb, "tag", T("Mostrar nombres de los marcadores", "Show marker names"), () => {
 			this.showLabels = !this.showLabels;
 			this.renderAll();
 		}).toggleClass("is-active", this.showLabels);
-		this.toolButton(tb, "milestone", "Mostrar etiquetas de los tramos (número y ruta)", () => {
+		this.toolButton(tb, "milestone", T("Mostrar etiquetas de los tramos (número y ruta)", "Show segment labels (number and route)"), () => {
 			if (!this.mapData) return;
 			this.mapData.showDistances = !this.mapData.showDistances;
 			this.persist();
 			this.renderAll();
 		}).toggleClass("is-active", !!this.mapData?.showDistances);
-		this.toolButton(tb, "maximize", "Encuadrar todo el mapa", () => this.map?.flyToBounds(this.bounds(), { duration: 0.5 }));
+		this.toolButton(tb, "maximize", T("Encuadrar todo el mapa", "Fit the whole map"), () => this.map?.flyToBounds(this.bounds(), { duration: 0.5 }));
 		tb.createDiv("strakes-toolbar-spacer");
-		this.toolButton(tb, "panel-right", "Mostrar/ocultar panel", () => {
+		this.toolButton(tb, "panel-right", T("Mostrar/ocultar panel", "Show/hide panel"), () => {
 			this.panelOpen = !this.panelOpen;
 			this.renderPanel();
 			window.setTimeout(() => this.map?.invalidateSize(), 50);
@@ -630,7 +675,7 @@ export class MapView extends TextFileView {
 		if (!data || !this.panelOpen) return;
 
 		// Mostrar: interruptores fijos por tipo, independientes de las capas.
-		const showSec = this.section(panel, "Mostrar");
+		const showSec = this.section(panel, T("Mostrar", "Show"));
 		const typeRow = (type: "pins" | "routes", icon: string, label: string, count: number) => {
 			const row = showSec.createDiv("strakes-panel-row strakes-type-row");
 			const cb = row.createEl("input", { type: "checkbox" });
@@ -648,17 +693,17 @@ export class MapView extends TextFileView {
 				if (e.target !== cb) cb.click();
 			};
 		};
-		typeRow("pins", "map-pin", "Marcadores", data.pins.length);
-		typeRow("routes", "route", "Rutas", data.routes.length);
+		typeRow("pins", "map-pin", T("Marcadores", "Markers"), data.pins.length);
+		typeRow("routes", "route", T("Rutas", "Routes"), data.routes.length);
 
 		// Capas del usuario: cada pin o ruta puede estar en una o en ninguna.
-		const layersSec = this.collapsibleSection(panel, "layers", "Capas", data.layers.length, {
+		const layersSec = this.collapsibleSection(panel, "layers", T("Capas", "Layers"), data.layers.length, {
 			icon: "plus",
-			tip: "Nueva capa",
+			tip: T("Nueva capa", "New layer"),
 			onClick: () => void this.addLayer(),
 		});
 		if (!data.layers.length)
-			layersSec.createDiv({ cls: "strakes-panel-meta strakes-panel-empty", text: "Sin capas. Crea una con + para agrupar marcadores y rutas." });
+			layersSec.createDiv({ cls: "strakes-panel-meta strakes-panel-empty", text: T("Sin capas. Crea una con + para agrupar marcadores y rutas.", "No layers. Create one with + to group markers and routes.") });
 		for (const layer of data.layers) {
 			const row = layersSec.createDiv("strakes-panel-row strakes-layer-row");
 			row.toggleClass("is-current", layer.id === this.currentLayerId);
@@ -672,7 +717,7 @@ export class MapView extends TextFileView {
 			const nPins = data.pins.filter((p) => p.layerId === layer.id).length;
 			const nRoutes = data.routes.filter((r) => r.layerId === layer.id).length;
 			const name = row.createDiv({ cls: "strakes-panel-name", text: layer.name });
-			setTooltip(name, "Clic para activarla: los marcadores y rutas nuevos se crearán en esta capa");
+			setTooltip(name, T("Clic para activarla: los marcadores y rutas nuevos se crearán en esta capa", "Click to make it active: new markers and routes will be created on this layer"));
 			name.onclick = () => {
 				this.currentLayerId = this.currentLayerId === layer.id ? null : layer.id;
 				this.renderPanel();
@@ -685,7 +730,7 @@ export class MapView extends TextFileView {
 
 		// Rutas
 		if (data.routes.length) {
-			const routesSec = this.collapsibleSection(panel, "routes", "Rutas", data.routes.length);
+			const routesSec = this.collapsibleSection(panel, "routes", T("Rutas", "Routes"), data.routes.length);
 			const nodes = nodeMap(data);
 			for (const r of data.routes) {
 				const row = routesSec.createDiv("strakes-panel-row");
@@ -693,7 +738,7 @@ export class MapView extends TextFileView {
 				const sw = row.createDiv("strakes-swatch");
 				sw.style.background = r.color;
 				row.createDiv({ cls: "strakes-panel-name", text: r.name });
-				row.createDiv({ cls: "strakes-panel-meta", text: formatTotal(routeTotal(data, r, nodes), data.unit) });
+				row.createDiv({ cls: "strakes-panel-meta", text: formatTotal(routeTotal(data, r, nodes), data.unit, this.plugin.settings.displayUnit) });
 				row.onclick = () => {
 					this.selectedRouteId = r.id;
 					const line = this.routeLines.get(r.id);
@@ -706,8 +751,8 @@ export class MapView extends TextFileView {
 
 		// Pines
 		if (data.pins.length) {
-			const pinsSec = this.collapsibleSection(panel, "pins", "Marcadores", data.pins.length);
-			const filter = pinsSec.createEl("input", { type: "search", cls: "strakes-panel-filter", attr: { placeholder: "Filtrar…" } });
+			const pinsSec = this.collapsibleSection(panel, "pins", T("Marcadores", "Markers"), data.pins.length);
+			const filter = pinsSec.createEl("input", { type: "search", cls: "strakes-panel-filter", attr: { placeholder: T("Filtrar…", "Filter…") } });
 			filter.value = this.pinFilter;
 			const list = pinsSec.createDiv();
 			const renderList = () => {
@@ -731,12 +776,12 @@ export class MapView extends TextFileView {
 		}
 
 		// Escala
-		const scaleSec = this.section(panel, "Escala", "scale", "Calibrar escala", () => this.setMode("calibrate"));
+		const scaleSec = this.section(panel, T("Escala", "Scale"), "scale", T("Calibrar escala", "Calibrate scale"), () => this.setMode("calibrate"));
 		scaleSec.createDiv({
 			cls: "strakes-panel-meta",
 			text: data.scale
-				? `100 px = ${formatDistance(data.scale * 100, data.unit)}`
-				: "Sin escala: escribe la distancia de cada tramo (clic en la etiqueta «?»).",
+				? `100 px = ${displayDistance(data.scale * 100, data.unit, this.plugin.settings.displayUnit)}`
+				: T("Sin escala: escribe la distancia de cada tramo (clic en la etiqueta «?»).", "No scale: enter the distance of each segment (click the \"?\" label)."),
 		});
 	}
 
@@ -786,7 +831,7 @@ export class MapView extends TextFileView {
 			const isCollapsed = collapsed.includes(key);
 			sec.toggleClass("is-collapsed", isCollapsed);
 			setIcon(chevron, isCollapsed ? "chevron-right" : "chevron-down");
-			setTooltip(toggle, isCollapsed ? "Desplegar" : "Plegar");
+			setTooltip(toggle, isCollapsed ? T("Desplegar", "Expand") : T("Plegar", "Collapse"));
 		};
 		toggle.onclick = () => {
 			const i = collapsed.indexOf(key);
@@ -804,9 +849,12 @@ export class MapView extends TextFileView {
 		let editHint = "";
 		if (this.editing && this.mode === "navigate")
 			editHint = this.selectedRouteId
-				? "Curvar: arrastra los puntos ◦ de la ruta para crear curvas; arrastra ● para moverlas; doble clic en ● para quitarla."
-				: "Edición: arrastra marcadores y nodos. Haz clic en una ruta para curvarla.";
-		const parts = [MODE_HINTS[this.mode], editHint, this.measureText].filter(Boolean);
+				? T(
+						"Curvar: arrastra los puntos ◦ de la ruta para crear curvas; arrastra ● para moverlas; doble clic en ● para quitarla.",
+						"Curving: drag the route's ◦ points to create curves; drag ● to move them; double-click ● to remove it.",
+					)
+				: T("Edición: arrastra marcadores y nodos. Haz clic en una ruta para curvarla.", "Editing: drag markers and nodes. Click a route to curve it.");
+		const parts = [modeHint(this.mode), editHint, this.measureText].filter(Boolean);
 		this.statusEl.setText(parts.join("  ·  "));
 		this.statusEl.toggle(parts.length > 0);
 	}
@@ -863,10 +911,10 @@ export class MapView extends TextFileView {
 	private onMapContextMenu(e: L.LeafletMouseEvent): void {
 		const p = this.pt(e.latlng);
 		const m = new Menu();
-		m.addItem((i) => i.setTitle("Añadir marcador aquí").setIcon("map-pin").onClick(() => this.createPin(p)));
+		m.addItem((i) => i.setTitle(T("Añadir marcador aquí", "Add marker here")).setIcon("map-pin").onClick(() => this.createPin(p)));
 		m.addItem((i) =>
 			i
-				.setTitle("Empezar ruta aquí")
+				.setTitle(T("Empezar ruta aquí", "Start route here"))
 				.setIcon("route")
 				.onClick(() => {
 					this.setMode("route");
@@ -936,7 +984,7 @@ export class MapView extends TextFileView {
 					this.pickTargetPin.targetPinId = pin.id;
 					this.pickTargetPin.target = undefined;
 					this.pickTargetPin = null;
-					new Notice(`Portal / escalera enlazado con «${pin.name}»`);
+					new Notice(T(`Portal / escalera enlazado con «${pin.name}»`, `Portal / stairs linked to "${pin.name}"`));
 					this.persist();
 					this.setMode("navigate");
 				}
@@ -966,7 +1014,7 @@ export class MapView extends TextFileView {
 			zoom = pin.target.zoom;
 		}
 		if (!dest) {
-			new Notice("Este portal / escalera no tiene destino. Clic derecho → Editar.");
+			new Notice(T("Este portal / escalera no tiene destino. Clic derecho → Editar.", "This portal / stairs has no destination. Right-click → Edit."));
 			return;
 		}
 		this.map!.flyTo(this.ll(dest), zoom, { duration: 0.9 });
@@ -981,7 +1029,7 @@ export class MapView extends TextFileView {
 		const { subpath } = parseWikilink(pin.link);
 		const file = resolveWikilink(this.app, pin.link, source);
 		if (!file) {
-			new Notice(`No se encuentra la nota ${pin.link}`);
+			new Notice(T(`No se encuentra la nota ${pin.link}`, `Note not found: ${pin.link}`));
 			return;
 		}
 		if (newTab) {
@@ -1001,7 +1049,7 @@ export class MapView extends TextFileView {
 		if (!pin.link) return;
 		const file = resolveWikilink(this.app, pin.link, this.file?.path ?? "");
 		if (!file) {
-			new Notice(`No se encuentra la nota ${pin.link}`);
+			new Notice(T(`No se encuentra la nota ${pin.link}`, `Note not found: ${pin.link}`));
 			return;
 		}
 		const { subpath } = parseWikilink(pin.link);
@@ -1014,7 +1062,7 @@ export class MapView extends TextFileView {
 		pin.target = { x: p.x, y: p.y, zoom: this.map.getZoom() };
 		pin.targetPinId = undefined;
 		this.pickTargetPin = null;
-		new Notice(`Destino del portal / escalera «${pin.name}» guardado`);
+		new Notice(T(`Destino del portal / escalera «${pin.name}» guardado`, `Destination of portal / stairs "${pin.name}" saved`));
 		this.persist();
 		this.setMode("navigate");
 	}
@@ -1022,23 +1070,23 @@ export class MapView extends TextFileView {
 	private pinMenu(pin: MapPin, evt: MouseEvent): void {
 		const m = new Menu();
 		if (pin.portal) {
-			m.addItem((i) => i.setTitle("Usar portal / escalera").setIcon("orbit").onClick(() => this.goPortal(pin)));
+			m.addItem((i) => i.setTitle(T("Usar portal / escalera", "Use portal / stairs")).setIcon("orbit").onClick(() => this.goPortal(pin)));
 			m.addSeparator();
 		}
 		if (pin.link) {
-			m.addItem((i) => i.setTitle("Abrir nota").setIcon("file-text").onClick(() => void this.openPinLink(pin, false)));
+			m.addItem((i) => i.setTitle(T("Abrir nota", "Open note")).setIcon("file-text").onClick(() => void this.openPinLink(pin, false)));
 			m.addItem((i) =>
 				i
-					.setTitle("Enviar nota a la pantalla de jugadores")
+					.setTitle(T("Enviar nota a la pantalla de jugadores", "Send note to player screen"))
 					.setIcon("monitor")
 					.onClick(() => this.sendPinToPlayers(pin)),
 			);
 		}
-		m.addItem((i) => i.setTitle("Editar…").setIcon("pencil").onClick(() => this.openPinModal(pin, false)));
+		m.addItem((i) => i.setTitle(T("Editar…", "Edit…")).setIcon("pencil").onClick(() => this.openPinModal(pin, false)));
 		this.addMoveToLayerItem(m, evt, pin);
 		m.addItem((i) =>
 			i
-				.setTitle("Duplicar")
+				.setTitle(T("Duplicar", "Duplicate"))
 				.setIcon("copy")
 				.onClick(() => {
 					const copy: MapPin = { ...structuredClone(pin), id: uid(), x: pin.x + 20, y: pin.y - 20, name: `${pin.name} (copia)` };
@@ -1050,7 +1098,7 @@ export class MapView extends TextFileView {
 		m.addSeparator();
 		m.addItem((i) =>
 			i
-				.setTitle("Eliminar")
+				.setTitle(T("Eliminar", "Delete"))
 				.setIcon("trash-2")
 				.onClick(() => {
 					const data = this.mapData!;
@@ -1134,7 +1182,7 @@ export class MapView extends TextFileView {
 	private addPendingBend(p: Pt): void {
 		const route = this.activeRoute();
 		if (!route || !route.nodeIds.length) {
-			new Notice("Primero coloca el nodo inicial de la ruta (clic sin Mayús).");
+			new Notice(T("Primero coloca el nodo inicial de la ruta (clic sin Mayús).", "First place the route's starting node (click without Shift)."));
 			return;
 		}
 		this.pendingBends.push(p);
@@ -1216,7 +1264,7 @@ export class MapView extends TextFileView {
 	private addMoveToLayerItem(m: Menu, evt: MouseEvent, item: { layerId: string | null }): void {
 		m.addItem((i) =>
 			i
-				.setTitle("Mover a capa")
+				.setTitle(T("Mover a capa", "Move to layer"))
 				.setIcon("layers")
 				.onClick(() => {
 					const sub = new Menu();
@@ -1225,7 +1273,7 @@ export class MapView extends TextFileView {
 						this.persist();
 						this.renderAll();
 					};
-					sub.addItem((si) => si.setTitle("Sin capa").setChecked(!item.layerId).onClick(() => choose(null)));
+					sub.addItem((si) => si.setTitle(T("Sin capa", "No layer")).setChecked(!item.layerId).onClick(() => choose(null)));
 					if (this.mapData!.layers.length) sub.addSeparator();
 					for (const l of this.mapData!.layers)
 						sub.addItem((si) => si.setTitle(l.name).setChecked(l.id === item.layerId).onClick(() => choose(l.id)));
@@ -1237,7 +1285,7 @@ export class MapView extends TextFileView {
 	private routeMenu(route: MapRoute, evt: MouseEvent, at?: Pt): void {
 		const data = this.mapData!;
 		const m = new Menu();
-		m.addItem((i) => i.setTitle("Editar ruta y distancias…").setIcon("pencil").onClick(() => this.openRouteModal(route)));
+		m.addItem((i) => i.setTitle(T("Editar ruta y distancias…", "Edit route and distances…")).setIcon("pencil").onClick(() => this.openRouteModal(route)));
 		this.addMoveToLayerItem(m, evt, route);
 		const extend = (atStart: boolean) => {
 			this.setMode("route");
@@ -1246,12 +1294,12 @@ export class MapView extends TextFileView {
 			this.extendAtStart = atStart;
 			this.renderAll();
 		};
-		m.addItem((i) => i.setTitle("Extender desde el inicio").setIcon("route").onClick(() => extend(true)));
-		m.addItem((i) => i.setTitle("Extender desde el final").setIcon("route").onClick(() => extend(false)));
+		m.addItem((i) => i.setTitle(T("Extender desde el inicio", "Extend from the start")).setIcon("route").onClick(() => extend(true)));
+		m.addItem((i) => i.setTitle(T("Extender desde el final", "Extend from the end")).setIcon("route").onClick(() => extend(false)));
 		if (at)
 			m.addItem((i) =>
 				i
-					.setTitle("Insertar nodo aquí")
+					.setTitle(T("Insertar nodo aquí", "Insert node here"))
 					.setIcon("plus-circle")
 					.onClick(() => {
 						splitSegment(data, route, nearestSegment(data, route, at), at);
@@ -1261,7 +1309,7 @@ export class MapView extends TextFileView {
 			);
 		m.addItem((i) =>
 			i
-				.setTitle("Invertir sentido")
+				.setTitle(T("Invertir sentido", "Reverse direction"))
 				.setIcon("arrow-left-right")
 				.onClick(() => {
 					// El inicio pasa a ser el final: cambia la numeración de los tramos.
@@ -1273,7 +1321,7 @@ export class MapView extends TextFileView {
 		m.addSeparator();
 		m.addItem((i) =>
 			i
-				.setTitle("Curvar esta ruta…")
+				.setTitle(T("Curvar esta ruta…", "Curve this route…"))
 				.setIcon("spline")
 				.onClick(() => {
 					this.editing = true;
@@ -1283,7 +1331,7 @@ export class MapView extends TextFileView {
 		);
 		m.addItem((i) =>
 			i
-				.setTitle("Curvas suaves")
+				.setTitle(T("Curvas suaves", "Smooth curves"))
 				.setIcon("waves")
 				.setChecked(route.smooth !== false)
 				.onClick(() => {
@@ -1295,7 +1343,7 @@ export class MapView extends TextFileView {
 		if ((route.bends ?? []).some((b) => b.length))
 			m.addItem((i) =>
 				i
-					.setTitle("Quitar todas las curvas")
+					.setTitle(T("Quitar todas las curvas", "Remove all curves"))
 					.setIcon("minus")
 					.onClick(() => {
 						route.bends = route.bends!.map(() => []);
@@ -1306,7 +1354,7 @@ export class MapView extends TextFileView {
 		m.addSeparator();
 		m.addItem((i) =>
 			i
-				.setTitle("Eliminar ruta")
+				.setTitle(T("Eliminar ruta", "Delete route"))
 				.setIcon("trash-2")
 				.onClick(() => {
 					data.routes = data.routes.filter((r) => r.id !== route.id);
@@ -1339,7 +1387,7 @@ export class MapView extends TextFileView {
 		const m = new Menu();
 		m.addItem((i) =>
 			i
-				.setTitle("Empezar ruta desde este nodo")
+				.setTitle(T("Empezar ruta desde este nodo", "Start route from this node"))
 				.setIcon("route")
 				.onClick(() => {
 					this.setMode("route");
@@ -1348,7 +1396,7 @@ export class MapView extends TextFileView {
 		);
 		m.addItem((i) =>
 			i
-				.setTitle("Medir desde aquí")
+				.setTitle(T("Medir desde aquí", "Measure from here"))
 				.setIcon("ruler")
 				.onClick(() => {
 					this.setMode("measure");
@@ -1358,7 +1406,7 @@ export class MapView extends TextFileView {
 		m.addSeparator();
 		m.addItem((i) =>
 			i
-				.setTitle("Eliminar nodo")
+				.setTitle(T("Eliminar nodo", "Delete node"))
 				.setIcon("trash-2")
 				.onClick(() => {
 					deleteNode(data, node.id);
@@ -1382,7 +1430,7 @@ export class MapView extends TextFileView {
 		if (!this.measureFrom) {
 			overlay.clearLayers();
 			this.measureFrom = { pt: { x: p.x, y: p.y }, nodeId };
-			this.measureText = "Elige el punto de llegada…";
+			this.measureText = T("Elige el punto de llegada…", "Choose the end point…");
 			L.circleMarker(this.ll(p), { radius: 8, className: "strakes-measure-point", interactive: false }).addTo(overlay);
 			this.renderAll();
 			return;
@@ -1395,7 +1443,7 @@ export class MapView extends TextFileView {
 		if (from.nodeId && nodeId) {
 			const res = shortestPath(data, this.visibleRoutes(), from.nodeId, nodeId);
 			if (!res) {
-				this.measureText = "No hay camino entre esos nodos por las rutas visibles.";
+				this.measureText = T("No hay camino entre esos nodos por las rutas visibles.", "There's no path between those nodes along the visible routes.");
 			} else {
 				const pts = pathGeometry(data, res).map((n) => this.ll(n));
 				L.polyline(pts, { className: "strakes-measure-line", weight: 8, interactive: false }).addTo(overlay);
@@ -1405,7 +1453,10 @@ export class MapView extends TextFileView {
 			L.polyline([this.ll(from.pt), this.ll(p)], { className: "strakes-measure-line is-straight", weight: 4, interactive: false }).addTo(overlay);
 			this.lastMeasure = { kind: "line", distance: pixelDistance(from.pt, p) * data.scale };
 		} else {
-			this.measureText = "Mapa sin escala: mide entre dos nodos de ruta, o calibra la escala para medir en línea recta.";
+			this.measureText = T(
+				"Mapa sin escala: mide entre dos nodos de ruta, o calibra la escala para medir en línea recta.",
+				"Map without scale: measure between two route nodes, or calibrate the scale to measure in a straight line.",
+			);
 		}
 		if (this.lastMeasure) this.measureText = this.describeMeasure();
 		this.renderAll();
@@ -1420,21 +1471,31 @@ export class MapView extends TextFileView {
 		const m = this.lastMeasure;
 		if (!data || !m) return "";
 		const pace = this.plugin.settings.travelPace;
-		const paceTxt = `paso ${PACES[pace].label.toLowerCase()}`;
-		const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? "s" : ""}`;
+		const paceName = PACES[pace].label.toLowerCase();
+		const paceTxt = T(`paso ${paceName}`, `${paceName} pace`);
+		const segs = (n: number) => {
+			const s = n > 1 ? "s" : "";
+			return T(`${n} tramo${s}`, `${n} segment${s}`);
+		};
 
 		if (m.kind === "line") {
 			const t = distanceTime(data, m.distance, pace);
-			const time = t === null ? `sin tiempo (la unidad «${data.unit}» no es de longitud)` : formatTravelTime(t, pace);
-			return `Línea recta: ${formatDistance(m.distance, data.unit)} · ${paceTxt}: ${time}`;
+			const time =
+				t === null
+					? T(`sin tiempo (la unidad «${data.unit}» no es de longitud)`, `no time (the unit "${data.unit}" isn't a length)`)
+					: formatTravelTime(t, pace);
+			const straight = displayDistance(m.distance, data.unit, this.plugin.settings.displayUnit);
+			return T(`Línea recta: ${straight} · ${paceTxt}: ${time}`, `Straight line: ${straight} · ${paceTxt}: ${time}`);
 		}
 		const res = m.res;
-		const extra = res.unknown ? ` (+ ${plural(res.unknown, "tramo")} sin distancia)` : "";
-		const dist = `Por ruta: ${formatDistance(res.distance, data.unit)}${extra} · ${plural(res.legs.length, "tramo")}`;
+		const extra = res.unknown ? T(` (+ ${segs(res.unknown)} sin distancia)`, ` (+ ${segs(res.unknown)} without distance)`) : "";
+		const byRoute = displayDistance(res.distance, data.unit, this.plugin.settings.displayUnit);
+		const dist = T(`Por ruta: ${byRoute}${extra} · ${segs(res.legs.length)}`, `By route: ${byRoute}${extra} · ${segs(res.legs.length)}`);
 		const t = legsTime(data, res.legs, pace);
 		let time: string;
-		if (t.unknown === res.legs.length) time = "sin tiempo (añade tiempos a los tramos o usa una unidad de longitud)";
-		else time = formatTravelTime(t.hours, pace) + (t.unknown ? ` + ${plural(t.unknown, "tramo")} sin tiempo` : "");
+		if (t.unknown === res.legs.length)
+			time = T("sin tiempo (añade tiempos a los tramos o usa una unidad de longitud)", "no time (add times to the segments or use a length unit)");
+		else time = formatTravelTime(t.hours, pace) + (t.unknown ? T(` + ${segs(t.unknown)} sin tiempo`, ` + ${segs(t.unknown)} without time`) : "");
 		return `${dist} · ${paceTxt}: ${time}`;
 	}
 
@@ -1450,8 +1511,11 @@ export class MapView extends TextFileView {
 		this.calibrateFrom = null;
 		L.polyline([this.ll(a), this.ll(p)], { className: "strakes-measure-line is-straight", weight: 4, interactive: false }).addTo(this.overlay!);
 		const px = pixelDistance(a, p);
-		const val = await promptText(this.app, "Calibrar escala", {
-			description: "¿Qué distancia real hay entre los dos puntos? Puedes incluir la unidad (ej. 50 km, 3 días).",
+		const val = await promptText(this.app, T("Calibrar escala", "Calibrate scale"), {
+			description: T(
+				"¿Qué distancia real hay entre los dos puntos? Puedes incluir la unidad (ej. 50 km, 3 días).",
+				"What's the real distance between the two points? You can include the unit (e.g. 50 km, 3 days).",
+			),
 			placeholder: `50 ${data.unit}`,
 		});
 		this.overlay!.clearLayers();
@@ -1459,10 +1523,11 @@ export class MapView extends TextFileView {
 		if (parsed && parsed.value > 0 && px > 0) {
 			data.scale = parsed.value / px;
 			if (parsed.unit) data.unit = parsed.unit;
-			new Notice(`Escala: 100 px = ${formatDistance(data.scale * 100, data.unit)}`);
+			const per100 = displayDistance(data.scale * 100, data.unit, this.plugin.settings.displayUnit);
+			new Notice(T(`Escala: 100 px = ${per100}`, `Scale: 100 px = ${per100}`));
 			this.persist();
 		} else if (val !== null) {
-			new Notice("Distancia no válida");
+			new Notice(T("Distancia no válida", "Invalid distance"));
 		}
 		this.setMode("navigate");
 	}
@@ -1470,7 +1535,7 @@ export class MapView extends TextFileView {
 	// ---------- Capas y propiedades ----------
 
 	private async addLayer(): Promise<void> {
-		const name = await promptText(this.app, "Nueva capa", { placeholder: "Ciudades, Caminos, Secretos del DM…" });
+		const name = await promptText(this.app, T("Nueva capa", "New layer"), { placeholder: T("Ciudades, Caminos, Secretos del DM…", "Cities, Roads, DM secrets…") });
 		if (!name?.trim() || !this.mapData) return;
 		const layer = { id: uid(), name: name.trim(), visible: true };
 		this.mapData.layers.push(layer);
@@ -1486,10 +1551,10 @@ export class MapView extends TextFileView {
 		const m = new Menu();
 		m.addItem((i) =>
 			i
-				.setTitle("Renombrar")
+				.setTitle(T("Renombrar", "Rename"))
 				.setIcon("pencil")
 				.onClick(async () => {
-					const name = await promptText(this.app, "Renombrar capa", { value: layer.name });
+					const name = await promptText(this.app, T("Renombrar capa", "Rename layer"), { value: layer.name });
 					if (name?.trim()) {
 						layer.name = name.trim();
 						this.persist();
@@ -1499,7 +1564,7 @@ export class MapView extends TextFileView {
 		);
 		m.addItem((i) =>
 			i
-				.setTitle("Mostrar solo esta capa")
+				.setTitle(T("Mostrar solo esta capa", "Show only this layer"))
 				.setIcon("eye")
 				.onClick(() => {
 					for (const l of data.layers) l.visible = l.id === layerId;
@@ -1509,7 +1574,7 @@ export class MapView extends TextFileView {
 		);
 		m.addItem((i) =>
 			i
-				.setTitle("Mostrar todas")
+				.setTitle(T("Mostrar todas", "Show all"))
 				.setIcon("layers")
 				.onClick(() => {
 					for (const l of data.layers) l.visible = true;
@@ -1521,7 +1586,7 @@ export class MapView extends TextFileView {
 			m.addSeparator();
 			m.addItem((i) =>
 				i
-					.setTitle("Eliminar capa…")
+					.setTitle(T("Eliminar capa…", "Delete layer…"))
 					.setIcon("trash-2")
 					.onClick(async () => {
 						const nP = data.pins.filter((p) => p.layerId === layerId).length;
@@ -1530,9 +1595,12 @@ export class MapView extends TextFileView {
 							nP + nR === 0 ||
 							(await confirmDialog(
 								this.app,
-								"Eliminar capa",
-								`La capa «${layer.name}» tiene ${nP} marcadores y ${nR} rutas. Quedarán sin capa (no se eliminan).`,
-								"Eliminar capa",
+								T("Eliminar capa", "Delete layer"),
+								T(
+									`La capa «${layer.name}» tiene ${nP} marcadores y ${nR} rutas. Quedarán sin capa (no se eliminan).`,
+									`The layer "${layer.name}" has ${nP} markers and ${nR} routes. They'll be left without a layer (they aren't deleted).`,
+								),
+								T("Eliminar capa", "Delete layer"),
 							));
 						if (!ok) return;
 						for (const p of data.pins) if (p.layerId === layerId) p.layerId = null;

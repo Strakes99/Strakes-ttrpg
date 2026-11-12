@@ -1,5 +1,6 @@
 import * as L from "leaflet";
 import { App, Component, Keymap, Menu, Notice, setIcon, setTooltip, TFile } from "obsidian";
+import { T } from "../i18n";
 import type StrakesTTRPG from "../main";
 import { resizeObserverFor } from "../ui/dom";
 import { PinHoverParent } from "./hover";
@@ -78,7 +79,7 @@ export class MapEmbed extends Component {
 			this.data = normalizeMap(JSON.parse(await this.app.vault.cachedRead(this.file)));
 		} catch {
 			this.ctx.containerEl.empty();
-			this.ctx.containerEl.createDiv({ cls: "strakes-warning", text: `No se pudo leer el mapa ${this.file.basename}.` });
+			this.ctx.containerEl.createDiv({ cls: "strakes-warning", text: T(`No se pudo leer el mapa ${this.file.basename}.`, `Couldn't read the map ${this.file.basename}.`) });
 			return;
 		}
 		this.buildDom();
@@ -250,9 +251,9 @@ export class MapEmbed extends Component {
 				onClick(evt);
 			};
 		};
-		button("layers", "Capas", (evt) => this.layersMenu(evt));
-		button("maximize", "Encuadrar todo", () => this.fitWhole(true));
-		button("external-link", "Abrir el mapa para editarlo", (evt) => {
+		button("layers", T("Capas", "Layers"), (evt) => this.layersMenu(evt));
+		button("maximize", T("Encuadrar todo", "Fit all"), () => this.fitWhole(true));
+		button("external-link", T("Abrir el mapa para editarlo", "Open the map to edit it"), (evt) => {
 			void this.app.workspace.getLeaf(Keymap.isModEvent(evt) ? "split" : "tab").openFile(this.file);
 		});
 	}
@@ -292,8 +293,8 @@ export class MapEmbed extends Component {
 					}),
 			);
 		};
-		typeItem("pins", "Marcadores", "map-pin");
-		typeItem("routes", "Rutas", "route");
+		typeItem("pins", T("Marcadores", "Markers"), "map-pin");
+		typeItem("routes", T("Rutas", "Routes"), "route");
 		if (data.layers.length) m.addSeparator();
 		for (const layer of data.layers) {
 			const on = this.layerOverride.get(layer.id) ?? layer.visible;
@@ -366,7 +367,7 @@ export class MapEmbed extends Component {
 		marker.on("click", (e: L.LeafletMouseEvent) => {
 			if (!pin.link) return;
 			if (!resolveWikilink(this.app, pin.link, this.file.path)) {
-				new Notice(`No se encuentra la nota ${pin.link}`);
+				new Notice(T(`No se encuentra la nota ${pin.link}`, `Note not found: ${pin.link}`));
 				return;
 			}
 			void this.app.workspace.openLinkText(linktextOf(pin.link), this.file.path, Keymap.isModEvent(e.originalEvent));
@@ -389,7 +390,7 @@ export class MapEmbed extends Component {
 		const target = pin.targetPinId ? data.pins.find((p) => p.id === pin.targetPinId) : null;
 		const dest = target ?? pin.target;
 		if (!dest) {
-			new Notice("Este portal / escalera no tiene destino.");
+			new Notice(T("Este portal / escalera no tiene destino.", "This portal / stairs has no destination."));
 			return;
 		}
 		map.flyTo(toLatLng(dest), target ? map.getZoom() : pin.target!.zoom, { duration: 0.9 });
@@ -411,7 +412,7 @@ export class MapEmbed extends Component {
 			map.fitBounds(mapBounds(data), { animate: false });
 			map.setView(toLatLng(pin), Math.min(map.getZoom() + 2, map.getMaxZoom()), { animate: false });
 		} else {
-			if (wanted) new Notice(`Mapa ${this.file.basename}: no hay ningún marcador llamado «${wanted}».`);
+			if (wanted) new Notice(T(`Mapa ${this.file.basename}: no hay ningún marcador llamado «${wanted}».`, `Map ${this.file.basename}: there's no marker named "${wanted}".`));
 			this.fitWhole(false);
 		}
 	}

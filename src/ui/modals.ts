@@ -1,4 +1,5 @@
 import { AbstractInputSuggest, App, FuzzySuggestModal, Modal, Setting, TFile } from "obsidian";
+import { T } from "../i18n";
 import { IMAGE_EXTENSIONS } from "../types";
 
 /** Pide un texto al usuario. Resuelve null si se cancela. */
@@ -44,8 +45,8 @@ class PromptModal extends Modal {
 			}
 		});
 		new Setting(this.contentEl)
-			.addButton((b) => b.setButtonText("Aceptar").setCta().onClick(() => this.submit()))
-			.addButton((b) => b.setButtonText("Cancelar").onClick(() => this.close()));
+			.addButton((b) => b.setButtonText(T("Aceptar", "OK")).setCta().onClick(() => this.submit()))
+			.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => this.close()));
 		window.setTimeout(() => {
 			input.focus();
 			input.select();
@@ -65,7 +66,7 @@ class PromptModal extends Modal {
 }
 
 /** Pide confirmación (sí/no). */
-export function confirmDialog(app: App, title: string, message: string, okText = "Eliminar"): Promise<boolean> {
+export function confirmDialog(app: App, title: string, message: string, okText = T("Eliminar", "Delete")): Promise<boolean> {
 	return new Promise((resolve) => {
 		const m = new Modal(app);
 		let ok = false;
@@ -81,7 +82,7 @@ export function confirmDialog(app: App, title: string, message: string, okText =
 						m.close();
 					}),
 			)
-			.addButton((b) => b.setButtonText("Cancelar").onClick(() => m.close()));
+			.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => m.close()));
 		m.onClose = () => resolve(ok);
 		m.open();
 	});
@@ -93,7 +94,7 @@ export function isImageFile(f: TFile): boolean {
 
 /** Selector difuso de imágenes de la bóveda. */
 export class ImagePickerModal extends FuzzySuggestModal<TFile> {
-	constructor(app: App, private onPick: (f: TFile) => void, placeholder = "Elige una imagen…") {
+	constructor(app: App, private onPick: (f: TFile) => void, placeholder = T("Elige una imagen…", "Choose an image…")) {
 		super(app);
 		this.setPlaceholder(placeholder);
 	}
@@ -145,7 +146,7 @@ export function loadImageSize(src: string): Promise<{ width: number; height: num
 	return new Promise((resolve, reject) => {
 		const img = new Image();
 		img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
-		img.onerror = () => reject(new Error("No se pudo cargar la imagen"));
+		img.onerror = () => reject(new Error("Could not load the image"));
 		img.src = src;
 	});
 }

@@ -1,4 +1,4 @@
-import { Localized, tr } from "../i18n";
+import { Localized, T, tr } from "../i18n";
 import { ConditionEntry, ConditionOverride, CustomCondition } from "../types";
 
 /** Datos del usuario que afectan al catálogo: condiciones propias y cambios a las integradas. */
@@ -7,12 +7,7 @@ export interface ConditionCatalog {
 	conditionOverrides: Record<string, ConditionOverride>;
 }
 
-/**
- * Atribución obligatoria (licencia CC-BY-4.0) de los textos de condiciones tomados del
- * System Reference Document 5.2 de Wizards of the Coast. Texto oficial, en inglés.
- */
-export const SRD_ATTRIBUTION =
-	"This work includes material from the System Reference Document 5.2 (“SRD 5.2”) by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.";
+/** Enlaces de la atribución del SRD 5.2 (licencia CC-BY-4.0), que se muestra en los ajustes. */
 export const SRD_URL = "https://www.dndbeyond.com/srd";
 export const CC_BY_URL = "https://creativecommons.org/licenses/by/4.0/legalcode";
 
@@ -98,7 +93,7 @@ export const BUILTIN_CONDITIONS: BuiltinCondition[] = [
 			s(
 				"Muerte instantánea",
 				"Instant Death",
-				"Si el daño te reduce a 0 PV y el daño restante es igual o superior a tus PV máximos, mueres.",
+				"Si el daño te reduce a 0 PG y el daño restante es igual o superior a tus PG máximos, mueres.",
 				"If damage reduces you to 0 Hit Points and the remaining damage equals or exceeds your Hit Point maximum, you die.",
 			),
 		],
@@ -359,10 +354,11 @@ export function isDead(c: { isPlayer: boolean; hp: number | null; maxHp: number 
 }
 
 /** Motivo de una condición automática, para mostrarlo al DM. */
-export const AUTO_REASON: Record<string, string> = {
-	bloodied: "PV a la mitad o menos",
-	dead: "por sus PV",
-};
+/** Por qué se aplica sola una condición automática (para tooltips y avisos). */
+export function autoReason(id: string): string {
+	if (id === "bloodied") return T("PG a la mitad o menos", "HP at half or less");
+	return T("por sus PG", "from its HP");
+}
 
 /** ¿Está Ensangrentado por sus PV? (la mitad de sus PV máximos o menos). */
 export function isBloodied(hp: number | null, maxHp: number | null): boolean {

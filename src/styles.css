@@ -1,0 +1,1368 @@
+@import "leaflet/dist/leaflet.css";
+
+/* =========================================================
+   Comunes
+   ========================================================= */
+.strakes-icon-btn {
+	padding: 4px 6px;
+}
+.strakes-suggest-path {
+	font-size: var(--font-smallest);
+	color: var(--text-muted);
+}
+.strakes-prompt-input,
+.strakes-wide-input {
+	width: 100%;
+}
+.strakes-warning {
+	color: var(--text-error);
+	font-size: var(--font-ui-small);
+	margin: 0 0 8px;
+}
+
+/* =========================================================
+   Pantalla de jugadores
+   ========================================================= */
+.strakes-player {
+	--strakes-player-bg: #000;
+	--strakes-player-font: 22px;
+	position: relative;
+	padding: 0 !important;
+	background: var(--strakes-player-bg);
+	overflow: hidden;
+}
+.strakes-player-content {
+	position: absolute;
+	inset: 0;
+	overflow: auto;
+}
+.strakes-player-image-wrap {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+/* La imagen ocupa todo el espacio disponible: se amplía o reduce manteniendo
+   la proporción (contain = sin deformar ni recortar; sobra franja negra en un eje). */
+.strakes-player-image {
+	display: block;
+	width: 100%;
+	height: 100%;
+	max-width: none;
+	max-height: none;
+	object-fit: contain;
+}
+.strakes-player-note {
+	font-size: var(--strakes-player-font);
+	max-width: 60em;
+	margin: 0 auto;
+	padding: 2em 3em;
+	color: var(--text-normal);
+}
+/* Título de la nota (como el título en línea de Obsidian) */
+.strakes-player-note .strakes-player-title {
+	margin-bottom: 0.5em;
+}
+.strakes-player-note img {
+	max-height: 85vh;
+	display: block;
+	margin: 0 auto;
+}
+.strakes-player-empty {
+	width: 100%;
+	height: 100%;
+}
+
+/* Barra flotante: solo visible al pasar el ratón por la esquina */
+.strakes-player-toolbar {
+	position: absolute;
+	right: 8px;
+	bottom: 8px;
+	display: flex;
+	gap: 4px;
+	opacity: 0;
+	transition: opacity 0.2s;
+	z-index: 20;
+	background: var(--background-primary);
+	border-radius: var(--radius-m);
+	padding: 2px;
+}
+.strakes-player-toolbar:hover {
+	opacity: 0.95;
+}
+
+/* Ventana emergente de jugadores: sin cabecera de vista (la barra de pestañas
+   se conserva para poder arrastrar la ventana; la pantalla completa la oculta). */
+body.strakes-player-window .view-header {
+	display: none !important;
+}
+
+/* Iniciativa en pantalla de jugadores */
+.strakes-player-initiative {
+	position: absolute;
+	z-index: 10;
+	color: #fff;
+	font-size: calc(var(--strakes-player-font) * 0.9);
+}
+/* Lista en una esquina (cuando hay una nota o imagen en pantalla). Sin desplazamiento:
+   el tamaño de letra y las columnas los calcula PlayerScreenView.fitList(). */
+.strakes-player-initiative {
+	display: flex;
+	flex-direction: column;
+	max-width: 45%;
+	max-height: 80%;
+}
+.strakes-player-initiative.pos-top-left { top: 16px; left: 16px; }
+.strakes-player-initiative.pos-top-right { top: 16px; right: 16px; }
+.strakes-player-initiative.pos-bottom-left { bottom: 16px; left: 16px; }
+.strakes-player-initiative.pos-bottom-right { bottom: 16px; right: 16px; }
+.strakes-pi-box {
+	width: max-content;
+	min-width: 10em;
+	min-height: 0;
+	overflow: hidden;
+	padding: 0.6em 0.8em;
+	background: rgba(10, 10, 14, 0.78);
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	border-radius: 10px;
+	backdrop-filter: blur(4px);
+}
+/* Combatientes en columnas: de arriba abajo y luego a la siguiente columna. */
+.strakes-pi-list {
+	display: grid;
+	grid-auto-flow: column;
+	grid-auto-columns: max-content;
+	column-gap: 1.2em;
+}
+
+/* Pantalla vacía: la misma lista, con la letra más grande que quepa. */
+.strakes-player-initiative.is-expanded {
+	inset: 0;
+	max-width: none;
+	max-height: none;
+	align-items: center;
+	justify-content: center;
+	overflow: hidden;
+}
+.strakes-player-initiative.is-expanded .strakes-pi-box {
+	max-width: none;
+	flex-shrink: 0;
+}
+
+/* ---------- Modo Tarjetas ---------- */
+/* Sin contenido en pantalla: ocupan toda la pantalla, centradas. */
+/*
+ * Sin justify-content: center (desbordaba hacia arriba). El margen automático de
+ * .strakes-pc-wrap centra las tarjetas. No se desplaza: si no caben, se reducen los
+ * retratos; solo si ni así caben se permite desplazar (.can-scroll).
+ */
+.strakes-player-initiative.mode-cards {
+	inset: 0;
+	max-width: none;
+	max-height: none;
+	/* Sin desplazamiento: si no caben, PlayerScreenView.autoFitCards() reduce el tamaño. */
+	overflow: hidden;
+	align-items: center;
+	justify-content: flex-start;
+	font-size: inherit;
+}
+.strakes-player-initiative.mode-cards.can-scroll {
+	overflow-y: auto;
+}
+.strakes-pi-box.can-scroll {
+	overflow: auto;
+}
+/* Con una nota o imagen: banda superpuesta en la parte superior. */
+.strakes-player-initiative.mode-cards.has-content {
+	/* Sin tope de altura: las filas se calculan con la altura de toda la ventana. */
+	inset: 0 0 auto 0;
+	max-height: 100%;
+	justify-content: flex-start;
+	background: linear-gradient(to bottom, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.45) 80%, transparent);
+}
+.strakes-pc-wrap {
+	font-size: var(--init-text, 20px);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	width: 100%;
+	padding: var(--card-gap);
+	box-sizing: border-box;
+	margin: auto 0;
+}
+.strakes-pc-round {
+	margin-bottom: calc(var(--card-gap) * 0.75);
+}
+.strakes-pc-grid {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: var(--card-gap);
+	max-width: 100%;
+}
+.strakes-pc-card {
+	width: var(--card-size);
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+/* Recuadro nombre + retrato + PV (el del turno actual brilla en blanco). */
+.strakes-pc-frame {
+	display: flex;
+	flex-direction: column;
+	border-radius: 8px;
+	overflow: hidden;
+	background: rgba(10, 10, 14, 0.85);
+}
+.strakes-pc-frame.is-current {
+	outline: 3px solid #fff;
+	box-shadow:
+		0 0 12px 3px rgba(255, 255, 255, 0.85),
+		0 0 32px 10px rgba(255, 255, 255, 0.35);
+}
+.strakes-pc-name {
+	padding: 0.25em 0.4em;
+	font-size: var(--init-text, 20px);
+	font-weight: 700;
+	text-align: center;
+	white-space: nowrap;
+	overflow: hidden;
+}
+.strakes-pc-card.is-player .strakes-pc-name {
+	color: #8fd3ff;
+}
+.strakes-pc-portrait {
+	width: var(--card-size);
+	height: var(--card-size);
+}
+.strakes-pc-portrait .strakes-portrait-label {
+	font-size: calc(var(--card-size) * 0.34);
+}
+.strakes-pc-hp {
+	padding: 0.2em 0.4em;
+	font-size: var(--init-text, 20px);
+	font-weight: 600;
+	text-align: center;
+}
+/* Condiciones debajo: tantas por fila como quepan. */
+.strakes-pc-conds {
+	--cond-size: max(18px, calc(var(--card-size) * 0.16));
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 2px;
+}
+.strakes-pc-conds .strakes-cond-chip {
+	width: var(--cond-size);
+	height: var(--cond-size);
+	cursor: default;
+}
+.strakes-pc-conds .strakes-cond-icon svg,
+.strakes-pc-conds .strakes-cond-icon svg.strakes-custom-icon {
+	width: 72%;
+	height: 72%;
+}
+.strakes-pc-conds .strakes-cond-level {
+	font-size: max(9px, calc(var(--cond-size) * 0.4));
+	min-width: calc(var(--cond-size) * 0.5);
+	height: calc(var(--cond-size) * 0.5);
+	line-height: calc(var(--cond-size) * 0.5 - 2px);
+	border-radius: calc(var(--cond-size) * 0.25);
+}
+/* Enemigo tachado: retrato en gris y nombre tachado. */
+.strakes-pc-card.is-down {
+	opacity: 0.6;
+}
+.strakes-pc-card.is-down .strakes-pc-name {
+	text-decoration: line-through;
+}
+.strakes-pc-card.is-down .strakes-portrait {
+	filter: grayscale(1);
+}
+
+/* ---------- Retratos (tarjetas, panel y formulario) ---------- */
+.strakes-portrait {
+	position: relative;
+	overflow: hidden;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+/*
+ * !important: Obsidian limita las imágenes (max-width: 100 %, sobre todo en diálogos) y
+ * eso hacía que el encuadre del editor no coincidiera con el de las tarjetas.
+ */
+.strakes-portrait img {
+	position: absolute;
+	max-width: none !important;
+	max-height: none !important;
+	min-width: 0 !important;
+	height: auto !important;
+	margin: 0 !important;
+	user-select: none;
+	pointer-events: none;
+}
+.strakes-portrait.is-ally {
+	background: #1c4a7a;
+}
+.strakes-portrait.is-enemy {
+	background: #7a1c1c;
+}
+.strakes-portrait-label {
+	color: #fff;
+	font-weight: 800;
+	line-height: 1;
+	white-space: nowrap;
+}
+/* Miniatura en el panel del DM */
+button.strakes-init-thumb {
+	flex: none;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	border-radius: var(--radius-s);
+	box-shadow: none;
+}
+button.strakes-init-thumb .strakes-portrait-label {
+	font-size: 10px;
+}
+button.strakes-init-thumb svg {
+	width: 14px;
+	height: 14px;
+}
+
+/* ---------- Editor de encuadre ---------- */
+.strakes-portrait-stage {
+	position: relative;
+	margin: 10px auto;
+	overflow: hidden;
+	cursor: grab;
+	touch-action: none;
+	/* Fuera de la imagen: transparencia real (se ve el fondo del diálogo). */
+	background: transparent;
+	border-radius: var(--radius-m);
+	outline: 1px solid var(--background-modifier-border);
+}
+.strakes-portrait-stage.is-dragging {
+	cursor: grabbing;
+}
+.strakes-portrait-stage img {
+	position: absolute;
+	max-width: none !important;
+	max-height: none !important;
+	min-width: 0 !important;
+	height: auto !important;
+	margin: 0 !important;
+	user-select: none;
+	pointer-events: none;
+}
+/* Zoom: barra a todo el ancho y porcentaje editable */
+.strakes-portrait-zoom {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 4px 0 10px;
+}
+.strakes-portrait-zoom-label {
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+.strakes-portrait-zoom-slider {
+	flex: 1;
+	min-width: 0;
+}
+input.strakes-portrait-zoom-num {
+	width: 5em;
+	text-align: right;
+}
+
+/* Imagen completa, semitransparente fuera del marco. */
+.strakes-portrait-ghost {
+	opacity: 0.35;
+}
+/* Marco del retrato: la parte que se verá en la tarjeta. */
+.strakes-portrait-frame {
+	position: absolute;
+	overflow: hidden;
+	outline: 2px dashed #fff;
+	box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+	pointer-events: none;
+}
+.strakes-px-input {
+	width: 6em;
+}
+.strakes-pi-round {
+	font-weight: 700;
+	opacity: 0.75;
+	margin-bottom: 0.4em;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	font-size: 0.75em;
+}
+.strakes-pi-row {
+	display: flex;
+	align-items: baseline;
+	gap: 0.6em;
+	padding: 0.25em 0.5em;
+	border-radius: 6px;
+	border-left: 4px solid transparent;
+}
+.strakes-pi-row.is-player .strakes-pi-name {
+	color: #8fd3ff;
+}
+.strakes-pi-row.is-current {
+	background: rgba(255, 196, 0, 0.22);
+	border-left-color: #ffc400;
+	font-weight: 700;
+}
+.strakes-pi-row.is-down {
+	opacity: 0.45;
+	text-decoration: line-through;
+}
+.strakes-pi-name {
+	flex: 1;
+}
+.strakes-pi-hp {
+	/* Mismo tamaño que el nombre: el «Tamaño del texto» se respeta siempre. */
+	font-size: 1em;
+	opacity: 0.85;
+}
+/* Condiciones en la pantalla de jugadores: solo iconos */
+.strakes-pi-cond {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 0.2em;
+	align-self: center;
+}
+.strakes-pi-cond .strakes-cond-chip {
+	font-size: 0.9em;
+}
+
+/* =========================================================
+   Panel de iniciativa (DM)
+   ========================================================= */
+.strakes-init {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 8px !important;
+	/* Solo crece si la barra de estado de Obsidian tapa el panel (ver statusBarGap.ts). */
+	padding-bottom: calc(8px + var(--strakes-statusbar-gap, 0px)) !important;
+}
+.strakes-init-top {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+.strakes-init-round {
+	font-weight: 700;
+	font-size: var(--font-ui-large);
+}
+.strakes-init-nav {
+	display: flex;
+	gap: 2px;
+}
+.strakes-init-nav .mod-cta {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+.strakes-init-show {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 6px;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+.strakes-segmented {
+	display: flex;
+	flex: 1;
+}
+.strakes-segmented button {
+	flex: 1;
+	border-radius: 0;
+	font-size: var(--font-ui-smaller);
+	padding: 2px 4px;
+	box-shadow: none;
+	border: 1px solid var(--background-modifier-border);
+}
+.strakes-segmented button:first-child { border-radius: var(--radius-s) 0 0 var(--radius-s); }
+.strakes-segmented button:last-child { border-radius: 0 var(--radius-s) var(--radius-s) 0; }
+.strakes-segmented button.is-active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+.strakes-init-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	overflow-y: auto;
+	flex: 1;
+}
+.strakes-init-empty {
+	color: var(--text-faint);
+	text-align: center;
+	padding: 1.5em 0;
+}
+.strakes-init-row {
+	border: 1px solid var(--background-modifier-border);
+	border-left: 4px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	padding: 4px 6px;
+	background: var(--background-primary);
+}
+.strakes-init-row.is-player { border-left-color: var(--color-blue); }
+.strakes-init-row.is-current {
+	border-color: var(--interactive-accent);
+	border-left-color: var(--interactive-accent);
+	background: var(--background-modifier-hover);
+}
+.strakes-init-row.is-hidden { opacity: 0.6; }
+.strakes-init-row.is-down .strakes-init-name { text-decoration: line-through; color: var(--text-faint); }
+.strakes-init-line {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+.strakes-init-line + .strakes-init-line { margin-top: 4px; }
+.strakes-init-line input[type="text"] {
+	min-width: 0;
+	padding: 2px 6px;
+	height: 26px;
+	font-size: var(--font-ui-small);
+}
+.strakes-init-turn {
+	cursor: pointer;
+	color: var(--text-faint);
+	display: flex;
+}
+.strakes-init-row.is-current .strakes-init-turn { color: var(--interactive-accent); }
+.strakes-init-turn svg { width: 14px; height: 14px; }
+.strakes-init-num {
+	width: 3.2em;
+	text-align: center;
+	font-weight: 700;
+}
+.strakes-init-name { flex: 1; }
+.strakes-init-stats { font-size: var(--font-ui-smaller); }
+.strakes-init-hp,
+.strakes-init-ac {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+}
+.strakes-init-hp input { width: 3em; text-align: center; }
+.strakes-init-ac input { width: 2.6em; text-align: center; }
+.strakes-init-stats { flex-wrap: wrap; row-gap: 4px; }
+/* PV temporales junto a los actuales: «30 (18) / 45» */
+.strakes-init-temp {
+	color: var(--color-blue);
+	font-weight: 600;
+	cursor: context-menu;
+}
+/* Cantidad + botones de curar / dañar / temporales */
+.strakes-init-amount {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+}
+.strakes-init-line input.strakes-init-amount-input {
+	width: 3.2em;
+	text-align: center;
+	-moz-appearance: textfield;
+}
+.strakes-init-amount-input::-webkit-outer-spin-button,
+.strakes-init-amount-input::-webkit-inner-spin-button {
+	-webkit-appearance: none;
+	margin: 0;
+}
+.strakes-init-amount button.strakes-hp-btn {
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	font-weight: 800;
+	font-size: 14px;
+	line-height: 1;
+	box-shadow: none;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+}
+.strakes-init-amount button.strakes-hp-btn.is-heal { color: var(--color-green); }
+.strakes-init-amount button.strakes-hp-btn.is-damage { color: var(--color-red); }
+.strakes-init-amount button.strakes-hp-btn.is-temp { color: var(--color-blue); }
+.strakes-init-amount button.strakes-hp-btn:hover { background: var(--background-modifier-hover); }
+.strakes-init-stat-icon { display: flex; color: var(--text-muted); }
+.strakes-init-stat-icon svg { width: 12px; height: 12px; }
+.strakes-init-spacer { flex: 1; }
+
+/* =========================================================
+   Condiciones
+   ========================================================= */
+.strakes-init-conds {
+	flex-wrap: wrap;
+	gap: 2px;
+	min-height: 24px;
+}
+/* Icono de condición: sin fondo, del color de la condición */
+.strakes-cond-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	line-height: 1;
+	font-size: 14px;
+	font-weight: 700;
+}
+.strakes-cond-icon svg {
+	width: 16px;
+	height: 16px;
+}
+.strakes-cond-icon svg.strakes-custom-icon {
+	width: 17px;
+	height: 17px;
+}
+.strakes-cond-chip {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	border-radius: var(--radius-s);
+	cursor: pointer;
+}
+.strakes-cond-chip:hover {
+	background: var(--background-modifier-hover);
+}
+/* Aplicada por otra condición (p. ej. Incapacitado por Paralizado) */
+.strakes-cond-chip.is-implied {
+	opacity: 0.5;
+	outline: 1px dashed var(--background-modifier-border-hover);
+	outline-offset: -2px;
+}
+/* Nivel de Agotamiento */
+.strakes-cond-level {
+	position: absolute;
+	right: -2px;
+	bottom: -2px;
+	min-width: 13px;
+	height: 13px;
+	padding: 0 2px;
+	border-radius: 7px;
+	background: var(--background-primary);
+	border: 1px solid currentColor;
+	font-size: 9px;
+	font-weight: 700;
+	line-height: 11px;
+	text-align: center;
+}
+.strakes-pi-cond .strakes-cond-chip {
+	width: 1.3em;
+	height: 1.3em;
+	cursor: default;
+}
+.strakes-pi-cond .strakes-cond-icon svg {
+	width: 1em;
+	height: 1em;
+}
+.strakes-cond-add {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	color: var(--text-faint);
+}
+.strakes-cond-add-label {
+	font-size: var(--font-ui-smaller);
+}
+
+/* Ficha con la descripción (clic en el icono): bloque de lectura cómoda */
+.strakes-cond-card {
+	position: fixed;
+	z-index: var(--layer-popover, 30);
+	max-height: 60vh;
+	overflow-y: auto;
+	padding: 10px 12px;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-l);
+	font-size: var(--font-ui-small);
+	line-height: 1.45;
+	white-space: normal;
+	overflow-wrap: break-word;
+}
+.strakes-cond-card-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-bottom: 6px;
+}
+.strakes-cond-card-title {
+	font-weight: 700;
+	font-size: var(--font-ui-medium);
+}
+.strakes-cond-card-note {
+	color: var(--text-muted);
+	font-style: italic;
+	margin-bottom: 6px;
+}
+.strakes-cond-card-section + .strakes-cond-card-section {
+	margin-top: 6px;
+}
+.strakes-cond-card-subtitle {
+	font-weight: 600;
+	color: var(--text-normal);
+}
+.strakes-cond-card-text {
+	color: var(--text-muted);
+	white-space: pre-wrap;
+}
+.strakes-cond-card-hint {
+	margin-top: 8px;
+	padding-top: 6px;
+	border-top: 1px solid var(--background-modifier-border);
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+}
+.strakes-srd-attribution {
+	margin: 0 0 12px;
+	padding: 8px 10px;
+	border-left: 3px solid var(--background-modifier-border);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.4;
+}
+.strakes-cond-textarea {
+	width: 100%;
+	min-width: 16em;
+}
+/* Diálogo de condición personalizada */
+.strakes-cond-level-input {
+	width: 4.5em;
+}
+.strakes-cond-implies-setting {
+	border-bottom: none;
+}
+.strakes-cond-implies {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+	gap: 2px 10px;
+	max-height: 200px;
+	overflow-y: auto;
+	padding: 4px 0 12px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	margin-bottom: 8px;
+}
+.strakes-cond-implies-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: var(--font-ui-small);
+	cursor: pointer;
+}
+/* Ajustes: cuadrícula de condiciones de las reglas básicas */
+.strakes-builtin-cond-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+	gap: 6px;
+	padding: 4px 0 16px;
+}
+.strakes-builtin-cond {
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 6px;
+	font-size: var(--font-ui-small);
+}
+.strakes-builtin-cond-mark {
+	margin-left: auto;
+	color: var(--interactive-accent);
+	font-weight: 700;
+}
+.strakes-custom-cond-row .setting-item-name {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+.strakes-init-stats .is-off { color: var(--text-faint); }
+.strakes-init-add {
+	border-top: 1px solid var(--background-modifier-border);
+	padding-top: 8px;
+}
+.strakes-init-add-title {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	margin-bottom: 4px;
+}
+.strakes-init-add-history {
+	display: flex;
+	gap: 2px;
+}
+.strakes-init-add-history .is-disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+.strakes-init-add input[type="text"] { width: 4em; }
+.strakes-init-add .strakes-init-name { width: auto; }
+.strakes-init-check {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	font-size: var(--font-ui-smaller);
+}
+
+/* =========================================================
+   Mapa
+   ========================================================= */
+.strakes-map-view {
+	display: flex;
+	flex-direction: column;
+	padding: 0 !important;
+	overflow: hidden;
+}
+.strakes-map-toolbar {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	padding: 4px 6px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	flex-wrap: wrap;
+}
+.strakes-tool.is-disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+.strakes-tool.is-active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+.strakes-tool.mod-cta {
+	background: var(--color-green);
+	color: #fff;
+}
+.strakes-toolbar-sep {
+	width: 1px;
+	height: 20px;
+	background: var(--background-modifier-border);
+	margin: 0 4px;
+}
+.strakes-toolbar-spacer { flex: 1; }
+.strakes-map-body {
+	flex: 1;
+	display: flex;
+	min-height: 0;
+}
+.strakes-map-canvas {
+	flex: 1;
+	min-width: 0;
+	background: var(--background-secondary-alt);
+}
+.strakes-map-canvas.leaflet-container {
+	background: var(--background-secondary-alt);
+	font-family: var(--font-interface);
+}
+.strakes-map-canvas:not([data-mode="navigate"]) { cursor: crosshair; }
+.strakes-map-canvas:not([data-mode="navigate"]) .leaflet-interactive { cursor: pointer; }
+.strakes-map-status {
+	padding: 4px 10px;
+	font-size: var(--font-ui-small);
+	background: var(--background-secondary);
+	border-top: 1px solid var(--background-modifier-border);
+	color: var(--text-muted);
+}
+
+/* Panel lateral */
+.strakes-map-panel {
+	width: 240px;
+	flex-shrink: 0;
+	overflow-y: auto;
+	border-left: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	padding: 6px;
+	font-size: var(--font-ui-small);
+}
+.strakes-panel-section + .strakes-panel-section {
+	margin-top: 10px;
+	padding-top: 8px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+/* Secciones plegables del panel (Capas, Rutas, Pines) */
+.strakes-panel-toggle {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: 1;
+	min-width: 0;
+	cursor: pointer;
+	user-select: none;
+}
+.strakes-panel-toggle:hover {
+	color: var(--text-normal);
+}
+.strakes-panel-chevron {
+	display: flex;
+}
+.strakes-panel-chevron svg {
+	width: 12px;
+	height: 12px;
+}
+.strakes-panel-count {
+	margin-left: 2px;
+	padding: 0 5px;
+	border-radius: var(--radius-s);
+	background: var(--background-modifier-hover);
+	font-weight: 500;
+	text-transform: none;
+	letter-spacing: 0;
+}
+.strakes-panel-section.is-collapsed > .strakes-panel-body {
+	display: none;
+}
+.strakes-panel-section.is-collapsed > .strakes-panel-head {
+	margin-bottom: 0;
+}
+.strakes-panel-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	font-weight: 600;
+	text-transform: uppercase;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	letter-spacing: 0.04em;
+	margin-bottom: 4px;
+}
+.strakes-check {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+.strakes-panel-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 4px;
+	border-radius: var(--radius-s);
+	cursor: pointer;
+}
+.strakes-panel-row:hover { background: var(--background-modifier-hover); }
+.strakes-panel-row.is-current {
+	background: var(--background-modifier-active-hover);
+}
+.strakes-layer-row.is-current .strakes-panel-name { font-weight: 700; }
+.strakes-layer-kind {
+	display: flex;
+	color: var(--text-muted);
+}
+.strakes-layer-kind svg {
+	width: 13px;
+	height: 13px;
+}
+.strakes-type-row {
+	cursor: pointer;
+}
+.strakes-panel-empty {
+	white-space: normal;
+	padding: 2px 4px;
+}
+.strakes-panel-name {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.strakes-panel-meta {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	white-space: nowrap;
+}
+.strakes-panel-row .clickable-icon { padding: 2px; }
+.strakes-panel-filter {
+	width: 100%;
+	margin-bottom: 4px;
+}
+.strakes-swatch {
+	width: 12px;
+	height: 4px;
+	border-radius: 2px;
+	flex-shrink: 0;
+}
+.strakes-swatch.is-round {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+}
+
+/* Pines */
+.strakes-pin-wrap {
+	background: none;
+	border: none;
+}
+/*
+ * Geometría del pin (32 × 40 px). La cabeza (gota) y el icono comparten el mismo
+ * recuadro de 28 × 28 px en (2, 2), así que ambos tienen el centro en (16, 16).
+ * La gota es ese cuadrado girado 45°: su punta queda en (16, 16 + 14·√2 ≈ 36),
+ * que es el iconAnchor de render.ts. box-sizing explícito: Obsidian no lo aplica
+ * a los pseudo-elementos y el borde descentraba la gota respecto al icono.
+ */
+.strakes-pin {
+	--pin-color: #ffffff;
+	position: relative;
+	box-sizing: border-box;
+	width: 32px;
+	height: 40px;
+}
+.strakes-pin::before {
+	content: "";
+	position: absolute;
+	box-sizing: border-box;
+	left: 2px;
+	top: 2px;
+	width: 28px;
+	height: 28px;
+	background: var(--pin-color);
+	border: 2px solid #fff;
+	border-radius: 50% 50% 50% 0;
+	transform: rotate(-45deg);
+	transform-origin: 50% 50%;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+.strakes-pin.is-portal::before {
+	border-radius: 50%;
+	border-style: double;
+	border-width: 4px;
+	animation: strakes-portal-glow 2.5s ease-in-out infinite;
+}
+@keyframes strakes-portal-glow {
+	0%, 100% { box-shadow: 0 0 4px 1px var(--pin-color); }
+	50% { box-shadow: 0 0 14px 5px var(--pin-color); }
+}
+.strakes-pin-icon {
+	position: absolute;
+	box-sizing: border-box;
+	left: 2px;
+	top: 2px;
+	width: 28px;
+	height: 28px;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: #fff;
+	font-size: 15px;
+	line-height: 1;
+	text-align: center;
+	pointer-events: none;
+}
+.strakes-pin-icon svg {
+	display: block;
+	flex: none;
+	margin: 0;
+	width: 15px;
+	height: 15px;
+	stroke-width: 2.25;
+}
+/* SVG personalizados dentro del pin (conservan sus colores) */
+.strakes-pin-icon svg.strakes-custom-icon {
+	width: 17px;
+	height: 17px;
+	stroke-width: initial;
+}
+
+/* Selector de iconos SVG en el diálogo del pin */
+.strakes-icon-picker {
+	padding: 0 0 var(--size-4-3);
+	border-bottom: 1px solid var(--background-modifier-border);
+	margin-bottom: var(--size-4-2);
+}
+.strakes-icon-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+	gap: 6px;
+	max-height: 180px;
+	overflow-y: auto;
+	/* Espacio para el anillo del icono seleccionado (sobresale 4 px). */
+	padding: 5px;
+}
+/* Fila «Colores» del diálogo del pin: Pin e Icono lado a lado */
+.strakes-color-row {
+	gap: var(--size-4-4);
+	flex-wrap: wrap;
+}
+.strakes-color-group {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+.strakes-native-check {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	cursor: pointer;
+	user-select: none;
+}
+.strakes-color-label {
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+
+.strakes-icon-grid.is-empty {
+	display: block;
+}
+.strakes-icon-filters {
+	display: flex;
+	gap: 6px;
+	margin-bottom: 8px;
+}
+.strakes-icon-filters select {
+	flex: 0 1 45%;
+	min-width: 0;
+}
+.strakes-icon-filters input[type="search"] {
+	flex: 1;
+	min-width: 0;
+}
+.strakes-icon-filters .strakes-icon-reload {
+	flex: none;
+	padding: 4px 6px;
+}
+/*
+ * Recuadro = vista previa del pin: fondo del color del pin, icono con su color.
+ * Selectores con «.strakes-icon-grid button…» porque los estilos de botón de Obsidian
+ * son más específicos y, si no, el fondo solo se veía al pasar el cursor.
+ */
+.strakes-icon-grid button.strakes-icon-tile {
+	height: 40px;
+	padding: 7px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background-color: var(--pin-color, var(--background-secondary));
+	border: 2px solid transparent;
+	border-radius: var(--radius-s);
+	box-shadow: none;
+	cursor: pointer;
+}
+/* Sin fondo propio (condiciones personalizadas): recuadro neutro. */
+.strakes-icon-grid.no-background button.strakes-icon-tile,
+.strakes-icon-grid.no-background button.strakes-icon-tile:hover {
+	background-color: var(--background-secondary);
+}
+/* Cursor encima: borde blanco. */
+.strakes-icon-grid button.strakes-icon-tile:hover,
+.strakes-icon-grid button.strakes-icon-tile:focus-visible {
+	background-color: var(--pin-color, var(--background-secondary));
+	border-color: #fff;
+	box-shadow: none;
+}
+/* Icono elegido: borde blanco y un anillo exterior, para distinguirlo del cursor. */
+.strakes-icon-grid button.strakes-icon-tile.is-selected {
+	border-color: #fff;
+	box-shadow:
+		0 0 0 2px var(--background-primary),
+		0 0 0 4px #fff;
+}
+.strakes-icon-tile svg.strakes-custom-icon {
+	width: 100%;
+	height: 100%;
+}
+
+.leaflet-tooltip.strakes-map-tooltip {
+	background: var(--background-primary);
+	color: var(--text-normal);
+	border: 1px solid var(--background-modifier-border);
+	box-shadow: var(--shadow-s);
+	font-size: var(--font-ui-small);
+	padding: 2px 6px;
+}
+.leaflet-tooltip-top.strakes-map-tooltip::before {
+	border-top-color: var(--background-primary);
+}
+
+/* Rutas */
+.strakes-node {
+	--route-color: #f59f00;
+	background: #fff;
+	border: 3px solid var(--route-color);
+	border-radius: 50%;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+.strakes-node.is-selected {
+	background: #ffd43b;
+	transform-origin: center;
+	outline: 3px solid rgba(255, 212, 59, 0.6);
+}
+.is-editing .strakes-node { cursor: move; }
+
+/* Puntos de curva (dan forma a la ruta, no son nodos) */
+.strakes-bend {
+	--route-color: #f59f00;
+	background: var(--route-color);
+	border: 2px solid #fff;
+	border-radius: 3px;
+	transform-origin: center;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+	cursor: move;
+}
+.strakes-bend-ghost {
+	--route-color: #f59f00;
+	background: rgba(255, 255, 255, 0.55);
+	border: 2px dashed var(--route-color);
+	border-radius: 50%;
+	opacity: 0.75;
+	cursor: grab;
+	transition: opacity 0.15s, transform 0.15s;
+}
+.strakes-bend-ghost:hover {
+	opacity: 1;
+}
+.strakes-seg-label {
+	background: none;
+	border: none;
+	width: 0 !important;
+	height: 0 !important;
+}
+.strakes-seg-label span {
+	position: absolute;
+	transform: translate(-50%, -50%);
+	white-space: nowrap;
+	font-size: 11px;
+	font-weight: 600;
+	padding: 1px 5px;
+	border-radius: 8px;
+	background: rgba(20, 20, 24, 0.82);
+	color: #fff;
+	cursor: pointer;
+}
+.strakes-seg-label.is-raised span {
+	transform: translate(-50%, -160%);
+}
+
+/* Medición y efectos */
+.strakes-measure-line {
+	stroke: #ffd43b;
+	stroke-dasharray: 10 8;
+	stroke-linecap: round;
+	opacity: 0.95;
+}
+.strakes-measure-line.is-straight { stroke: #74c0fc; }
+.strakes-measure-point {
+	stroke: #fff;
+	stroke-width: 3;
+	fill: #ffd43b;
+	fill-opacity: 1;
+}
+.strakes-pulse {
+	stroke: #fff;
+	fill: #fff;
+	fill-opacity: 0.25;
+	animation: strakes-pulse 1.1s ease-out 2;
+	transform-origin: center;
+	transform-box: fill-box;
+}
+@keyframes strakes-pulse {
+	0% { opacity: 1; transform: scale(0.3); }
+	100% { opacity: 0; transform: scale(1.6); }
+}
+.strakes-seg-list .setting-item { padding: 4px 0; }
+/* Fila de tramo: distancia y tiempo lado a lado */
+.strakes-seg-inputs {
+	gap: 6px;
+}
+.strakes-seg-inputs input {
+	width: 6.5em;
+}
+.strakes-seg-input-label {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+.strakes-seg-time.is-invalid {
+	border-color: var(--text-error);
+}
+/* Selector de paso de viaje en la barra del mapa */
+.strakes-pace {
+	flex: none;
+	margin-left: 4px;
+}
+
+/* Título de la nota en la vista previa de un pin (Ctrl + cursor sobre el pin) */
+.hover-popover.strakes-pin-preview {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+}
+.hover-popover.strakes-pin-preview > :not(.strakes-hover-title) {
+	flex: 1 1 auto;
+	min-height: 0;
+	width: 100%;
+}
+.hover-popover > .strakes-hover-title {
+	flex: 0 0 auto;
+	width: 100%;
+	box-sizing: border-box;
+	padding: var(--size-4-3) var(--size-4-4) var(--size-4-1);
+	border-bottom: 1px solid var(--background-modifier-border);
+	font-family: var(--inline-title-font);
+	font-size: calc(var(--inline-title-size) * 0.75);
+	font-weight: var(--inline-title-weight);
+	line-height: var(--inline-title-line-height);
+	color: var(--inline-title-color);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* =========================================================
+   Mapa incrustado en notas: ![[mapa.smap]]
+   ========================================================= */
+.internal-embed.strakes-map-embed-host {
+	display: block;
+	width: 100%;
+	cursor: default;
+}
+.strakes-map-embed {
+	position: relative;
+	box-sizing: border-box;
+	max-width: 100%;
+	/* Centrado cuando un mapa vertical se estrecha para mantener su proporción */
+	margin: 0.5em auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	overflow: hidden;
+	background: var(--background-secondary-alt);
+}
+.strakes-map-embed-canvas {
+	position: absolute;
+	inset: 0;
+}
+.strakes-map-embed-canvas.leaflet-container {
+	background: var(--background-secondary-alt);
+	font-family: var(--font-interface);
+}
+.strakes-map-embed-toolbar {
+	position: absolute;
+	top: 8px;
+	right: 8px;
+	z-index: 1000; /* por encima de los paneles de Leaflet */
+	display: flex;
+	gap: 2px;
+	padding: 2px;
+	border-radius: var(--radius-s);
+	background: var(--background-primary);
+	box-shadow: var(--shadow-s);
+	opacity: 0.85;
+}
+.strakes-map-embed-toolbar:hover {
+	opacity: 1;
+}
+.strakes-map-embed-toolbar .clickable-icon {
+	padding: 4px;
+}

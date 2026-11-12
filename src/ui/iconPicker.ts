@@ -1,4 +1,5 @@
 import { ColorComponent, setIcon, Setting, setTooltip } from "obsidian";
+import { T } from "../i18n";
 import { CUSTOM_ICON_PREFIX, customIconName, getIconLibrary, iconFolder } from "../map/icons";
 import { iconSupportsColor } from "../map/render";
 
@@ -33,8 +34,8 @@ export class IconPicker {
 	) {
 		const custom = customIconName(opts.icon ?? "");
 		new Setting(parent)
-			.setName("Icono")
-			.setDesc("Un emoji, una letra o un icono de Lucide (ej. castle, skull, tent), o uno de tus SVG de abajo.")
+			.setName(T("Icono", "Icon"))
+			.setDesc(T("Un emoji, una letra o un icono de Lucide (ej. castle, skull, tent), o uno de tus SVG de abajo.", "An emoji, a letter or a Lucide icon name (e.g. castle, skull, tent), or one of your SVGs below."))
 			.addText((t) => {
 				this.input = t.inputEl;
 				t.setPlaceholder(custom !== null ? `SVG: ${custom}` : (opts.placeholder ?? "📍"))
@@ -80,15 +81,15 @@ export class IconPicker {
 		const folders = lib.folders();
 		if (folders.some((f) => f !== "")) {
 			const select = filters.createEl("select", { cls: "dropdown" });
-			select.createEl("option", { value: "*", text: "Todas las carpetas" });
-			for (const f of folders) select.createEl("option", { value: f, text: f === "" ? "(Carpeta principal)" : f });
+			select.createEl("option", { value: "*", text: T("Todas las carpetas", "All folders") });
+			for (const f of folders) select.createEl("option", { value: f, text: f === "" ? T("(Carpeta principal)", "(Main folder)") : f });
 			select.value = folders.includes(this.folder) || this.folder === "*" ? this.folder : "*";
 			select.onchange = () => {
 				this.folder = select.value;
 				this.renderTiles();
 			};
 		}
-		const search = filters.createEl("input", { type: "search", attr: { placeholder: "Buscar icono…" } });
+		const search = filters.createEl("input", { type: "search", attr: { placeholder: T("Buscar icono…", "Search icons…") } });
 		search.value = this.query;
 		search.oninput = () => {
 			this.query = search.value;
@@ -98,7 +99,7 @@ export class IconPicker {
 			const reload = this.opts.reload;
 			const b = filters.createEl("button", { cls: "clickable-icon strakes-icon-reload" });
 			setIcon(b, "refresh-cw");
-			setTooltip(b, "Recargar iconos de la carpeta");
+			setTooltip(b, T("Recargar iconos de la carpeta", "Reload icons from the folder"));
 			b.onclick = () => void reload().then(() => this.buildGrid());
 		}
 		this.tilesEl = box.createDiv("strakes-icon-grid");
@@ -117,7 +118,10 @@ export class IconPicker {
 			grid.addClass("is-empty");
 			grid.createDiv({
 				cls: "setting-item-description",
-				text: "Aún no tienes iconos SVG. Impórtalos desde los ajustes del plugin o cópialos (también en subcarpetas) en su carpeta de iconos y pulsa ↻.",
+				text: T(
+					"Aún no tienes iconos SVG. Impórtalos desde los ajustes del plugin o cópialos (también en subcarpetas) en su carpeta de iconos y pulsa ↻.",
+					"You don't have any SVG icons yet. Import them from the plugin settings, or copy them (subfolders work too) into its icons folder and press ↻.",
+				),
 			});
 			return;
 		}
@@ -131,7 +135,7 @@ export class IconPicker {
 		});
 		if (!shown.length) {
 			grid.addClass("is-empty");
-			grid.createDiv({ cls: "setting-item-description", text: "Ningún icono coincide con el filtro." });
+			grid.createDiv({ cls: "setting-item-description", text: T("Ningún icono coincide con el filtro.", "No icons match the filter.") });
 			return;
 		}
 		for (const name of shown) {
@@ -200,8 +204,8 @@ export class IconColorControl {
 		const check = label.createEl("input", { type: "checkbox" });
 		check.checked = native;
 		check.disabled = !canColor;
-		label.appendText("Color nativo");
-		if (!canColor) setTooltip(label, "Los emojis tienen sus propios colores y no se pueden recolorear");
+		label.appendText(T("Color nativo", "Native color"));
+		if (!canColor) setTooltip(label, T("Los emojis tienen sus propios colores y no se pueden recolorear", "Emojis have their own colors and can't be recolored"));
 		check.onchange = () => {
 			// Al desmarcar se recupera el último color elegido.
 			this.opts.color = check.checked ? undefined : this.last;

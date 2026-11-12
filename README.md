@@ -6,7 +6,7 @@ A toolkit for game masters who run tabletop RPGs from Obsidian:
 - **Player screen** — a separate window for your second monitor or projector that shows notes, sections, selections and images to your players.
 - **Initiative tracker** — turns, rounds, hit points (including temporary HP), conditions with icons, and a portrait "cards" view for the player screen.
 
-> The plugin's user interface is currently in **Spanish**. Built-in condition names and descriptions are available in Spanish and English and follow Obsidian's display language. A full English UI is planned.
+> The interface is available in **English** and **Spanish** and follows Obsidian's display language: Spanish when Obsidian is set to Spanish, English for every other language.
 
 Desktop only (it uses a pop-out window for the player screen).
 
@@ -71,6 +71,7 @@ Opens in the right sidebar.
   - Each segment can have a manual distance (for maps not drawn to scale) and a manual travel time, or estimate them from a calibrated scale.
   - Segment labels show the segment number and route name.
 - **Measure**: shortest path between two nodes along visible routes, with travel time at slow (2 mph, 9 h/day), normal (3 mph, 8 h/day) or fast (4 mph, 7.5 h/day) pace.
+- **Display units**: a setting shows every map's distances and speeds in kilometers or miles (leagues, feet and meters are converted too). The conversion is only for display: values you enter stay in the map's own unit, so switching back and forth never changes them.
 - **Undo / redo** in the map editor.
 - **Embedding**:
   - `![[map.smap]]` shows an interactive map in a note.

@@ -112,6 +112,11 @@ export interface StrakesSettings {
 	/** Mostrar a los jugadores los PV de los enemigos. */
 	showNpcHp: boolean;
 	defaultUnit: string;
+	/**
+	 * Unidad en la que se muestran distancias y velocidades. «map» = la de cada mapa.
+	 * Solo afecta a lo que se muestra: los datos del mapa siguen en su propia unidad.
+	 */
+	displayUnit: "map" | "km" | "mi";
 	/** Carpeta donde se crean los mapas nuevos. Vacío = junto a la imagen. */
 	mapFolder: string;
 	/** Mostrar el título de la nota encima de la vista previa de un pin. */
@@ -140,6 +145,7 @@ export const DEFAULT_SETTINGS: StrakesSettings = {
 	showPlayerHp: true,
 	showNpcHp: false,
 	defaultUnit: "km",
+	displayUnit: "map",
 	mapFolder: "",
 	pinPreviewTitle: true,
 	collapsedMapSections: [],

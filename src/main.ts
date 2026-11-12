@@ -1,4 +1,5 @@
 import { Component, Editor, Events, MarkdownView, Menu, normalizePath, Notice, Plugin, TAbstractFile, TFile, TFolder, WorkspaceLeaf } from "obsidian";
+import { T } from "./i18n";
 import { InitiativeTracker } from "./initiative/tracker";
 import { InitiativeView } from "./initiative/InitiativeView";
 import { IconLibrary, setIconLibrary } from "./map/icons";
@@ -40,7 +41,11 @@ export default class StrakesTTRPG extends Plugin {
 			if (!input.files?.length) return;
 			const n = await this.icons.importFiles(input.files, folder);
 			this.events.trigger("icons");
-			new Notice(n ? `${n} icono${n > 1 ? "s" : ""} importado${n > 1 ? "s" : ""}.` : "No se importó ningún icono.");
+			new Notice(
+				n
+					? T(`${n} icono${n > 1 ? "s" : ""} importado${n > 1 ? "s" : ""}.`, `${n} icon${n > 1 ? "s" : ""} imported.`)
+					: T("No se importó ningún icono.", "No icons were imported."),
+			);
 			onDone?.();
 		};
 		input.click();
@@ -58,7 +63,7 @@ export default class StrakesTTRPG extends Plugin {
 		try {
 			await this.icons.load();
 		} catch (e) {
-			console.error("Strakes TTRPG: no se pudieron cargar los iconos", e);
+			console.error("Strakes TTRPG: could not load icons", e);
 		}
 
 		this.registerView(VIEW_TYPE_PLAYER, (leaf) => new PlayerScreenView(leaf, this));
@@ -66,11 +71,11 @@ export default class StrakesTTRPG extends Plugin {
 		this.registerView(VIEW_TYPE_MAP, (leaf) => new MapView(leaf, this));
 		this.registerExtensions([MAP_EXTENSION], VIEW_TYPE_MAP);
 		this.registerMapEmbeds();
-		this.registerHoverLinkSource("strakes-ttrpg", { display: "Strakes TTRPG (mapas)", defaultMod: true });
+		this.registerHoverLinkSource("strakes-ttrpg", { display: T("Strakes TTRPG (mapas)", "Strakes TTRPG (maps)"), defaultMod: true });
 
-		this.addRibbonIcon("monitor", "Abrir pantalla de jugadores", () => this.openPlayerScreen(true));
-		this.addRibbonIcon("swords", "Abrir iniciativa", () => this.openInitiative());
-		this.addRibbonIcon("map", "Crear mapa nuevo", () => this.pickImageForMap());
+		this.addRibbonIcon("monitor", T("Abrir pantalla de jugadores", "Open player screen"), () => this.openPlayerScreen(true));
+		this.addRibbonIcon("swords", T("Abrir iniciativa", "Open initiative tracker"), () => this.openInitiative());
+		this.addRibbonIcon("map", T("Crear mapa nuevo", "Create new map"), () => this.pickImageForMap());
 
 		this.registerCommands();
 		this.registerMenus();
@@ -106,16 +111,16 @@ export default class StrakesTTRPG extends Plugin {
 	// ---------- Comandos ----------
 
 	private registerCommands(): void {
-		this.addCommand({ id: "open-player-screen", name: "Abrir pantalla de jugadores", callback: () => this.openPlayerScreen(true) });
+		this.addCommand({ id: "open-player-screen", name: T("Abrir pantalla de jugadores", "Open player screen"), callback: () => this.openPlayerScreen(true) });
 		this.addCommand({
 			id: "player-screen-fullscreen",
-			name: "Pantalla de jugadores: alternar pantalla completa",
+			name: T("Pantalla de jugadores: alternar pantalla completa", "Player screen: toggle fullscreen"),
 			callback: async () => (await this.openPlayerScreen(false))?.toggleFullscreen(),
 		});
-		this.addCommand({ id: "clear-player-screen", name: "Limpiar pantalla de jugadores", callback: () => this.sendToPlayers(null) });
+		this.addCommand({ id: "clear-player-screen", name: T("Limpiar pantalla de jugadores", "Clear player screen"), callback: () => this.sendToPlayers(null) });
 		this.addCommand({
 			id: "send-active-file",
-			name: "Enviar nota/imagen activa a la pantalla de jugadores",
+			name: T("Enviar nota/imagen activa a la pantalla de jugadores", "Send active note/image to the player screen"),
 			checkCallback: (checking) => {
 				const file = this.app.workspace.getActiveFile();
 				const content = file ? this.contentForFile(file) : null;
@@ -126,7 +131,7 @@ export default class StrakesTTRPG extends Plugin {
 		});
 		this.addCommand({
 			id: "send-current-section",
-			name: "Enviar sección actual (encabezado bajo el cursor) a la pantalla de jugadores",
+			name: T("Enviar sección actual (encabezado bajo el cursor) a la pantalla de jugadores", "Send current section (heading under the cursor) to the player screen"),
 			editorCallback: (editor: Editor, view) => {
 				const file = view.file;
 				if (!file) return;
@@ -134,7 +139,7 @@ export default class StrakesTTRPG extends Plugin {
 				const line = editor.getCursor().line;
 				const h = [...headings].reverse().find((x) => x.position.start.line <= line);
 				if (!h) {
-					new Notice("El cursor no está bajo ningún encabezado; se envía la nota completa.");
+					new Notice(T("El cursor no está bajo ningún encabezado; se envía la nota completa.", "The cursor isn't under any heading; sending the whole note."));
 					void this.sendToPlayers({ kind: "note", path: file.path });
 					return;
 				}
@@ -143,7 +148,7 @@ export default class StrakesTTRPG extends Plugin {
 		});
 		this.addCommand({
 			id: "send-selection",
-			name: "Enviar texto seleccionado a la pantalla de jugadores",
+			name: T("Enviar texto seleccionado a la pantalla de jugadores", "Send selected text to the player screen"),
 			editorCheckCallback: (checking, editor, view) => {
 				const sel = editor.getSelection();
 				if (!sel.trim()) return false;
@@ -153,25 +158,25 @@ export default class StrakesTTRPG extends Plugin {
 		});
 		this.addCommand({
 			id: "send-image",
-			name: "Elegir imagen y enviarla a la pantalla de jugadores",
+			name: T("Elegir imagen y enviarla a la pantalla de jugadores", "Pick an image and send it to the player screen"),
 			callback: () => new ImagePickerModal(this.app, (f) => void this.sendToPlayers({ kind: "image", path: f.path })).open(),
 		});
-		this.addCommand({ id: "open-initiative", name: "Abrir iniciativa", callback: () => this.openInitiative() });
-		this.addCommand({ id: "initiative-next", name: "Iniciativa: siguiente turno", callback: () => this.tracker.next() });
-		this.addCommand({ id: "initiative-prev", name: "Iniciativa: turno anterior", callback: () => this.tracker.prev() });
+		this.addCommand({ id: "open-initiative", name: T("Abrir iniciativa", "Open initiative tracker"), callback: () => this.openInitiative() });
+		this.addCommand({ id: "initiative-next", name: T("Iniciativa: siguiente turno", "Initiative: next turn"), callback: () => this.tracker.next() });
+		this.addCommand({ id: "initiative-prev", name: T("Iniciativa: turno anterior", "Initiative: previous turn"), callback: () => this.tracker.prev() });
 		this.addCommand({
 			id: "initiative-cycle-display",
-			name: "Iniciativa: mostrar/ocultar en la pantalla de jugadores",
+			name: T("Iniciativa: mostrar/ocultar en la pantalla de jugadores", "Initiative: show/hide on the player screen"),
 			callback: async () => {
 				const show = this.settings.initiativeDisplay === "off";
 				this.settings.initiativeDisplay = show ? this.settings.lastInitiativeDisplay : "off";
 				await this.saveSettings();
 				this.events.trigger("settings");
 				if (show) await this.openPlayerScreen(false);
-				new Notice(`Iniciativa en pantalla de jugadores: ${show ? "visible" : "oculta"}`);
+				new Notice(show ? T("Iniciativa visible en la pantalla de jugadores", "Initiative shown on the player screen") : T("Iniciativa oculta en la pantalla de jugadores", "Initiative hidden on the player screen"));
 			},
 		});
-		this.addCommand({ id: "create-map", name: "Crear mapa nuevo desde una imagen", callback: () => this.pickImageForMap() });
+		this.addCommand({ id: "create-map", name: T("Crear mapa nuevo desde una imagen", "Create new map from an image"), callback: () => this.pickImageForMap() });
 	}
 
 	private registerMenus(): void {
@@ -182,7 +187,7 @@ export default class StrakesTTRPG extends Plugin {
 				if (content)
 					menu.addItem((i) =>
 						i
-							.setTitle("Enviar a la pantalla de jugadores")
+							.setTitle(T("Enviar a la pantalla de jugadores", "Send to player screen"))
 							.setIcon("monitor")
 							.setSection("action")
 							.onClick(() => void this.sendToPlayers(content)),
@@ -190,7 +195,7 @@ export default class StrakesTTRPG extends Plugin {
 				if (isImageFile(file))
 					menu.addItem((i) =>
 						i
-							.setTitle("Crear mapa con esta imagen")
+							.setTitle(T("Crear mapa con esta imagen", "Create map from this image"))
 							.setIcon("map")
 							.setSection("action")
 							.onClick(() => void this.createMap(file)),
@@ -203,7 +208,7 @@ export default class StrakesTTRPG extends Plugin {
 				if (!sel.trim() || !(view instanceof MarkdownView)) return;
 				menu.addItem((i) =>
 					i
-						.setTitle("Enviar selección a la pantalla de jugadores")
+						.setTitle(T("Enviar selección a la pantalla de jugadores", "Send selection to player screen"))
 						.setIcon("monitor")
 						.onClick(() => void this.sendToPlayers({ kind: "text", markdown: sel, sourcePath: view.file?.path ?? "" })),
 				);
@@ -266,7 +271,7 @@ export default class StrakesTTRPG extends Plugin {
 		};
 		const registry = (this.app as unknown as { embedRegistry?: EmbedRegistry }).embedRegistry;
 		if (!registry?.registerExtension) {
-			console.warn("Strakes TTRPG: esta versión de Obsidian no permite incrustar mapas.");
+			console.warn("Strakes TTRPG: this Obsidian version doesn't support map embeds.");
 			return;
 		}
 		try {
@@ -274,12 +279,12 @@ export default class StrakesTTRPG extends Plugin {
 			registry.registerExtension(MAP_EXTENSION, (ctx, file, subpath) => new MapEmbed(this, ctx, file, subpath ?? ""));
 			this.register(() => registry.unregisterExtension(MAP_EXTENSION));
 		} catch (e) {
-			console.error("Strakes TTRPG: no se pudo registrar el embed de mapas", e);
+			console.error("Strakes TTRPG: could not register map embeds", e);
 		}
 	}
 
 	private pickImageForMap(): void {
-		new ImagePickerModal(this.app, (f) => void this.createMap(f), "Elige la imagen del mapa…").open();
+		new ImagePickerModal(this.app, (f) => void this.createMap(f), T("Elige la imagen del mapa…", "Choose the map image…")).open();
 	}
 
 	async createMap(image: TFile): Promise<void> {
@@ -287,7 +292,7 @@ export default class StrakesTTRPG extends Plugin {
 		try {
 			size = await loadImageSize(this.app.vault.getResourcePath(image));
 		} catch {
-			new Notice("No se pudo leer la imagen; se intentará de nuevo al abrir el mapa.");
+			new Notice(T("No se pudo leer la imagen; se intentará de nuevo al abrir el mapa.", "Couldn't read the image; it will be retried when the map opens."));
 		}
 		const folder = this.settings.mapFolder || image.parent?.path || "";
 		if (folder && !(this.app.vault.getAbstractFileByPath(folder) instanceof TFolder)) await this.app.vault.createFolder(folder);
@@ -296,7 +301,7 @@ export default class StrakesTTRPG extends Plugin {
 		const data = emptyMap(image.path, size.width, size.height, this.settings.defaultUnit);
 		const file = await this.app.vault.create(path, JSON.stringify(data, null, "\t"));
 		await this.app.workspace.getLeaf(true).openFile(file);
-		new Notice(`Mapa creado: ${file.path}`);
+		new Notice(T(`Mapa creado: ${file.path}`, `Map created: ${file.path}`));
 	}
 
 	/** Mantiene los mapas al día cuando se renombran/mueven imágenes o notas enlazadas. */

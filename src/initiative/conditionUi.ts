@@ -1,9 +1,10 @@
 import { App, Menu, Modal, Notice, Setting, setTooltip } from "obsidian";
+import { T } from "../i18n";
 import type StrakesTTRPG from "../main";
 import { renderPinIconInto } from "../map/render";
 import { Combatant, ConditionOverride, CustomCondition, uid } from "../types";
 import { IconColorControl, IconPicker } from "../ui/iconPicker";
-import { ActiveCondition, activeConditions, allConditions, AUTO_REASON, BUILTIN_CONDITIONS, builtinInfo, ConditionInfo, isBloodied, isDead, REMAINS_AFTER, sectionsToText, SRD_ATTRIBUTION } from "./conditions";
+import { ActiveCondition, activeConditions, allConditions, autoReason, BUILTIN_CONDITIONS, builtinInfo, ConditionInfo, isBloodied, isDead, REMAINS_AFTER, sectionsToText } from "./conditions";
 
 const DEFAULT_CUSTOM_COLOR = "#e03131";
 
@@ -36,8 +37,15 @@ export function renderConditionChips(container: HTMLElement, c: Combatant, opts:
 		chip.toggleClass("is-implied", !a.explicit);
 		renderConditionIcon(chip, a.info);
 		if (a.level) chip.createSpan({ cls: "strakes-cond-level", text: String(a.level) });
-		const title = a.level ? `${a.info.name} (nivel ${a.level})` : a.info.name;
-		setTooltip(chip, a.explicit ? title : a.auto ? `${title} · automática (${AUTO_REASON[a.info.id] ?? "por sus PV"})` : `${title} · aplicada por ${a.impliedBy.join(", ")}`);
+		const title = a.level ? T(`${a.info.name} (nivel ${a.level})`, `${a.info.name} (level ${a.level})`) : a.info.name;
+		setTooltip(
+			chip,
+			a.explicit
+				? title
+				: a.auto
+					? T(`${title} · automática (${autoReason(a.info.id)})`, `${title} · automatic (${autoReason(a.info.id)})`)
+					: T(`${title} · aplicada por ${a.impliedBy.join(", ")}`, `${title} · applied by ${a.impliedBy.join(", ")}`),
+		);
 		if (!opts.interactive) continue;
 		chip.addEventListener("click", (e) => {
 			e.stopPropagation();
@@ -48,11 +56,21 @@ export function renderConditionChips(container: HTMLElement, c: Combatant, opts:
 			e.stopPropagation();
 			closeConditionCard();
 			if (a.auto) {
-				new Notice(`${a.info.name} es automática (${AUTO_REASON[a.info.id] ?? "por sus PV"}): se quita sola cuando cambian los PV.`);
+				new Notice(
+					T(
+						`${a.info.name} es automática (${autoReason(a.info.id)}): se quita sola cuando cambian los PG.`,
+						`${a.info.name} is automatic (${autoReason(a.info.id)}): it goes away on its own when HP changes.`,
+					),
+				);
 				return;
 			}
 			if (!a.explicit) {
-				new Notice(`${a.info.name} la aplica ${a.impliedBy.join(", ")}: quita esa condición para quitarla.`);
+				new Notice(
+					T(
+						`${a.info.name} la aplica ${a.impliedBy.join(", ")}: quita esa condición para quitarla.`,
+						`${a.info.name} is applied by ${a.impliedBy.join(", ")}: remove that condition to remove it.`,
+					),
+				);
 				return;
 			}
 			opts.plugin.tracker.removeCondition(c.id, a.info.id, { oneLevel: !!a.info.maxLevel, remains: REMAINS_AFTER[a.info.id] });
@@ -82,11 +100,12 @@ function toggleConditionCard(anchor: HTMLElement, a: ActiveCondition): void {
 	const card = doc.body.createDiv("strakes-cond-card");
 	const head = card.createDiv("strakes-cond-card-head");
 	renderConditionIcon(head.createSpan(), a.info);
-	head.createSpan({ cls: "strakes-cond-card-title", text: a.level ? `${a.info.name} · nivel ${a.level}` : a.info.name });
-	if (a.auto) card.createDiv({ cls: "strakes-cond-card-note", text: `Automática (${AUTO_REASON[a.info.id] ?? "por sus PV"}).` });
-	else if (!a.explicit) card.createDiv({ cls: "strakes-cond-card-note", text: `Aplicada por ${a.impliedBy.join(", ")}.` });
+	head.createSpan({ cls: "strakes-cond-card-title", text: a.level ? T(`${a.info.name} · nivel ${a.level}`, `${a.info.name} · level ${a.level}`) : a.info.name });
+	if (a.auto) card.createDiv({ cls: "strakes-cond-card-note", text: T(`Automática (${autoReason(a.info.id)}).`, `Automatic (${autoReason(a.info.id)}).`) });
+	else if (!a.explicit)
+		card.createDiv({ cls: "strakes-cond-card-note", text: T(`Aplicada por ${a.impliedBy.join(", ")}.`, `Applied by ${a.impliedBy.join(", ")}.`) });
 	if (a.info.description !== undefined) {
-		card.createDiv({ cls: "strakes-cond-card-text", text: a.info.description?.trim() || "Sin descripción." });
+		card.createDiv({ cls: "strakes-cond-card-text", text: a.info.description?.trim() || T("Sin descripción.", "No description.") });
 	} else {
 		for (const sec of a.info.sections) {
 			const block = card.createDiv("strakes-cond-card-section");
@@ -94,12 +113,7 @@ function toggleConditionCard(anchor: HTMLElement, a: ActiveCondition): void {
 			block.createDiv({ cls: "strakes-cond-card-text", text: sec.text });
 		}
 	}
-	card.createDiv({ cls: "strakes-cond-card-hint", text: "Clic derecho en el icono para quitarla." });
-	// Texto del SRD 5.2 (sin editar): atribución exigida por la licencia CC-BY-4.0.
-	if (!a.info.custom && a.info.description === undefined) {
-		const src = card.createDiv({ cls: "strakes-cond-card-source", text: "Texto: SRD 5.2 · CC-BY-4.0" });
-		setTooltip(src, SRD_ATTRIBUTION);
-	}
+	card.createDiv({ cls: "strakes-cond-card-hint", text: T("Clic derecho en el icono para quitarla.", "Right-click the icon to remove it.") });
 
 	// Posición: debajo del icono, sin salirse de la ventana.
 	const r = anchor.getBoundingClientRect();
@@ -148,9 +162,10 @@ export function showConditionMenu(evt: MouseEvent, c: Combatant, plugin: Strakes
 		m.addItem((i) => {
 			const entry = active.get(info.id);
 			let title = info.name;
-			if (info.maxLevel) title += entry ? ` (nivel ${entry.level ?? 1} → ${Math.min(info.maxLevel, (entry.level ?? 1) + 1)})` : "";
-			else if (!entry && autoIds.has(info.id)) title += " (automática por PV)";
-			else if (!entry && implied.has(info.id)) title += " (aplicada)";
+			if (info.maxLevel)
+				title += entry ? T(` (nivel ${entry.level ?? 1} → ${Math.min(info.maxLevel, (entry.level ?? 1) + 1)})`, ` (level ${entry.level ?? 1} → ${Math.min(info.maxLevel, (entry.level ?? 1) + 1)})`) : "";
+			else if (!entry && autoIds.has(info.id)) title += T(" (automática por PG)", " (automatic from HP)");
+			else if (!entry && implied.has(info.id)) title += T(" (aplicada)", " (applied)");
 			i.setTitle(title).setChecked(!!entry);
 			const iconEl = (i as unknown as { iconEl?: HTMLElement }).iconEl;
 			if (iconEl) {
@@ -173,7 +188,7 @@ export function showConditionMenu(evt: MouseEvent, c: Combatant, plugin: Strakes
 	m.addSeparator();
 	m.addItem((i) =>
 		i
-			.setTitle("Nueva condición personalizada…")
+			.setTitle(T("Nueva condición personalizada…", "New custom condition…"))
 			.setIcon("plus")
 			.onClick(() =>
 				new ConditionModal(plugin.app, plugin, { kind: "custom", cond: null }, (created) => {
@@ -253,21 +268,24 @@ export class ConditionModal extends Modal {
 		const d = this.draft;
 		const builtin = this.target.kind === "builtin";
 		const isNew = this.target.kind === "custom" && !this.target.cond;
-		this.titleEl.setText(builtin ? `Editar condición: ${d.name}` : isNew ? "Nueva condición" : "Editar condición");
+		this.titleEl.setText(builtin ? T(`Editar condición: ${d.name}`, `Edit condition: ${d.name}`) : isNew ? T("Nueva condición", "New condition") : T("Editar condición", "Edit condition"));
 		const el = this.contentEl;
 		if (builtin)
 			el.createDiv({
 				cls: "setting-item-description strakes-cond-builtin-note",
-				text: "Condición de las reglas básicas. Puedes cambiarla por completo para tu mesa; «Restablecer» vuelve a la original. Sus automatismos (si los tiene) se mantienen.",
+				text: T(
+					"Condición de las reglas básicas. Puedes cambiarla por completo para tu mesa; «Restablecer» vuelve a la original. Sus automatismos (si los tiene) se mantienen.",
+					"Basic rules condition. You can fully change it for your table; \"Reset\" restores the original. Its automations (if any) are kept.",
+				),
 			});
 
-		new Setting(el).setName("Nombre").addText((t) => {
+		new Setting(el).setName(T("Nombre", "Name")).addText((t) => {
 			t.setValue(d.name).onChange((v) => (d.name = v));
 			window.setTimeout(() => t.inputEl.focus(), 10);
 		});
 		new Setting(el)
-			.setName("Descripción")
-			.setDesc("Se muestra al hacer clic en el icono de la condición.")
+			.setName(T("Descripción", "Description"))
+			.setDesc(T("Se muestra al hacer clic en el icono de la condición.", "Shown when you click the condition's icon."))
 			.addTextArea((t) => {
 				t.setValue(d.description).onChange((v) => (d.description = v));
 				t.inputEl.rows = builtin ? 8 : 5;
@@ -284,10 +302,10 @@ export class ConditionModal extends Modal {
 				this.iconColor?.refresh();
 			},
 		});
-		const colors = new Setting(el).setName("Color");
+		const colors = new Setting(el).setName(T("Color", "Color"));
 		colors.controlEl.addClass("strakes-color-row");
 		this.iconColor = new IconColorControl(colors.controlEl.createDiv("strakes-color-group"), {
-			label: "Icono",
+			label: T("Icono", "Icon"),
 			getIcon: () => d.icon || this.original?.icon || "",
 			color: d.color,
 			defaultColor: this.original?.color ?? DEFAULT_CUSTOM_COLOR,
@@ -299,8 +317,8 @@ export class ConditionModal extends Modal {
 
 		// Acumulativa (como Agotamiento): cada vez que se aplica sube un nivel.
 		const cumulative = new Setting(el)
-			.setName("Acumulativa")
-			.setDesc("Cada vez que se aplica sube un nivel, hasta el máximo; el clic derecho en el icono baja uno.");
+			.setName(T("Acumulativa", "Cumulative"))
+			.setDesc(T("Cada vez que se aplica sube un nivel, hasta el máximo; el clic derecho en el icono baja uno.", "Each time it's applied it goes up one level, up to the maximum; right-clicking the icon lowers it by one."));
 		let levelInput: HTMLInputElement | null = null;
 		cumulative.addText((t) => {
 			levelInput = t.inputEl;
@@ -308,13 +326,13 @@ export class ConditionModal extends Modal {
 			t.inputEl.min = "2";
 			t.inputEl.max = "99";
 			t.inputEl.addClass("strakes-cond-level-input");
-			t.setPlaceholder("Máx.").setValue(d.maxLevel ? String(d.maxLevel) : "");
+			t.setPlaceholder(T("Máx.", "Max")).setValue(d.maxLevel ? String(d.maxLevel) : "");
 			t.setDisabled(!d.maxLevel);
 			t.onChange((v) => {
 				const n = parseInt(v, 10);
 				if (!isNaN(n) && n >= 2) d.maxLevel = Math.min(99, n);
 			});
-			setTooltip(t.inputEl, "Nivel máximo");
+			setTooltip(t.inputEl, T("Nivel máximo", "Maximum level"));
 		});
 		cumulative.addToggle((t) =>
 			t.setValue(!!d.maxLevel).onChange((on) => {
@@ -327,7 +345,9 @@ export class ConditionModal extends Modal {
 		);
 
 		// Condiciones que aplica (en cadena: si aplica Paralizado, también Incapacitado).
-		new Setting(el).setName("Aplica condiciones").setDesc("Al tener esta condición, se aplican también las marcadas.").settingEl.addClass("strakes-cond-implies-setting");
+		new Setting(el)
+			.setName(T("Aplica condiciones", "Applies conditions"))
+			.setDesc(T("Al tener esta condición, se aplican también las marcadas.", "While it has this condition, the checked ones also apply.")).settingEl.addClass("strakes-cond-implies-setting");
 		const grid = el.createDiv("strakes-cond-implies");
 		const implies = new Set(d.implies);
 		for (const info of allConditions(this.plugin.settings).filter((x) => x.id !== this.customId)) {
@@ -344,15 +364,15 @@ export class ConditionModal extends Modal {
 		}
 
 		const buttons = new Setting(el);
-		if (builtin) buttons.addButton((b) => b.setButtonText("Restablecer").onClick(() => void this.saveBuiltin(true)));
-		buttons.addButton((b) => b.setButtonText("Cancelar").onClick(() => this.close()));
+		if (builtin) buttons.addButton((b) => b.setButtonText(T("Restablecer", "Reset")).onClick(() => void this.saveBuiltin(true)));
+		buttons.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => this.close()));
 		buttons.addButton((b) =>
 			b
-				.setButtonText("Guardar")
+				.setButtonText(T("Guardar", "Save"))
 				.setCta()
 				.onClick(() => {
 					if (!d.name.trim()) {
-						new Notice("Ponle un nombre a la condición");
+						new Notice(T("Ponle un nombre a la condición", "Give the condition a name"));
 						return;
 					}
 					void (builtin ? this.saveBuiltin(false) : this.saveCustom());
