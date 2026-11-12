@@ -38,9 +38,11 @@ const jsCtx = await esbuild.context({
 });
 
 // Leaflet CSS + our CSS bundled into the single styles.css Obsidian loads.
+// styles.css también lleva la hoja de estilos y las imágenes de Leaflet: mismo aviso.
 const cssCtx = await esbuild.context({
   entryPoints: ["src/styles.css"],
   bundle: true,
+  banner: { css: banner },
   loader: { ".png": "dataurl", ".svg": "dataurl" },
   logLevel: "info",
   minify: prod,
