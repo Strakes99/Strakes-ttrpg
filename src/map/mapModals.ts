@@ -194,11 +194,12 @@ export class PinModal extends Modal {
 			}),
 		);
 
+		const actions = this.iconActions;
 		this.iconPicker = new IconPicker(el, {
 			icon: p.icon ?? "",
 			iconColor: p.iconColor,
 			background: p.color,
-			reload: this.iconActions?.reload,
+			reload: actions ? () => actions.reload() : undefined,
 			onChange: (icon) => {
 				p.icon = icon;
 				this.iconColor?.refresh();

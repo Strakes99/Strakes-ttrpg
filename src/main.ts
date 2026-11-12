@@ -88,7 +88,8 @@ export default class StrakesTTRPG extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		const loaded = (await this.loadData()) ?? {};
+		const raw: unknown = await this.loadData();
+		const loaded: Partial<StrakesSettings> = raw && typeof raw === "object" ? raw : {};
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
 		this.settings.combat = Object.assign({}, DEFAULT_SETTINGS.combat, loaded.combat);
 		// Copia propia: si no, se modificaría el array de DEFAULT_SETTINGS al plegar secciones.
@@ -235,7 +236,7 @@ export default class StrakesTTRPG extends Plugin {
 			await leaf.setViewState({ type: VIEW_TYPE_PLAYER, active: true });
 		}
 		await leaf.loadIfDeferred();
-		if (focus) this.app.workspace.revealLeaf(leaf);
+		if (focus) await this.app.workspace.revealLeaf(leaf);
 		return leaf.view instanceof PlayerScreenView ? leaf.view : null;
 	}
 
@@ -253,7 +254,7 @@ export default class StrakesTTRPG extends Plugin {
 			leaf = this.app.workspace.getRightLeaf(false) ?? this.app.workspace.getLeaf("split");
 			await leaf.setViewState({ type: VIEW_TYPE_INITIATIVE, active: true });
 		}
-		this.app.workspace.revealLeaf(leaf);
+		await this.app.workspace.revealLeaf(leaf);
 	}
 
 	// ---------- Mapas ----------
@@ -332,13 +333,14 @@ export default class StrakesTTRPG extends Plugin {
 			if (!text.includes(pathNeedle) && !text.toLowerCase().includes(oldBase)) continue;
 			await this.app.vault.process(f, (current) => {
 				try {
-					const d = JSON.parse(current);
+					const d = JSON.parse(current) as { image?: unknown; pins?: unknown };
 					let changed = false;
 					if (d.image === oldPath) {
 						d.image = file.path;
 						changed = true;
 					}
-					for (const p of d.pins ?? []) {
+					const pins = Array.isArray(d.pins) ? (d.pins as { link?: unknown }[]) : [];
+					for (const p of pins) {
 						if (typeof p.link !== "string") continue;
 						const w = parseWikilink(p.link);
 						if (!linkpathMatchesPath(w.linkpath, oldPath)) continue;

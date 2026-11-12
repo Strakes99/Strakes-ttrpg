@@ -1,5 +1,5 @@
 import esbuild from "esbuild";
-import builtins from "builtin-modules";
+import { builtinModules } from "node:module";
 import { readFileSync } from "node:fs";
 
 const prod = process.argv[2] === "production";
@@ -26,7 +26,7 @@ const jsCtx = await esbuild.context({
     "@codemirror/language", "@codemirror/lint", "@codemirror/search",
     "@codemirror/state", "@codemirror/view",
     "@lezer/common", "@lezer/highlight", "@lezer/lr",
-    ...builtins,
+    ...builtinModules,
   ],
   format: "cjs",
   target: "es2020",

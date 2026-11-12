@@ -43,10 +43,10 @@ export function linktextOf(link: string): string {
 export function resolveWikilink(app: App, link: string, sourcePath: string): TFile | null {
 	const { linkpath } = parseWikilink(link);
 	if (!linkpath) return null;
-	return (
-		app.metadataCache.getFirstLinkpathDest(linkpath, sourcePath) ??
-		(app.vault.getAbstractFileByPath(linkpath) instanceof TFile ? (app.vault.getAbstractFileByPath(linkpath) as TFile) : null)
-	);
+	const resolved = app.metadataCache.getFirstLinkpathDest(linkpath, sourcePath);
+	if (resolved) return resolved;
+	const byPath = app.vault.getAbstractFileByPath(linkpath);
+	return byPath instanceof TFile ? byPath : null;
 }
 
 /** Wikilink hacia un archivo, con el formato de nombre que prefiere Obsidian. */

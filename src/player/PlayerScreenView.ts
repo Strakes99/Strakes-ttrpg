@@ -312,24 +312,19 @@ export class PlayerScreenView extends ItemView {
 		if (!list || !area.clientWidth || !area.clientHeight) return;
 		const availW = area.clientWidth * (expanded ? 0.92 : 0.45);
 		const availH = area.clientHeight * (expanded ? 0.92 : 0.8);
-		box.style.fontSize = `${this.textSize()}px`;
+		box.setCssStyles({ fontSize: `${this.textSize()}px` });
 		box.removeClass("can-scroll");
-		list.style.gridTemplateRows = "";
+		list.setCssStyles({ gridTemplateRows: "" });
 		const first = list.firstElementChild as HTMLElement | null;
 		if (!first) return;
 		// Filas por columna según la altura disponible (descontando la cabecera).
 		const rowH = first.offsetHeight || 1;
 		const chrome = box.offsetHeight - list.offsetHeight;
 		const rows = Math.max(1, Math.floor((availH - chrome) / rowH));
-		list.style.gridTemplateRows = `repeat(${rows}, auto)`;
+		list.setCssStyles({ gridTemplateRows: `repeat(${rows}, auto)` });
 		box.toggleClass("can-scroll", box.offsetWidth > availW + 1 || box.offsetHeight > availH + 1);
-		if (box.hasClass("can-scroll")) {
-			box.style.maxWidth = `${availW}px`;
-			box.style.maxHeight = `${availH}px`;
-		} else {
-			box.style.maxWidth = "";
-			box.style.maxHeight = "";
-		}
+		if (box.hasClass("can-scroll")) box.setCssStyles({ maxWidth: `${availW}px`, maxHeight: `${availH}px` });
+		else box.setCssStyles({ maxWidth: "", maxHeight: "" });
 	}
 
 	/**

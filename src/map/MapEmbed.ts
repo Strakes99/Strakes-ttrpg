@@ -228,7 +228,7 @@ export class MapEmbed extends Component {
 			e.preventDefault();
 			e.stopPropagation();
 			delta += L.DomEvent.getWheelDelta(e);
-			around = map.mouseEventToContainerPoint(e as unknown as MouseEvent);
+			around = map.mouseEventToContainerPoint(e);
 			if (timer) win.clearTimeout(timer);
 			timer = win.setTimeout(perform, 40);
 		};
