@@ -195,7 +195,7 @@ export class MapView extends TextFileView {
 			return;
 		}
 		this.hideBroken();
-		this.mapData = normalizeMap(raw);
+		this.mapData = normalizeMap(raw, this.plugin.settings.defaultUnit);
 		if (clear) {
 			this.needsFit = true;
 			this.mode = "navigate";
@@ -939,6 +939,16 @@ export class MapView extends TextFileView {
 		this.renderAll();
 	}
 
+	/**
+	 * Entra en modo ruta para empezar o extender otra ruta desde un menú. Si ya se estaba
+	 * dibujando una, primero se termina (como al pulsar Enter), en lugar de seguir añadiendo
+	 * nodos a esa.
+	 */
+	private startRouteMode(): void {
+		if (this.mode === "route") this.finishRoute();
+		this.setMode("route");
+	}
+
 	private escape(): void {
 		if (this.mode === "route") this.finishRoute();
 		else this.setMode("navigate");
@@ -980,7 +990,7 @@ export class MapView extends TextFileView {
 				.setTitle(T("Empezar ruta aquí", "Start route here"))
 				.setIcon("route")
 				.onClick(() => {
-					this.setMode("route");
+					this.startRouteMode();
 					this.addRoutePoint(p);
 				}),
 		);
@@ -1351,7 +1361,7 @@ export class MapView extends TextFileView {
 		m.addItem((i) => i.setTitle(T("Editar ruta y distancias…", "Edit route and distances…")).setIcon("pencil").onClick(() => this.openRouteModal(route)));
 		this.addMoveToLayerItem(m, evt, route);
 		const extend = (atStart: boolean) => {
-			this.setMode("route");
+			this.startRouteMode();
 			this.activeRouteId = route.id;
 			this.activeRouteIsNew = false;
 			this.extendAtStart = atStart;
@@ -1453,7 +1463,7 @@ export class MapView extends TextFileView {
 				.setTitle(T("Empezar ruta desde este nodo", "Start route from this node"))
 				.setIcon("route")
 				.onClick(() => {
-					this.setMode("route");
+					this.startRouteMode();
 					this.appendNode(this.ensureActiveRoute(), node.id);
 				}),
 		);

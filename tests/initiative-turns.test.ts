@@ -1,0 +1,27 @@
+import { InitiativeTracker } from "../src/initiative/tracker";
+import { fakePlugin, t } from "./helpers";
+const plugin = fakePlugin();
+const tr = new InitiativeTracker(plugin);
+const A = tr.add({ name: "Ana (PJ)", initiative: 20, hp: 10, maxHp: 10, isPlayer: true });
+const G1 = tr.add({ name: "Goblin 1", initiative: 15, hp: 7, maxHp: 7 });
+const B = tr.add({ name: "Bruno (PJ)", initiative: 12, hp: 10, maxHp: 10, isPlayer: true });
+const G2 = tr.add({ name: "Goblin 2", initiative: 5, hp: 7, maxHp: 7 });
+const cur = () => [plugin.tracker, tr.current?.name, plugin.settings.combat.round].slice(1);
+tr.next(); t("empieza por el primero", cur(), ["Ana (PJ)", 1]);
+tr.damage(G1.id, 10);
+tr.next(); t("salta al Goblin 1 tachado", cur(), ["Bruno (PJ)", 1]);
+tr.next(); t("Goblin 2 vivo no se salta", cur(), ["Goblin 2", 1]);
+tr.damage(G2.id, 7);
+tr.setCurrent(B.id);
+tr.next(); t("salta al último tachado y da la vuelta (ronda 2)", cur(), ["Ana (PJ)", 2]);
+tr.prev(); t("retrocede saltando tachados (vuelve a ronda 1)", cur(), ["Bruno (PJ)", 1]);
+tr.damage(B.id, 15);
+tr.setCurrent(A.id);
+tr.next(); t("PJ a 0 PG NO se salta", cur(), ["Bruno (PJ)", 1]);
+// todos tachados menos ninguno
+const plugin2 = fakePlugin();
+const tr2 = new InitiativeTracker(plugin2);
+const x = tr2.add({ name: "X", initiative: 2, hp: 0, maxHp: 5 }); tr2.add({ name: "Y", initiative: 1, hp: 0, maxHp: 5 });
+tr2.next(); tr2.next();
+t("todos enemigos tachados: avanza normal sin bloquearse", [tr2.current?.name, plugin2.settings.combat.round], ["Y", 1]);
+void x;

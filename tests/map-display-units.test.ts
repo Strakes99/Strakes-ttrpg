@@ -1,0 +1,17 @@
+import { displayDistance, formatTotal, milesPerUnit, emptyMap, distanceTime } from "../src/map/mapData";
+import { t } from "./helpers";
+t("3.1 mi -> km", displayDistance(3.1, "mi", "km"), "4,99 km");
+t("3.1 mi map", displayDistance(3.1, "mi", "map"), "3,1 mi");
+t("3.1 mi -> mi (sin cambio)", displayDistance(3.1, "millas", "mi"), "3,1 mi");
+t("10 km -> mi", displayDistance(10, "km", "mi"), "6,21 mi");
+t("2 leguas -> km", displayDistance(2, "leguas", "km"), "9,66 km");
+t("5280 pies -> mi", displayDistance(5280, "pies", "mi"), "1 mi");
+t("1500 m -> km", displayDistance(1500, "m", "km"), "1,5 km");
+t("días intactos", displayDistance(3, "días", "km"), "3 días");
+t("total -> km", formatTotal({ total: 100, unknown: 1, segments: 3 }, "mi", "km"), "160,93 km + 1 tramo sin distancia");
+t("km en km: sin conversión, redondeo de siempre", displayDistance(3.14, "km", "km"), "3,1 km");
+t("kilómetros en km", displayDistance(12.345, "kilómetros", "km"), "12,3 km");
+t("5 km exactos → mi", displayDistance(8.04672, "km", "mi"), "5 mi");
+t("km factor", Math.abs((milesPerUnit("km") ?? 0) - 0.621371) < 1e-6, true);
+const d = emptyMap("x.png", 100, 100, "km");
+t("time igual con km", Math.abs((distanceTime(d, 4.828032, "normal") ?? 0) - 1) < 1e-9, true);

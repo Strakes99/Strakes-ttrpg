@@ -7,19 +7,9 @@ import { Combatant, InitiativeDisplay, Portrait, VIEW_TYPE_INITIATIVE } from "..
 import { editPortrait, recalledPortrait, renderPortrait, splitName } from "./portrait";
 import { closeConditionCard, renderConditionChips, showConditionMenu } from "./conditionUi";
 import { isDefeatedEnemy } from "./conditions";
-import { parseInitiative } from "./tracker";
+import { parseInitiative, splitGroup } from "./tracker";
 
 /** Panel del DM para gestionar el orden de iniciativa. */
-/**
- * Grupo en el nombre: «Goblin x3» o «Goblin ×3» → base «Goblin», cantidad 3.
- * La «x» tiene que ir separada del nombre por un espacio, para que nombres como
- * «T-Rex2» no se tomen por «T-Re» ×2. Sin grupo, la cantidad es null.
- */
-function splitGroup(text: string): { base: string; count: number | null } {
-	const m = text.trim().match(/^(.+?)\s+[x×]\s*(\d+)$/i);
-	return m ? { base: m[1], count: parseInt(m[2], 10) } : { base: text.trim(), count: null };
-}
-
 export class InitiativeView extends ItemView {
 	private listEl!: HTMLElement;
 	private headerEl!: HTMLElement;

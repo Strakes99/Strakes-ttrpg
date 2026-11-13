@@ -5,6 +5,16 @@ import { activeConditions, CONCENTRATION_ID, concentrationDC, INCAPACITATED_ID, 
 import { Combatant, CombatState, Portrait, uid } from "../types";
 import { memoryKey, recalledPortrait, rememberPortrait } from "./portrait";
 
+/**
+ * Grupo en el nombre: «Goblin x3» o «Goblin ×3» → base «Goblin», cantidad 3.
+ * La «x» tiene que ir separada del nombre por un espacio, para que nombres como
+ * «T-Rex2» no se tomen por «T-Re» ×2. Sin grupo, la cantidad es null.
+ */
+export function splitGroup(text: string): { base: string; count: number | null } {
+	const m = text.trim().match(/^(.+?)\s+[x×]\s*(\d+)$/i);
+	return m ? { base: m[1], count: parseInt(m[2], 10) } : { base: text.trim(), count: null };
+}
+
 export interface RollResult {
 	value: number;
 	detail: string;

@@ -121,14 +121,18 @@ export function emptyMap(image: string, width: number, height: number, unit: str
 }
 
 /** Valida el JSON del mapa y rellena valores ausentes (p. ej. si se editó a mano). */
-export function normalizeMap(raw: unknown): MapData {
+/**
+ * Completa un mapa leído del archivo con los valores por defecto. `defaultUnit` se usa
+ * solo si el archivo no indica unidad (p. ej. un .smap escrito a mano).
+ */
+export function normalizeMap(raw: unknown, defaultUnit = "km"): MapData {
 	const r = (raw && typeof raw === "object" ? raw : {}) as Partial<MapData>;
 	const data: MapData = {
 		version: 1,
 		image: typeof r.image === "string" ? r.image : "",
 		width: Number(r.width) || 0,
 		height: Number(r.height) || 0,
-		unit: typeof r.unit === "string" ? r.unit : "km",
+		unit: typeof r.unit === "string" ? r.unit : defaultUnit,
 		scale: typeof r.scale === "number" && r.scale > 0 ? r.scale : null,
 		showDistances: r.showDistances !== false,
 		showPins: r.showPins !== false,
@@ -141,6 +145,7 @@ export function normalizeMap(raw: unknown): MapData {
 	// Una capa inexistente equivale a «sin capa».
 	const layerIds = new Set(data.layers.map((l) => l.id));
 	for (const p of data.pins) {
+		if (typeof p.name !== "string") p.name = "";
 		if (!p.layerId || !layerIds.has(p.layerId)) p.layerId = null;
 		if (typeof p.link !== "string" || !p.link.trim()) p.link = undefined;
 		p.portal = p.portal === true;
@@ -149,6 +154,8 @@ export function normalizeMap(raw: unknown): MapData {
 		if (typeof p.iconColor !== "string" || !p.iconColor) p.iconColor = undefined;
 	}
 	for (const rt of data.routes) {
+		// Un .smap escrito a mano puede no traer nombre: sin él fallarían las etiquetas.
+		if (typeof rt.name !== "string") rt.name = "";
 		if (!rt.layerId || !layerIds.has(rt.layerId)) rt.layerId = null;
 		rt.nodeIds ??= [];
 		rt.segments ??= [];
@@ -270,8 +277,12 @@ export function displayDistance(value: number, unit: string, display: DisplayUni
 	if (display !== "map") {
 		const mpu = milesPerUnit(unit);
 		if (mpu !== null) {
-			const miles = value * mpu;
-			return display === "mi" ? formatDistance(miles, "mi") : formatDistance(miles * KM_PER_MILE, "km");
+			const target = display === "mi" ? "mi" : "km";
+			// El mapa ya está en esa unidad: no hay conversión, se muestra como siempre.
+			if (mpu === (display === "mi" ? 1 : 1 / KM_PER_MILE)) return formatDistance(value, target);
+			// Convertida: con hasta 2 decimales (3,1 mi → «4,99 km»).
+			const converted = display === "mi" ? value * mpu : value * mpu * KM_PER_MILE;
+			return `${converted.toLocaleString(numberLocale(), { maximumFractionDigits: 2 })} ${target}`;
 		}
 	}
 	return formatDistance(value, unit);

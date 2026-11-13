@@ -40,10 +40,10 @@ export function renderConditionChips(container: HTMLElement, c: Combatant, opts:
 		const title = a.level ? T(`${a.info.name} (nivel ${a.level})`, `${a.info.name} (level ${a.level})`) : a.info.name;
 		setTooltip(
 			chip,
-			a.explicit
-				? title
-				: a.auto
-					? T(`${title} · automática (${autoReason(a.info.id)})`, `${title} · automatic (${autoReason(a.info.id)})`)
+			a.auto || a.autoPlaced
+				? T(`${title} · automática (${autoReason(a.info.id)})`, `${title} · automatic (${autoReason(a.info.id)})`)
+				: a.explicit
+					? title
 					: T(`${title} · aplicada por ${a.impliedBy.join(", ")}`, `${title} · applied by ${a.impliedBy.join(", ")}`),
 		);
 		if (!opts.interactive) continue;
@@ -55,7 +55,8 @@ export function renderConditionChips(container: HTMLElement, c: Combatant, opts:
 			e.preventDefault();
 			e.stopPropagation();
 			closeConditionCard();
-			if (a.auto) {
+			// Automáticas (Ensangrentado, Muerto por PG, Inconsciente puesta por el plugin): solo se avisa.
+			if (a.auto || a.autoPlaced) {
 				new Notice(
 					T(
 						`${a.info.name} es automática (${autoReason(a.info.id)}): se quita sola cuando cambian los PG.`,
@@ -101,7 +102,7 @@ function toggleConditionCard(anchor: HTMLElement, a: ActiveCondition): void {
 	const head = card.createDiv("strakes-cond-card-head");
 	renderConditionIcon(head.createSpan(), a.info);
 	head.createSpan({ cls: "strakes-cond-card-title", text: a.level ? T(`${a.info.name} · nivel ${a.level}`, `${a.info.name} · level ${a.level}`) : a.info.name });
-	if (a.auto) card.createDiv({ cls: "strakes-cond-card-note", text: T(`Automática (${autoReason(a.info.id)}).`, `Automatic (${autoReason(a.info.id)}).`) });
+	if (a.auto || a.autoPlaced) card.createDiv({ cls: "strakes-cond-card-note", text: T(`Automática (${autoReason(a.info.id)}).`, `Automatic (${autoReason(a.info.id)}).`) });
 	else if (!a.explicit)
 		card.createDiv({ cls: "strakes-cond-card-note", text: T(`Aplicada por ${a.impliedBy.join(", ")}.`, `Applied by ${a.impliedBy.join(", ")}.`) });
 	if (a.info.description !== undefined) {
@@ -113,7 +114,13 @@ function toggleConditionCard(anchor: HTMLElement, a: ActiveCondition): void {
 			block.createDiv({ cls: "strakes-cond-card-text", text: sec.text });
 		}
 	}
-	card.createDiv({ cls: "strakes-cond-card-hint", text: T("Clic derecho en el icono para quitarla.", "Right-click the icon to remove it.") });
+	card.createDiv({
+		cls: "strakes-cond-card-hint",
+		text:
+			a.auto || a.autoPlaced
+				? T("Se quita sola cuando cambian los PG.", "It goes away on its own when HP changes.")
+				: T("Clic derecho en el icono para quitarla.", "Right-click the icon to remove it."),
+	});
 
 	// Posición: debajo del icono, sin salirse de la ventana.
 	const r = anchor.getBoundingClientRect();

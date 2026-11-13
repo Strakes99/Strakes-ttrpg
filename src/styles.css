@@ -53,6 +53,8 @@
 	max-height: none;
 	object-fit: contain;
 }
+/* El texto sigue siempre el tema de Obsidian (decisión del desarrollador), aunque el fondo
+   elegido para la pantalla de jugadores no contraste con él. */
 .strakes-player-note {
 	font-size: var(--strakes-player-font);
 	max-width: 60em;
@@ -104,7 +106,8 @@ body.strakes-player-window .view-header {
 .strakes-player-initiative {
 	position: absolute;
 	z-index: 10;
-	color: #fff;
+	/* Texto del tema de Obsidian; los recuadros usan el fondo del tema, semitransparente. */
+	color: var(--text-normal);
 	display: flex;
 	flex-direction: column;
 	max-width: 45%;
@@ -120,8 +123,8 @@ body.strakes-player-window .view-header {
 	min-height: 0;
 	overflow: hidden;
 	padding: 0.6em 0.8em;
-	background: rgba(10, 10, 14, 0.78);
-	border: 1px solid rgba(255, 255, 255, 0.15);
+	background: color-mix(in srgb, var(--background-primary) 82%, transparent);
+	border: 1px solid var(--background-modifier-border);
 	border-radius: 10px;
 	backdrop-filter: blur(4px);
 }
@@ -177,7 +180,12 @@ body.strakes-player-window .view-header {
 	inset: 0 0 auto 0;
 	max-height: 100%;
 	justify-content: flex-start;
-	background: linear-gradient(to bottom, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.45) 80%, transparent);
+	background: linear-gradient(
+		to bottom,
+		color-mix(in srgb, var(--background-primary) 78%, transparent),
+		color-mix(in srgb, var(--background-primary) 48%, transparent) 80%,
+		transparent
+	);
 }
 .strakes-pc-wrap {
 	font-size: var(--init-text, 20px);
@@ -192,6 +200,7 @@ body.strakes-player-window .view-header {
 .strakes-pc-round {
 	margin-bottom: calc(var(--card-gap) * 0.75);
 }
+
 .strakes-pc-grid {
 	display: flex;
 	flex-wrap: wrap;
@@ -211,7 +220,7 @@ body.strakes-player-window .view-header {
 	flex-direction: column;
 	border-radius: 8px;
 	overflow: hidden;
-	background: rgba(10, 10, 14, 0.85);
+	background: color-mix(in srgb, var(--background-primary) 88%, transparent);
 }
 .strakes-pc-frame.is-current {
 	outline: 3px solid #fff;
@@ -228,7 +237,7 @@ body.strakes-player-window .view-header {
 	overflow: hidden;
 }
 .strakes-pc-card.is-player .strakes-pc-name {
-	color: #8fd3ff;
+	color: var(--color-blue);
 }
 .strakes-pc-portrait {
 	width: var(--card-size);
@@ -407,7 +416,7 @@ input.strakes-portrait-zoom-num {
 	border-left: 4px solid transparent;
 }
 .strakes-pi-row.is-player .strakes-pi-name {
-	color: #8fd3ff;
+	color: var(--color-blue);
 }
 .strakes-pi-row.is-current {
 	background: rgba(255, 196, 0, 0.22);

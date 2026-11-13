@@ -9,3 +9,6 @@ icons/
 # Documentación interna (solo local)
 /docs/
 /CLAUDE.md
+
+# Salida temporal de los tests (npm test)
+/.test-build/

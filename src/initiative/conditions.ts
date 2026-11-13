@@ -341,6 +341,11 @@ export interface ActiveCondition {
 	explicit: boolean;
 	/** Activada automáticamente por los PG (Ensangrentado). */
 	auto?: boolean;
+	/**
+	 * Guardada en el combatiente, pero la puso el plugin (Inconsciente al caer un PJ/aliado
+	 * a 0 PG). Se muestra como automática y el clic derecho solo avisa (como con `auto`); desde el menú de condiciones sí se puede quitar.
+	 */
+	autoPlaced?: boolean;
 }
 
 /**
@@ -366,6 +371,7 @@ export function isDefeatedEnemy(c: { isPlayer: boolean; hp: number | null }): bo
 /** Por qué se aplica sola una condición automática (para tooltips y avisos). */
 export function autoReason(id: string): string {
 	if (id === "bloodied") return T("PG a la mitad o menos", "HP at half or less");
+	if (id === UNCONSCIOUS_ID) return T("0 PG o menos", "0 HP or less");
 	return T("por sus PG", "from its HP");
 }
 
@@ -385,7 +391,13 @@ export function activeConditions(entries: ConditionEntry[], catalog: ConditionCa
 	for (const e of entries) {
 		const info = conditionById(e.id, catalog);
 		if (!info || byId.has(info.id)) continue;
-		const a: ActiveCondition = { info, level: info.maxLevel ? Math.max(1, Math.min(info.maxLevel, e.level ?? 1)) : undefined, impliedBy: [], explicit: true };
+		const a: ActiveCondition = {
+			info,
+			level: info.maxLevel ? Math.max(1, Math.min(info.maxLevel, e.level ?? 1)) : undefined,
+			impliedBy: [],
+			explicit: true,
+			...(e.auto ? { autoPlaced: true } : {}),
+		};
 		byId.set(info.id, a);
 		out.push(a);
 	}

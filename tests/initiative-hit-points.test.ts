@@ -1,0 +1,43 @@
+import { InitiativeTracker } from "../src/initiative/tracker";
+import { ConditionCatalog, conditionById, activeConditions, sectionsToText, BUILTIN_CONDITIONS, builtinInfo } from "../src/initiative/conditions";
+import { clearNotices, fakePlugin, notices, t } from "./helpers";
+clearNotices();
+const plugin = fakePlugin();
+const tr = new InitiativeTracker(plugin);
+const c = tr.add({ name: "Guerrero", initiative: 12, hp: 30, maxHp: 45 });
+t("nuevo combatiente sin temporales", c.tempHp, null);
+tr.setTempHp(c.id, 18);
+t("temporales 18", [c.hp, c.tempHp], [30, 18]);
+tr.damage(c.id, 10);
+t("daño 10: se gasta de los temporales", [c.hp, c.tempHp], [30, 8]);
+tr.damage(c.id, 12);
+t("daño 12: 8 temporales + 4 PG", [c.hp, c.tempHp], [26, null]);
+tr.heal(c.id, 100);
+t("curación hasta el máximo", c.hp, 45);
+tr.setTempHp(c.id, 10);
+clearNotices();
+tr.setTempHp(c.id, 5);
+t("no se acumulan: 10 → 5 y aviso", [c.tempHp, notices().length > 0 && notices()[0].includes("10 → 5")], [5, true]);
+tr.setTempHp(c.id, 0);
+t("0 quita los temporales", c.tempHp, null);
+tr.damage(c.id, 999);
+t("PG pueden quedar negativos (45 - 999)", c.hp, -954);
+tr.heal(c.id, 5);
+t("curar no toca temporales", [c.hp, c.tempHp], [-949, null]);
+// Concentración: aviso aunque el daño lo absorban los temporales
+tr.update(c.id, { hp: 40 });
+tr.addCondition(c.id, "concentration");
+tr.setTempHp(c.id, 20);
+clearNotices();
+tr.damage(c.id, 24);
+t("concentración: CD con el daño total (24 → CD 12), aunque lo absorban los temporales", notices().some((n: string) => n.includes("CD 12")), true);
+
+// Edición completa de una condición por defecto
+const cat: ConditionCatalog = { customConditions: [], conditionOverrides: { poisoned: { name: "Envenenado (casero)", description: "Desventaja en todo.", implies: ["frightened"], maxLevel: 3, color: null } } };
+const info = conditionById("poisoned", cat)!;
+t("override nombre/descripción/niveles/color", [info.name, info.description, info.maxLevel, info.color], ["Envenenado (casero)", "Desventaja en todo.", 3, undefined]);
+t("override aplica otra condición", activeConditions([{ id: "poisoned", level: 2 }], cat).map((a) => a.info.id + (a.explicit ? "" : "*")), ["poisoned", "frightened*"]);
+const cat2: ConditionCatalog = { customConditions: [], conditionOverrides: { exhaustion: { maxLevel: null }, paralyzed: { implies: [] } } };
+t("quitar acumulativa a Agotamiento", conditionById("exhaustion", cat2)!.maxLevel, undefined);
+t("quitar la condición aplicada", activeConditions([{ id: "paralyzed" }], cat2).length, 1);
+t("texto de apartados", sectionsToText(builtinInfo(BUILTIN_CONDITIONS.find((b) => b.id === "grappled")!).sections).split("\n\n")[0], "Velocidad 0. Tu Velocidad es 0 y no puede aumentar.");

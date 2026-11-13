@@ -29,6 +29,7 @@ export function editSegmentDialog(app: App, data: MapData, route: MapRoute, i: n
 		modal.titleEl.setText(T(`Tramo ${i + 1}${routeName}`, `Segment ${i + 1}${routeName}`));
 		const el = modal.contentEl;
 		const save = () => {
+			if (result.distance !== null && result.distance < 0) warnNegativeDistances([i]);
 			done = true;
 			resolve(result);
 			modal.close();
@@ -126,6 +127,22 @@ function layerDropdown(
 			rerender();
 		});
 	});
+}
+
+/**
+ * Las distancias negativas se guardan (alguien puede querer usarlas), pero se avisa: la
+ * medición del camino más corto da resultados extraños con ellas. `segments`: índices (0-based).
+ */
+function warnNegativeDistances(segments: number[]): void {
+	const list = segments.map((i) => i + 1).join(", ");
+	const many = segments.length > 1;
+	new Notice(
+		T(
+			`${many ? "Los tramos" : "El tramo"} ${list} ${many ? "tienen" : "tiene"} distancia negativa. Se guarda igual, pero la medición del camino más corto puede dar resultados extraños.`,
+			`Segment${many ? "s" : ""} ${list} ${many ? "have" : "has"} a negative distance. It's saved anyway, but shortest-path measuring may give odd results.`,
+		),
+		8000,
+	);
 }
 
 /** Añade al mapa las capas creadas en un diálogo (al guardarlo). */
@@ -483,6 +500,8 @@ export class RouteModal extends Modal {
 					.setButtonText(T("Guardar", "Save"))
 					.setCta()
 					.onClick(() => {
+						const negative = this.route.segments.flatMap((d, i) => (d !== null && d < 0 ? [i] : []));
+						if (negative.length) warnNegativeDistances(negative);
 						commitLayers(this.data, this.newLayers);
 						this.onDone(this.route, false);
 						this.close();

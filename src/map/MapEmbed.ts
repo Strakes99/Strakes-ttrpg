@@ -82,7 +82,7 @@ export class MapEmbed extends Component {
 	/** Obsidian lo llama tras crear el embed. */
 	async loadFile(): Promise<void> {
 		try {
-			this.data = normalizeMap(JSON.parse(await this.app.vault.cachedRead(this.file)));
+			this.data = normalizeMap(JSON.parse(await this.app.vault.cachedRead(this.file)), this.plugin.settings.defaultUnit);
 		} catch {
 			this.ctx.containerEl.empty();
 			this.ctx.containerEl.createDiv({ cls: "strakes-warning", text: T(`No se pudo leer el mapa ${this.file.basename}.`, `Couldn't read the map ${this.file.basename}.`) });
