@@ -8,7 +8,6 @@ import { customIconName, getIconLibrary } from "./icons";
 // Piezas de dibujo compartidas por el editor de mapas (MapView) y el mapa incrustado (MapEmbed).
 
 export const toLatLng = (p: Pt): L.LatLng => L.latLng(p.y, p.x);
-export const toPt = (ll: L.LatLng): Pt => ({ x: ll.lng, y: ll.lat });
 
 export function mapBounds(data: MapData): L.LatLngBounds {
 	return L.latLngBounds([0, 0], [data.height, data.width]);
@@ -17,7 +16,7 @@ export function mapBounds(data: MapData): L.LatLngBounds {
 /** Icono del pin: gota de color con un emoji, texto o icono de Lucide. */
 export function pinIcon(pin: MapPin): L.DivIcon {
 	const el = createDiv({ cls: pin.portal ? "strakes-pin is-portal" : "strakes-pin" });
-	el.style.setProperty("--pin-color", pin.color || DEFAULT_PIN_COLOR);
+	el.setCssProps({ "--pin-color": pin.color || DEFAULT_PIN_COLOR });
 	const iconEl = el.createDiv("strakes-pin-icon");
 	renderPinIconInto(iconEl, pin.icon ?? "", pin.iconColor, defaultPinIcon(pin));
 	// La punta de la gota está en (16, 36): ver la geometría en styles.css (.strakes-pin).
@@ -47,7 +46,7 @@ export function iconSupportsColor(icon: string): boolean {
  */
 export function renderPinIconInto(el: HTMLElement, icon: string, color: string | undefined, fallbackIcon: string): void {
 	const kind = pinIconKind(icon);
-	if (color && kind !== "emoji") el.style.color = color;
+	if (color && kind !== "emoji") el.setCssStyles({ color });
 	if (kind === "custom") {
 		// SVG personalizado; si se borró de la carpeta, se usa el icono por defecto.
 		if (!getIconLibrary()?.render(el, customIconName(icon)!, color)) setIcon(el, fallbackIcon);
@@ -112,6 +111,6 @@ export function nodeMarker(n: RouteNode, color: string, opts: { draggable: boole
 		keyboard: false,
 		interactive: opts.interactive ?? true,
 	});
-	marker.on("add", () => marker.getElement()?.style.setProperty("--route-color", color));
+	marker.on("add", () => marker.getElement()?.setCssProps({ "--route-color": color }));
 	return marker;
 }

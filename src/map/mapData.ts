@@ -373,12 +373,16 @@ export function formatHours(hours: number): string {
 /** Tiempo de viaje con días de marcha según el paso: «1 día y 6 h (14 h de marcha)». */
 export function formatTravelTime(hours: number, pace: Pace): string {
 	const perDay = PACES[pace].hoursPerDay;
-	const days = Math.floor(hours / perDay + 1e-9);
-	const rest = hours - days * perDay;
+	// En minutos enteros, igual que formatHours: así un resto que se redondea a una
+	// jornada completa cuenta como un día más («2 días», no «1 día y 8 h»).
+	const totalMin = Math.round(hours * 60);
+	const perDayMin = Math.round(perDay * 60);
+	const days = Math.floor(totalMin / perDayMin);
+	const restMin = totalMin - days * perDayMin;
 	if (!days) return formatHours(hours);
 	const s = days > 1 ? "s" : "";
 	const dayTxt = T(`${days} día${s}`, `${days} day${s}`);
-	const restTxt = rest * 60 >= 1 ? T(` y ${formatHours(rest)}`, ` and ${formatHours(rest)}`) : "";
+	const restTxt = restMin > 0 ? T(` y ${formatHours(restMin / 60)}`, ` and ${formatHours(restMin / 60)}`) : "";
 	const perDayTxt = perDay.toLocaleString(numberLocale());
 	return T(
 		`${dayTxt}${restTxt} (${formatHours(hours)} de marcha, ${perDayTxt} h/día)`,

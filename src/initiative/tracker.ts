@@ -1,7 +1,7 @@
 import { Notice } from "obsidian";
 import { T } from "../i18n";
 import type StrakesTTRPG from "../main";
-import { activeConditions, CONCENTRATION_ID, concentrationDC, INCAPACITATED_ID, REMAINS_AFTER, UNCONSCIOUS_ID } from "./conditions";
+import { activeConditions, CONCENTRATION_ID, concentrationDC, INCAPACITATED_ID, isDefeatedEnemy, REMAINS_AFTER, UNCONSCIOUS_ID } from "./conditions";
 import { Combatant, CombatState, Portrait, uid } from "../types";
 import { memoryKey, recalledPortrait, rememberPortrait } from "./portrait";
 
@@ -157,9 +157,9 @@ export class InitiativeTracker {
 		this.changed();
 	}
 
-	// ---------- Puntos de vida ----------
+	// ---------- Puntos de golpe ----------
 
-	/** Curación: suma PV hasta el máximo (también desde PV negativos). No afecta a los temporales. */
+	/** Curación: suma PG hasta el máximo (también desde PG negativos). No afecta a los temporales. */
 	heal(id: string, amount: number): void {
 		const c = this.combatants.find((x) => x.id === id);
 		if (!c || amount <= 0 || c.hp === null) return;
@@ -169,7 +169,7 @@ export class InitiativeTracker {
 	}
 
 	/**
-	 * Daño: se gasta primero de los PV temporales y el resto de los PV, que pueden quedar
+	 * Daño: se gasta primero de los PG temporales y el resto de los PG, que pueden quedar
 	 * en negativo. Con Concentración, avisa de la tirada de Constitución por el daño total.
 	 */
 	damage(id: string, amount: number): void {
@@ -193,7 +193,7 @@ export class InitiativeTracker {
 	}
 
 	/**
-	 * PJ y aliados: a 0 PV o menos quedan Inconscientes (se añade sola). Al subir de 0 se
+	 * PJ y aliados: a 0 PG o menos quedan Inconscientes (se añade sola). Al subir de 0 se
 	 * quita esa Inconsciente automática y, como dice la regla, siguen Derribados.
 	 * Una Inconsciente añadida a mano (p. ej. por un conjuro) no se toca.
 	 */
@@ -214,7 +214,7 @@ export class InitiativeTracker {
 	}
 
 	/**
-	 * PV temporales: no se acumulan. Los nuevos sustituyen a los que hubiera (aunque sean
+	 * PG temporales: no se acumulan. Los nuevos sustituyen a los que hubiera (aunque sean
 	 * menos), y se avisa. 0 = quitarlos.
 	 */
 	setTempHp(id: string, amount: number): void {
@@ -232,7 +232,7 @@ export class InitiativeTracker {
 		return c.conditions.some((e) => e.id === CONCENTRATION_ID);
 	}
 
-	/** La Concentración termina si el combatiente queda Incapacitado o a 0 PV. */
+	/** La Concentración termina si el combatiente queda Incapacitado o a 0 PG. */
 	private checkConcentration(c: Combatant): void {
 		if (!this.hasConcentration(c)) return;
 		let reason = "";
@@ -318,9 +318,9 @@ export class InitiativeTracker {
 		this.changed();
 	}
 
-	/** Enemigo tachado (0 PV o menos): su turno se salta. Los PJ y aliados nunca se saltan. */
+	/** Enemigo tachado (0 PG o menos): su turno se salta. Los PJ y aliados nunca se saltan. */
 	private skipsTurn(c: Combatant): boolean {
-		return !c.isPlayer && c.hp !== null && c.hp <= 0;
+		return isDefeatedEnemy(c);
 	}
 
 	/** Siguiente turno, saltando a los enemigos tachados. Al dar la vuelta, sube la ronda. */

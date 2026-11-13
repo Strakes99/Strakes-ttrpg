@@ -11,7 +11,7 @@ const DEFAULT_CUSTOM_COLOR = "#e03131";
 /** Pinta el icono de una condición (sin fondo) dentro de `el`. */
 export function renderConditionIcon(el: HTMLElement, info: ConditionInfo): void {
 	el.addClass("strakes-cond-icon");
-	if (info.color) el.style.color = info.color;
+	if (info.color) el.setCssStyles({ color: info.color });
 	renderPinIconInto(el, info.icon, info.color, "circle-help");
 	// Si el icono de Lucide no existe en esta versión de Obsidian, se usa la inicial.
 	if (!el.firstChild) el.setText(info.name.charAt(0).toUpperCase());
@@ -119,13 +119,12 @@ function toggleConditionCard(anchor: HTMLElement, a: ActiveCondition): void {
 	const r = anchor.getBoundingClientRect();
 	const win = anchor.win;
 	const width = Math.min(300, win.innerWidth - 16);
-	card.style.width = `${width}px`;
+	card.setCssStyles({ width: `${width}px` });
 	const left = Math.max(8, Math.min(r.left, win.innerWidth - width - 8));
-	card.style.left = `${left}px`;
-	card.style.top = `${r.bottom + 6}px`;
+	card.setCssStyles({ left: `${left}px`, top: `${r.bottom + 6}px` });
 	// Si no cabe debajo, se abre encima.
 	const h = card.offsetHeight;
-	if (r.bottom + 6 + h > win.innerHeight - 8 && r.top - 6 - h > 8) card.style.top = `${r.top - 6 - h}px`;
+	if (r.bottom + 6 + h > win.innerHeight - 8 && r.top - 6 - h > 8) card.setCssStyles({ top: `${r.top - 6 - h}px` });
 
 	const onDown = (e: MouseEvent) => {
 		if (!card.contains(e.target as Node) && !anchor.contains(e.target as Node)) closeConditionCard();

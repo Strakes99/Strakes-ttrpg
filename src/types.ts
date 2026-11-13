@@ -11,7 +11,7 @@ export interface Combatant {
 	initiative: number;
 	hp: number | null;
 	maxHp: number | null;
-	/** Puntos de vida temporales (se gastan antes que los PV; no se acumulan). */
+	/** Puntos de golpe temporales (se gastan antes que los PG; no se acumulan). */
 	tempHp: number | null;
 	/** Retrato para el modo Tarjetas (imagen de la bóveda + encuadre). */
 	portrait?: Portrait | null;
@@ -39,7 +39,7 @@ export interface Portrait {
 export interface ConditionEntry {
 	id: string;
 	level?: number;
-	/** Puesta automáticamente por el plugin (Inconsciente al llegar un PJ/aliado a 0 PV). */
+	/** Puesta automáticamente por el plugin (Inconsciente al llegar un PJ/aliado a 0 PG). */
 	auto?: boolean;
 }
 
@@ -109,7 +109,7 @@ export interface StrakesSettings {
 	portraitMemory: Record<string, Portrait>;
 	overlayPosition: OverlayPosition;
 	showPlayerHp: boolean;
-	/** Mostrar a los jugadores los PV de los enemigos. */
+	/** Mostrar a los jugadores los PG de los enemigos. */
 	showNpcHp: boolean;
 	defaultUnit: string;
 	/**

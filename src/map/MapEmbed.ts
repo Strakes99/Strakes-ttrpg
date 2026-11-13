@@ -3,6 +3,7 @@ import { App, Component, Keymap, Menu, Notice, setIcon, setTooltip, TFile } from
 import { T } from "../i18n";
 import type StrakesTTRPG from "../main";
 import { resizeObserverFor } from "../ui/dom";
+import { loadImageSize } from "../ui/modals";
 import { PinHoverParent } from "./hover";
 import { linktextOf, resolveWikilink } from "./links";
 import { isItemVisible, ItemType, MapData, MapPin, nodeMap, normalizeMap, ROUTE_COLORS, routePath } from "./mapData";
@@ -14,8 +15,6 @@ export interface EmbedContext {
 	containerEl: HTMLElement;
 	linktext: string;
 	sourcePath: string;
-	showInline?: boolean;
-	depth?: number;
 }
 
 const DEFAULT_HEIGHT = 400;
@@ -60,6 +59,13 @@ export class MapEmbed extends Component {
 
 	onload(): void {
 		this.registerEvent(this.plugin.events.on("icons", () => this.render()));
+		// Si la imagen del mapa aparece después (se crea, se mueve o se renombra a esa ruta),
+		// se carga en ese momento.
+		const imageAppeared = (path: string) => {
+			if (this.data && path === this.data.image && !this.imageOverlay) this.render();
+		};
+		this.registerEvent(this.app.vault.on("create", (f) => imageAppeared(f.path)));
+		this.registerEvent(this.app.vault.on("rename", (f) => imageAppeared(f.path)));
 		// Si se edita el mapa (en su vista de edición u otro sitio), el embed se refresca.
 		this.registerEvent(
 			this.app.vault.on("modify", (f) => {
@@ -97,10 +103,10 @@ export class MapEmbed extends Component {
 		this.explicitSize = this.parseSize();
 		const wrapper = host.createDiv("strakes-map-embed");
 		if (this.explicitSize) {
-			wrapper.style.height = `${this.explicitSize.height}px`;
-			if (this.explicitSize.width) wrapper.style.width = `${this.explicitSize.width}px`;
+			wrapper.setCssStyles({ height: `${this.explicitSize.height}px` });
+			if (this.explicitSize.width) wrapper.setCssStyles({ width: `${this.explicitSize.width}px` });
 		} else {
-			wrapper.style.height = `${DEFAULT_HEIGHT}px`; // provisional hasta medir el ancho disponible
+			wrapper.setCssStyles({ height: `${DEFAULT_HEIGHT}px` }); // provisional hasta medir el ancho disponible
 		}
 		this.wrapper = wrapper;
 
@@ -169,8 +175,8 @@ export class MapEmbed extends Component {
 		const w = Math.round(innerW + border);
 		const h = `${Math.round(innerH + border)}px`;
 		const width = w < avail - 1 ? `${w}px` : "";
-		if (wrapper.style.height !== h) wrapper.style.height = h;
-		if (wrapper.style.width !== width) wrapper.style.width = width;
+		if (wrapper.style.height !== h) wrapper.setCssStyles({ height: h });
+		if (wrapper.style.width !== width) wrapper.setCssStyles({ width });
 	}
 
 	private fitWhole(animate: boolean): void {
@@ -319,15 +325,22 @@ export class MapEmbed extends Component {
 		const content = this.content;
 		if (!data || !map || !content) return;
 
-		if (data.image !== this.loadedImage) {
+		// Se reintenta mientras no haya imagen (como en el editor): si no existía o no se
+		// conocía su tamaño, se carga en cuanto sea posible. La clave incluye el tamaño para
+		// rehacer el encuadre si cambia.
+		const imageKey = `${data.image}|${data.width}x${data.height}`;
+		if (imageKey !== this.loadedImage || !this.imageOverlay) {
 			this.imageOverlay?.remove();
 			this.imageOverlay = null;
-			this.loadedImage = data.image;
+			this.loadedImage = imageKey;
 			const img = this.app.vault.getAbstractFileByPath(data.image);
-			if (img instanceof TFile && data.width && data.height) {
-				this.imageOverlay = L.imageOverlay(this.app.vault.getResourcePath(img), mapBounds(data), { interactive: false }).addTo(map);
-				this.imageOverlay.bringToBack();
-				map.setMaxBounds(mapBounds(data).pad(0.5));
+			if (img instanceof TFile) {
+				const src = this.app.vault.getResourcePath(img);
+				if (data.width && data.height) {
+					this.imageOverlay = L.imageOverlay(src, mapBounds(data), { interactive: false }).addTo(map);
+					this.imageOverlay.bringToBack();
+					map.setMaxBounds(mapBounds(data).pad(0.5));
+				} else this.measureImage(data, src);
 			}
 		}
 
@@ -397,6 +410,27 @@ export class MapEmbed extends Component {
 		// Pulso visual en el destino, como en el editor.
 		const ring = L.circleMarker(toLatLng(dest), { radius: 30, className: "strakes-pulse", interactive: false }).addTo(map);
 		window.setTimeout(() => ring.remove(), 2200);
+	}
+
+	/**
+	 * Mapa sin tamaño guardado (p. ej. editado a mano o aún no abierto en el editor): se mide
+	 * la imagen aquí. El tamaño queda solo en memoria, porque el embed nunca escribe el archivo.
+	 */
+	private measuring = false;
+	private measureImage(data: MapData, src: string): void {
+		if (this.measuring) return;
+		this.measuring = true;
+		loadImageSize(src)
+			.then(({ width, height }) => {
+				this.measuring = false;
+				if (this.data !== data || !width || !height) return;
+				data.width = width;
+				data.height = height;
+				this.render();
+			})
+			.catch(() => {
+				this.measuring = false;
+			});
 	}
 
 	/** Encuadre inicial: el pin indicado en #subpath o el mapa completo. */

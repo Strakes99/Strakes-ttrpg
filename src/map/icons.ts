@@ -152,10 +152,6 @@ export function iconFolder(name: string): string {
 	return i >= 0 ? name.slice(0, i) : "";
 }
 
-/** Nombre corto del icono, sin carpeta. */
-export function iconLabel(name: string): string {
-	return name.slice(name.lastIndexOf("/") + 1);
-}
 
 /**
  * Pinta todas las formas del SVG de un color: cambia los rellenos y trazos que no
@@ -196,16 +192,43 @@ function sanitizeSvgElement(text: string): SVGElement | null {
 	const svg = doc.documentElement as unknown as SVGElement | null;
 	if (!svg || svg.nodeName.toLowerCase() !== "svg" || doc.getElementsByTagName("parsererror").length) return null;
 
-	for (const tag of ["script", "foreignObject", "iframe", "object", "embed"])
-		for (const el of Array.from(svg.getElementsByTagName(tag))) el.remove();
+	// Elementos peligrosos o que cargan contenido externo. Se comparan por nombre local
+	// (sin prefijo, para que «html:iframe» no se cuele) y se quita todo lo que esté en el
+	// espacio de nombres de HTML.
+	for (const el of Array.from(svg.getElementsByTagName("*"))) {
+		const name = el.localName.toLowerCase();
+		const animatesLink = (name === "set" || name === "animate") && /href$/i.test(el.getAttribute("attributeName") ?? "");
+		if (BLOCKED_ELEMENTS.has(name) || el.namespaceURI === XHTML_NS || animatesLink) el.remove();
+	}
 
 	const all = [svg, ...Array.from(svg.getElementsByTagName("*"))];
 	for (const el of all) {
+		// <style> interno: sin @import ni url(...) externos.
+		if (el.localName.toLowerCase() === "style") {
+			const css = sanitizeCss(el.textContent ?? "");
+			if (css === null) {
+				el.remove();
+				continue;
+			}
+			el.textContent = css;
+		}
 		for (const attr of Array.from(el.attributes)) {
-			const n = attr.name.toLowerCase();
-			const v = attr.value.trim().toLowerCase();
-			if (n.startsWith("on")) el.removeAttribute(attr.name);
-			else if ((n === "href" || n === "xlink:href") && !v.startsWith("#") && !v.startsWith("data:image/")) el.removeAttribute(attr.name);
+			const n = attr.localName.toLowerCase();
+			if (n.startsWith("on")) {
+				el.removeAttribute(attr.name);
+				continue;
+			}
+			// Enlaces y fuentes: solo referencias internas (#id) o imágenes incrustadas (data:image/).
+			if ((n === "href" || n === "src" || n === "srcset") && !isInternalRef(attr.value)) {
+				el.removeAttribute(attr.name);
+				continue;
+			}
+			// style="…" y atributos con url(…) (p. ej. fill="url(#degradado)"): sin recursos externos.
+			if (n === "style" || /url\s*\(|image-set\s*\(/i.test(attr.value)) {
+				const css = sanitizeCss(attr.value);
+				if (css === null) el.removeAttribute(attr.name);
+				else if (css !== attr.value) el.setAttribute(attr.name, css);
+			}
 		}
 	}
 
@@ -219,6 +242,31 @@ function sanitizeSvgElement(text: string): SVGElement | null {
 	svg.removeAttribute("height");
 	// Los colores del SVG se respetan tal cual.
 	return svg;
+}
+
+const XHTML_NS = "http://www.w3.org/1999/xhtml";
+
+/** Elementos que se eliminan siempre de un SVG (nombre local, en minúsculas). */
+const BLOCKED_ELEMENTS = new Set(["script", "foreignobject", "iframe", "object", "embed", "link", "meta", "base"]);
+
+/** Referencia que no sale del propio SVG: «#id» o una imagen incrustada «data:image/…». */
+function isInternalRef(value: string): boolean {
+	const v = value.trim().toLowerCase();
+	return v.startsWith("#") || v.startsWith("data:image/");
+}
+
+/**
+ * Limpia CSS de un SVG: quita las reglas @import y cambia por «none» los url(…) e
+ * image-set(…) que apunten fuera del SVG (se conservan url(#id) y las imágenes data:image/).
+ * Devuelve null si el CSS contiene escapes con «\»: con ellos se puede disfrazar un url(…),
+ * así que ese CSS se descarta entero (en iconos normales no aparecen).
+ */
+function sanitizeCss(css: string): string | null {
+	if (css.includes("\\")) return null;
+	return css
+		.replace(/@import[^;]*;?/gi, "")
+		.replace(/url\s*\(\s*(['"]?)([^'")]*)\1\s*\)/gi, (match: string, _quote: string, target: string) => (isInternalRef(target) ? match : "none"))
+		.replace(/(?:-webkit-)?image-set\s*\([^)]*\)/gi, "none");
 }
 
 /** Biblioteca compartida (la crea el plugin al cargar). */

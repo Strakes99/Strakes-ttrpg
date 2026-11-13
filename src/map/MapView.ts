@@ -581,7 +581,7 @@ export class MapView extends TextFileView {
 	 */
 	private renderBendHandles(route: MapRoute, nodes: Map<string, RouteNode>, group: L.LayerGroup): void {
 		const handleIcon = (cls: string) => L.divIcon({ className: cls, html: "", iconSize: [12, 12], iconAnchor: [6, 6] });
-		const setColor = (m: L.Marker) => m.on("add", () => m.getElement()?.style.setProperty("--route-color", route.color));
+		const setColor = (m: L.Marker) => m.on("add", () => m.getElement()?.setCssProps({ "--route-color": route.color }));
 		const finish = () => {
 			this.persist();
 			this.renderAll();
@@ -660,7 +660,7 @@ export class MapView extends TextFileView {
 		tb.empty();
 		const tool = (mode: Mode, icon: string, label: string) => {
 			const b = this.toolButton(tb, icon, label, () => this.setMode(this.mode === mode ? "navigate" : mode));
-			b.toggleClass("is-active", this.mode === mode || (mode === "route" && this.mode === "route"));
+			b.toggleClass("is-active", this.mode === mode);
 		};
 		// Deshacer / rehacer los cambios del mapa.
 		this.undoBtn = this.toolButton(tb, "undo-2", T("Deshacer", "Undo"), () => this.undo());
@@ -674,7 +674,7 @@ export class MapView extends TextFileView {
 		if (this.mode === "measure") {
 			// Paso del viaje: cambia el tiempo calculado (se recuerda entre sesiones).
 			const seg = tb.createDiv("strakes-segmented strakes-pace");
-			for (const pace of ["slow", "normal", "fast"] as Pace[]) {
+			for (const pace of Object.keys(PACES) as Pace[]) {
 				const b = seg.createEl("button", { text: PACES[pace].label });
 				b.toggleClass("is-active", this.plugin.settings.travelPace === pace);
 				const perDay = PACES[pace].hoursPerDay.toLocaleString(numberLocale());
@@ -800,7 +800,7 @@ export class MapView extends TextFileView {
 				const row = routesSec.createDiv("strakes-panel-row");
 				row.toggleClass("is-current", r.id === this.selectedRouteId);
 				const sw = row.createDiv("strakes-swatch");
-				sw.style.background = r.color;
+				sw.setCssStyles({ background: r.color });
 				row.createDiv({ cls: "strakes-panel-name", text: r.name });
 				row.createDiv({ cls: "strakes-panel-meta", text: formatTotal(routeTotal(data, r, nodes), data.unit, this.plugin.settings.displayUnit) });
 				row.onclick = () => {
@@ -825,7 +825,7 @@ export class MapView extends TextFileView {
 				for (const p of data.pins.filter((x) => x.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name))) {
 					const row = list.createDiv("strakes-panel-row");
 					const sw = row.createDiv("strakes-swatch is-round");
-					sw.style.background = p.color;
+					sw.setCssStyles({ background: p.color });
 					row.createDiv({ cls: "strakes-panel-name", text: p.name });
 					row.createDiv({ cls: "strakes-panel-meta", text: data.layers.find((l) => l.id === p.layerId)?.name ?? "" });
 					row.onclick = () => this.map?.flyTo(this.ll(p), Math.max(this.map.getZoom(), 0), { duration: 0.6 });
@@ -935,7 +935,6 @@ export class MapView extends TextFileView {
 			this.measureText = "";
 			this.lastMeasure = null;
 		}
-		if (mode === "route" && !this.activeRouteId) this.activeRouteIsNew = true;
 		this.map?.doubleClickZoom[mode === "navigate" ? "enable" : "disable"]();
 		this.renderAll();
 	}
@@ -1272,7 +1271,7 @@ export class MapView extends TextFileView {
 			L.circleMarker(this.ll(b), { radius: 4, color: route.color, fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(layer);
 	}
 
-	private finishRoute(openModal = true): void {
+	private finishRoute(): void {
 		const data = this.mapData;
 		const route = this.activeRoute();
 		const wasNew = this.activeRouteIsNew;
@@ -1281,7 +1280,7 @@ export class MapView extends TextFileView {
 		this.extendAtStart = false;
 		// Puntos de curva sin nodo final: se descartan.
 		this.pendingBends = [];
-		if (this.mode === "route" && openModal) {
+		if (this.mode === "route") {
 			this.mode = "navigate";
 			this.map?.doubleClickZoom.enable();
 		}
@@ -1289,7 +1288,7 @@ export class MapView extends TextFileView {
 			if (route.nodeIds.length < 2) {
 				data.routes = data.routes.filter((r) => r.id !== route.id);
 				pruneNodes(data);
-			} else if (wasNew && openModal) {
+			} else if (wasNew) {
 				this.openRouteModal(route);
 			}
 			this.persist();
@@ -1646,36 +1645,34 @@ export class MapView extends TextFileView {
 					this.renderAll();
 				}),
 		);
-		{
-			m.addSeparator();
-			m.addItem((i) =>
-				i
-					.setTitle(T("Eliminar capa…", "Delete layer…"))
-					.setIcon("trash-2")
-					.onClick(async () => {
-						const nP = data.pins.filter((p) => p.layerId === layerId).length;
-						const nR = data.routes.filter((r) => r.layerId === layerId).length;
-						const ok =
-							nP + nR === 0 ||
-							(await confirmDialog(
-								this.app,
-								T("Eliminar capa", "Delete layer"),
-								T(
-									`La capa «${layer.name}» tiene ${nP} marcadores y ${nR} rutas. Quedarán sin capa (no se eliminan).`,
-									`The layer "${layer.name}" has ${nP} markers and ${nR} routes. They'll be left without a layer (they aren't deleted).`,
-								),
-								T("Eliminar capa", "Delete layer"),
-							));
-						if (!ok) return;
-						for (const p of data.pins) if (p.layerId === layerId) p.layerId = null;
-						for (const r of data.routes) if (r.layerId === layerId) r.layerId = null;
-						data.layers = data.layers.filter((l) => l.id !== layerId);
-						if (this.currentLayerId === layerId) this.currentLayerId = null;
-						this.persist();
-						this.renderAll();
-					}),
-			);
-		}
+		m.addSeparator();
+		m.addItem((i) =>
+			i
+				.setTitle(T("Eliminar capa…", "Delete layer…"))
+				.setIcon("trash-2")
+				.onClick(async () => {
+					const nP = data.pins.filter((p) => p.layerId === layerId).length;
+					const nR = data.routes.filter((r) => r.layerId === layerId).length;
+					const ok =
+						nP + nR === 0 ||
+						(await confirmDialog(
+							this.app,
+							T("Eliminar capa", "Delete layer"),
+							T(
+								`La capa «${layer.name}» tiene ${nP} marcadores y ${nR} rutas. Quedarán sin capa (no se eliminan).`,
+								`The layer "${layer.name}" has ${nP} markers and ${nR} routes. They'll be left without a layer (they aren't deleted).`,
+							),
+							T("Eliminar capa", "Delete layer"),
+						));
+					if (!ok) return;
+					for (const p of data.pins) if (p.layerId === layerId) p.layerId = null;
+					for (const r of data.routes) if (r.layerId === layerId) r.layerId = null;
+					data.layers = data.layers.filter((l) => l.id !== layerId);
+					if (this.currentLayerId === layerId) this.currentLayerId = null;
+					this.persist();
+					this.renderAll();
+				}),
+		);
 		m.showAtMouseEvent(evt);
 	}
 

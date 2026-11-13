@@ -21,7 +21,7 @@ export function watchStatusBarGap(owner: Component, el: HTMLElement): () => void
 			const overlapY = c.bottom - b.top;
 			if (visible && overlapX && overlapY > 0 && c.top < b.top) gap = Math.ceil(overlapY);
 		}
-		el.style.setProperty("--strakes-statusbar-gap", `${gap}px`);
+		el.setCssProps({ "--strakes-statusbar-gap": `${gap}px` });
 	};
 	const schedule = () => {
 		if (!frame) frame = el.win.requestAnimationFrame(update);

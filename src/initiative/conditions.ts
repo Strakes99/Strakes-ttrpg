@@ -339,18 +339,27 @@ export interface ActiveCondition {
 	/** Nombres de las condiciones que la aplican (vacío si se eligió a mano). */
 	impliedBy: string[];
 	explicit: boolean;
-	/** Activada automáticamente por los PV (Ensangrentado). */
+	/** Activada automáticamente por los PG (Ensangrentado). */
 	auto?: boolean;
 }
 
 /**
- * ¿Muerto por sus PV? Enemigo: 0 PV o menos. PJ/aliado: PV iguales o inferiores al
- * negativo de sus PV máximos (p. ej. −45 con 45 máximos).
+ * ¿Muerto por sus PG? Enemigo: 0 PG o menos. PJ/aliado: PG iguales o inferiores al
+ * negativo de sus PG máximos (p. ej. −45 con 45 máximos).
  */
 export function isDead(c: { isPlayer: boolean; hp: number | null; maxHp: number | null }): boolean {
 	if (c.hp === null) return false;
 	if (!c.isPlayer) return c.hp <= 0;
 	return c.maxHp !== null && c.maxHp > 0 && c.hp <= -c.maxHp;
+}
+
+/**
+ * Enemigo derrotado: 0 PG o menos. Se tacha, su turno se salta y los jugadores dejan de
+ * ver sus PG y sus condiciones (salvo Muerto). Los PJ y aliados nunca cuentan como
+ * derrotados: a 0 PG quedan Inconscientes.
+ */
+export function isDefeatedEnemy(c: { isPlayer: boolean; hp: number | null }): boolean {
+	return !c.isPlayer && c.hp !== null && c.hp <= 0;
 }
 
 /** Motivo de una condición automática, para mostrarlo al DM. */
@@ -360,7 +369,7 @@ export function autoReason(id: string): string {
 	return T("por sus PG", "from its HP");
 }
 
-/** ¿Está Ensangrentado por sus PV? (la mitad de sus PV máximos o menos). */
+/** ¿Está Ensangrentado por sus PG? (la mitad de sus PG máximos o menos). */
 export function isBloodied(hp: number | null, maxHp: number | null): boolean {
 	return hp !== null && maxHp !== null && maxHp > 0 && hp <= maxHp / 2;
 }
@@ -368,7 +377,7 @@ export function isBloodied(hp: number | null, maxHp: number | null): boolean {
 /**
  * Condiciones efectivas de un combatiente: las elegidas, las que estas aplican (en
  * cadena: una condición propia puede aplicar Paralizado, que aplica Incapacitado) y
- * Ensangrentado si sus PV lo indican. Sin duplicados; las que ya no existen se ignoran.
+ * Ensangrentado si sus PG lo indican. Sin duplicados; las que ya no existen se ignoran.
  */
 export function activeConditions(entries: ConditionEntry[], catalog: ConditionCatalog, opts: { bloodied?: boolean; dead?: boolean } = {}): ActiveCondition[] {
 	const out: ActiveCondition[] = [];
@@ -380,7 +389,7 @@ export function activeConditions(entries: ConditionEntry[], catalog: ConditionCa
 		byId.set(info.id, a);
 		out.push(a);
 	}
-	// Automáticas por PV: Muerto y Ensangrentado.
+	// Automáticas por PG: Muerto y Ensangrentado.
 	for (const [on, id] of [[opts.dead, DEAD_ID], [opts.bloodied, BLOODIED_ID]] as const) {
 		if (!on || byId.has(id)) continue;
 		const info = conditionById(id, catalog);

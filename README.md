@@ -84,7 +84,7 @@ Opens in the right sidebar.
 - **Maps** are plain JSON files with the `.smap` extension, stored in your vault.
 - **Settings, the current combat, custom conditions and remembered portraits** are stored in the plugin's `data.json`.
 - **Custom SVG icons** live in `<vault>/.obsidian/plugins/strakes-ttrpg/icons/`. Plugin updates don't touch this folder, but uninstalling the plugin deletes it.
-- **SVG sanitizing**: every SVG is cleaned when loaded. Scripts, event handlers, `javascript:` links and external resources are removed.
+- **SVG sanitizing**: every SVG is cleaned before it is displayed. Scripts, event handlers, HTML elements, link-changing animations, `javascript:` links and external resources (including those referenced from CSS) are removed.
 
 ## Notes for reviewers
 

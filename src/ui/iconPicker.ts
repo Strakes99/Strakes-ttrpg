@@ -53,9 +53,6 @@ export class IconPicker {
 		this.buildGrid();
 	}
 
-	get icon(): string {
-		return this.opts.icon;
-	}
 
 	setIconColor(color: string | undefined): void {
 		this.opts.iconColor = color;
@@ -71,8 +68,8 @@ export class IconPicker {
 		const grid = this.tilesEl;
 		if (!grid) return;
 		grid.toggleClass("no-background", !this.opts.background);
-		if (this.opts.background) grid.style.setProperty("--pin-color", this.opts.background);
-		else grid.style.removeProperty("--pin-color");
+		if (this.opts.background) grid.setCssProps({ "--pin-color": this.opts.background });
+		else grid.setCssProps({ "--pin-color": "" });
 	}
 
 	private buildGrid(): void {

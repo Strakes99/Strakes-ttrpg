@@ -4,7 +4,7 @@ import { uid } from "../types";
 import { FileInputSuggest, isImageFile, promptText } from "../ui/modals";
 import { IconColorControl, IconPicker } from "../ui/iconPicker";
 import { makeWikilink, parseWikilink, resolveWikilink, wikilinkFor } from "./links";
-import { DEFAULT_ICON_COLOR, formatDistance, formatHours, MapData, parseHoursInput, segmentTime, MapPin, MapRoute, nodeMap, segmentDistance } from "./mapData";
+import { DEFAULT_ICON_COLOR, formatDistance, formatHours, MapData, MapLayer, parseHoursInput, segmentTime, MapPin, MapRoute, nodeMap, segmentDistance } from "./mapData";
 
 // ---------- Tramo (clic en la etiqueta) ----------
 
@@ -96,17 +96,23 @@ export function editSegmentDialog(app: App, data: MapData, route: MapRoute, i: n
 }
 
 /** Desplegable de capa: «Sin capa», las capas del usuario y la opción de crear una nueva. */
+/**
+ * Desplegable de capa de los diálogos de marcador y ruta. Las capas creadas aquí van a
+ * `pending` (del diálogo) y no al mapa: solo se añaden al guardar (`commitLayers`), así
+ * que cancelar el diálogo no deja capas nuevas en el mapa.
+ */
 function layerDropdown(
 	app: App,
 	setting: Setting,
 	data: MapData,
+	pending: MapLayer[],
 	value: string | null,
 	onChange: (id: string | null) => void,
 	rerender: () => void,
 ): void {
 	setting.addDropdown((dd) => {
 		dd.addOption("", T("— Sin capa —", "— No layer —"));
-		for (const l of data.layers) dd.addOption(l.id, l.name);
+		for (const l of [...data.layers, ...pending]) dd.addOption(l.id, l.name);
 		dd.addOption("__new__", T("➕ Nueva capa…", "➕ New layer…"));
 		dd.setValue(value ?? "");
 		dd.onChange(async (v) => {
@@ -114,12 +120,18 @@ function layerDropdown(
 			const name = await promptText(app, T("Nueva capa", "New layer"), { placeholder: T("Nombre de la capa", "Layer name") });
 			if (name && name.trim()) {
 				const layer = { id: uid(), name: name.trim(), visible: true };
-				data.layers.push(layer);
+				pending.push(layer);
 				onChange(layer.id);
 			}
 			rerender();
 		});
 	});
+}
+
+/** Añade al mapa las capas creadas en un diálogo (al guardarlo). */
+function commitLayers(data: MapData, pending: MapLayer[]): void {
+	for (const layer of pending) if (!data.layers.some((l) => l.id === layer.id)) data.layers.push(layer);
+	pending.length = 0;
 }
 
 // ---------- Pin ----------
@@ -137,6 +149,8 @@ export interface PinIconActions {
 
 export class PinModal extends Modal {
 	private pin: MapPin;
+	/** Capas creadas en este diálogo; se añaden al mapa solo al guardar. */
+	private newLayers: MapLayer[] = [];
 	private nameInput: HTMLInputElement | null = null;
 	private linkInput: HTMLInputElement | null = null;
 	private firstRender = true;
@@ -227,7 +241,7 @@ export class PinModal extends Modal {
 			},
 		});
 
-		layerDropdown(this.app, new Setting(el).setName(T("Capa", "Layer")), this.data, p.layerId, (id) => (p.layerId = id), () => this.render());
+		layerDropdown(this.app, new Setting(el).setName(T("Capa", "Layer")), this.data, this.newLayers, p.layerId, (id) => (p.layerId = id), () => this.render());
 
 		const buttons = new Setting(el);
 		if (!this.isNew)
@@ -361,6 +375,7 @@ export class PinModal extends Modal {
 			new Notice(T("Ponle un nombre al marcador", "Give the marker a name"));
 			return;
 		}
+		if (action !== "delete") commitLayers(this.data, this.newLayers);
 		this.onDone({ action, pin: this.pin });
 		this.close();
 	}
@@ -374,6 +389,8 @@ export class PinModal extends Modal {
 
 export class RouteModal extends Modal {
 	private route: MapRoute;
+	/** Capas creadas en este diálogo; se añaden al mapa solo al guardar. */
+	private newLayers: MapLayer[] = [];
 
 	constructor(
 		app: App,
@@ -396,7 +413,7 @@ export class RouteModal extends Modal {
 		const r = this.route;
 		new Setting(el).setName(T("Nombre", "Name")).addText((t) => t.setValue(r.name).onChange((v) => (r.name = v)));
 		new Setting(el).setName(T("Color", "Color")).addColorPicker((c) => c.setValue(r.color).onChange((v) => (r.color = v)));
-		layerDropdown(this.app, new Setting(el).setName(T("Capa", "Layer")), this.data, r.layerId, (id) => (r.layerId = id), () => this.render());
+		layerDropdown(this.app, new Setting(el).setName(T("Capa", "Layer")), this.data, this.newLayers, r.layerId, (id) => (r.layerId = id), () => this.render());
 		new Setting(el)
 			.setName(T("Curvas suaves", "Smooth curves"))
 			.setDesc(T("La línea pasa por los puntos de curva con una curva suave. Desactívalo para usar líneas quebradas.", "The line passes through the curve points with a smooth curve. Turn it off to use straight segments."))
@@ -466,6 +483,7 @@ export class RouteModal extends Modal {
 					.setButtonText(T("Guardar", "Save"))
 					.setCta()
 					.onClick(() => {
+						commitLayers(this.data, this.newLayers);
 						this.onDone(this.route, false);
 						this.close();
 					}),
@@ -525,7 +543,10 @@ export class MapPropsModal extends Modal {
 				});
 			})
 			.addButton((b) =>
+				// Lo cambiado en el diálogo (imagen, unidad…) se guarda antes de calibrar,
+				// para no perderlo al cerrarlo.
 				b.setButtonText(T("Calibrar en el mapa…", "Calibrate on the map…")).onClick(() => {
+					this.onSave(this.props);
 					this.close();
 					this.onCalibrate();
 				}),

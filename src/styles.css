@@ -98,16 +98,13 @@ body.strakes-player-window .view-header {
 	display: none !important;
 }
 
-/* Iniciativa en pantalla de jugadores */
+/* Iniciativa en pantalla de jugadores. Por defecto, lista en una esquina (cuando hay una
+   nota o imagen en pantalla); las columnas las calcula PlayerScreenView.fitList(). El
+   tamaño del texto lo fija cada modo (caja de la Lista o --init-text en Tarjetas). */
 .strakes-player-initiative {
 	position: absolute;
 	z-index: 10;
 	color: #fff;
-	font-size: calc(var(--strakes-player-font) * 0.9);
-}
-/* Lista en una esquina (cuando hay una nota o imagen en pantalla). Sin desplazamiento:
-   el tamaño de letra y las columnas los calcula PlayerScreenView.fitList(). */
-.strakes-player-initiative {
 	display: flex;
 	flex-direction: column;
 	max-width: 45%;
@@ -136,7 +133,7 @@ body.strakes-player-window .view-header {
 	column-gap: 1.2em;
 }
 
-/* Pantalla vacía: la misma lista, con la letra más grande que quepa. */
+/* Pantalla vacía: la misma lista, ocupando casi toda la pantalla. */
 .strakes-player-initiative.is-expanded {
 	inset: 0;
 	max-width: none;
@@ -161,7 +158,8 @@ body.strakes-player-window .view-header {
 	inset: 0;
 	max-width: none;
 	max-height: none;
-	/* Sin desplazamiento: si no caben, PlayerScreenView.autoFitCards() reduce el tamaño. */
+	/* Si no caben, PlayerScreenView.autoFitCards() reduce el tamaño de las tarjetas; el
+	   desplazamiento (can-scroll) solo es el último recurso. */
 	overflow: hidden;
 	align-items: center;
 	justify-content: flex-start;
@@ -207,7 +205,7 @@ body.strakes-player-window .view-header {
 	flex-direction: column;
 	gap: 4px;
 }
-/* Recuadro nombre + retrato + PV (el del turno actual brilla en blanco). */
+/* Recuadro nombre + retrato + PG (el del turno actual brilla en blanco). */
 .strakes-pc-frame {
 	display: flex;
 	flex-direction: column;
@@ -435,9 +433,6 @@ input.strakes-portrait-zoom-num {
 	gap: 0.2em;
 	align-self: center;
 }
-.strakes-pi-cond .strakes-cond-chip {
-	font-size: 0.9em;
-}
 
 /* =========================================================
    Panel de iniciativa (DM)
@@ -555,7 +550,7 @@ input.strakes-portrait-zoom-num {
 .strakes-init-hp input { width: 3em; text-align: center; }
 .strakes-init-ac input { width: 2.6em; text-align: center; }
 .strakes-init-stats { flex-wrap: wrap; row-gap: 4px; }
-/* PV temporales junto a los actuales: «30 (18) / 45» */
+/* PG temporales junto a los actuales: «30 (18) / 45» */
 .strakes-init-temp {
 	color: var(--color-blue);
 	font-weight: 600;
@@ -657,6 +652,7 @@ input.strakes-portrait-zoom-num {
 	text-align: center;
 }
 .strakes-pi-cond .strakes-cond-chip {
+	font-size: 0.9em;
 	width: 1.3em;
 	height: 1.3em;
 	cursor: default;
@@ -952,11 +948,7 @@ input.strakes-portrait-zoom-num {
 	letter-spacing: 0.04em;
 	margin-bottom: 4px;
 }
-.strakes-check {
-	display: flex;
-	align-items: center;
-	gap: 4px;
-}
+
 .strakes-panel-row {
 	display: flex;
 	align-items: center;

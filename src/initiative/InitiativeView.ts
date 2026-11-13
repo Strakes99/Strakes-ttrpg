@@ -6,9 +6,20 @@ import { watchStatusBarGap } from "../ui/statusBarGap";
 import { Combatant, InitiativeDisplay, Portrait, VIEW_TYPE_INITIATIVE } from "../types";
 import { editPortrait, recalledPortrait, renderPortrait, splitName } from "./portrait";
 import { closeConditionCard, renderConditionChips, showConditionMenu } from "./conditionUi";
+import { isDefeatedEnemy } from "./conditions";
 import { parseInitiative } from "./tracker";
 
 /** Panel del DM para gestionar el orden de iniciativa. */
+/**
+ * Grupo en el nombre: «Goblin x3» o «Goblin ×3» → base «Goblin», cantidad 3.
+ * La «x» tiene que ir separada del nombre por un espacio, para que nombres como
+ * «T-Rex2» no se tomen por «T-Re» ×2. Sin grupo, la cantidad es null.
+ */
+function splitGroup(text: string): { base: string; count: number | null } {
+	const m = text.trim().match(/^(.+?)\s+[x×]\s*(\d+)$/i);
+	return m ? { base: m[1], count: parseInt(m[2], 10) } : { base: text.trim(), count: null };
+}
+
 export class InitiativeView extends ItemView {
 	private listEl!: HTMLElement;
 	private headerEl!: HTMLElement;
@@ -166,7 +177,7 @@ export class InitiativeView extends ItemView {
 		row.toggleClass("is-current", isCurrent);
 		row.toggleClass("is-player", c.isPlayer);
 		row.toggleClass("is-hidden", c.hidden);
-		row.toggleClass("is-down", !c.isPlayer && c.hp !== null && c.hp <= 0);
+		row.toggleClass("is-down", isDefeatedEnemy(c));
 
 		const line1 = row.createDiv("strakes-init-line");
 		const turn = line1.createDiv("strakes-init-turn");
@@ -204,7 +215,7 @@ export class InitiativeView extends ItemView {
 			this.tracker.update(c.id, { ac: isNaN(n) ? null : n });
 		};
 
-		// PV: actuales (temporales) / máximos
+		// PG: actuales (temporales) / máximos
 		const hpWrap = line2.createDiv("strakes-init-hp");
 		setIcon(hpWrap.createSpan("strakes-init-stat-icon"), "heart");
 		const hp = hpWrap.createEl("input", { type: "text", value: c.hp === null ? "" : String(c.hp), attr: { placeholder: T("PG", "HP") } });
@@ -239,7 +250,7 @@ export class InitiativeView extends ItemView {
 			this.tracker.update(c.id, { maxHp: isNaN(n) ? null : n });
 		};
 
-		// Cantidad + botones: curar (+ verde), dañar (− rojo), PV temporales (T azul).
+		// Cantidad + botones: curar (+ verde), dañar (− rojo), PG temporales (T azul).
 		const amountWrap = line2.createDiv("strakes-init-amount");
 		const amount = amountWrap.createEl("input", { type: "number", cls: "strakes-init-amount-input", attr: { min: "0", placeholder: "0" } });
 		setTooltip(amount, T("Cantidad para curar, dañar o dar PG temporales", "Amount to heal, damage or grant temporary HP"));
@@ -339,9 +350,9 @@ export class InitiativeView extends ItemView {
 		const r1 = form.createDiv("strakes-init-line");
 		// Retrato del formulario: el elegido aquí o, si no, el último usado con ese nombre.
 		let formPortrait: Portrait | undefined;
-		const thumb = r1.createEl("button", { cls: "strakes-init-thumb is-form" });
+		const thumb = r1.createEl("button", { cls: "strakes-init-thumb" });
 		const refreshThumb = () => {
-			const base = splitName(name.value.replace(/\s*[x×]\s*\d+$/i, "")).base;
+			const base = splitName(splitGroup(name.value).base).base;
 			const shown = formPortrait ?? (base ? recalledPortrait(this.plugin, base) : null);
 			thumb.empty();
 			if (shown) {
@@ -359,7 +370,7 @@ export class InitiativeView extends ItemView {
 			}
 		};
 		thumb.onclick = () => {
-			const base = splitName(name.value.replace(/\s*[x×]\s*\d+$/i, "")).base;
+			const base = splitName(splitGroup(name.value).base).base;
 			editPortrait(this.app, formPortrait ?? (base ? recalledPortrait(this.plugin, base) : null), (p) => {
 				formPortrait = p ?? undefined;
 				refreshThumb();
@@ -370,7 +381,7 @@ export class InitiativeView extends ItemView {
 		const init = r1.createEl("input", { type: "text", cls: "strakes-init-num", attr: { placeholder: "Init" } });
 		setTooltip(init, T("Número, +mod (tira 1d20+mod) o dados (d20+2). Vacío = 1d20", "Number, +mod (rolls 1d20+mod) or dice (d20+2). Empty = 1d20"));
 		const r2 = form.createDiv("strakes-init-line");
-		// Mismo orden que en la lista de combatientes: CA y después PV.
+		// Mismo orden que en la lista de combatientes: CA y después PG.
 		const ac = r2.createEl("input", { type: "text", attr: { placeholder: T("CA", "AC") } });
 		const hp = r2.createEl("input", { type: "text", attr: { placeholder: T("PG", "HP") } });
 		const pjLabel = r2.createEl("label", { cls: "strakes-init-check" });
@@ -384,14 +395,15 @@ export class InitiativeView extends ItemView {
 		refreshThumb();
 
 		const submit = () => {
-			let base = name.value.trim();
-			if (!base) { new Notice(T("Escribe un nombre", "Enter a name")); return; }
-			let count = 1;
-			const multi = base.match(/^(.*?)\s*[x×]\s*(\d+)$/i);
-			if (multi) {
-				base = multi[1];
-				count = Math.min(parseInt(multi[2], 10), 30);
+			if (!name.value.trim()) { new Notice(T("Escribe un nombre", "Enter a name")); return; }
+			const group = splitGroup(name.value);
+			const base = group.base;
+			// «Goblin x0»: avisar y no tocar el formulario (antes no añadía nada y lo vaciaba).
+			if (group.count === 0) {
+				new Notice(T("Un grupo necesita al menos 1 combatiente (p. ej. Goblin x3)", "A group needs at least 1 combatant (e.g. Goblin x3)"));
+				return;
 			}
+			const count = group.count === null ? 1 : Math.min(group.count, 30);
 			const hpN = parseInt(hp.value, 10);
 			const acN = parseInt(ac.value, 10);
 			// Validar antes de añadir nada, para no dejar un grupo a medias.

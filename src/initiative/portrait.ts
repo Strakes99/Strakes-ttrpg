@@ -57,9 +57,7 @@ export function renderPortrait(app: App, el: HTMLElement, c: Combatant): void {
 
 /** Coloca la imagen según el encuadre (en % del lado del marco). */
 function applyCrop(img: HTMLImageElement, p: Portrait): void {
-	img.style.left = `${p.x * 100}%`;
-	img.style.top = `${p.y * 100}%`;
-	img.style.width = `${p.scale * 100}%`;
+	img.setCssStyles({ left: `${p.x * 100}%`, top: `${p.y * 100}%`, width: `${p.scale * 100}%` });
 }
 
 /** Encuadre que cubre el marco entero con la imagen (sin huecos), centrado. */
@@ -139,17 +137,13 @@ export class PortraitModal extends Modal {
 		const F = PortraitModal.FRAME;
 		const S = PortraitModal.STAGE;
 		this.stage = el.createDiv("strakes-portrait-stage");
-		this.stage.style.width = `${S}px`;
-		this.stage.style.height = `${S}px`;
+		this.stage.setCssStyles({ width: `${S}px`, height: `${S}px` });
 		const src = this.srcFor(this.p.path);
 		// Imagen completa, semitransparente (para ver lo que queda fuera del marco).
 		this.ghost = this.stage.createEl("img", { cls: "strakes-portrait-ghost", attr: { src, draggable: "false", alt: "" } });
 		// Marco cuadrado con la misma imagen a opacidad completa.
 		const frame = this.stage.createDiv("strakes-portrait-frame");
-		frame.style.width = `${F}px`;
-		frame.style.height = `${F}px`;
-		frame.style.left = `${(S - F) / 2}px`;
-		frame.style.top = `${(S - F) / 2}px`;
+		frame.setCssStyles({ width: `${F}px`, height: `${F}px`, left: `${(S - F) / 2}px`, top: `${(S - F) / 2}px` });
 		this.framed = frame.createEl("img", { attr: { src, draggable: "false", alt: "" } });
 
 		void loadImageSize(src).then((n) => {
@@ -288,12 +282,8 @@ export class PortraitModal extends Modal {
 		const F = PortraitModal.FRAME;
 		const off = (PortraitModal.STAGE - F) / 2;
 		const { x, y, scale } = this.p;
-		this.ghost.style.left = `${off + x * F}px`;
-		this.ghost.style.top = `${off + y * F}px`;
-		this.ghost.style.width = `${scale * F}px`;
-		this.framed.style.left = `${x * F}px`;
-		this.framed.style.top = `${y * F}px`;
-		this.framed.style.width = `${scale * F}px`;
+		this.ghost.setCssStyles({ left: `${off + x * F}px`, top: `${off + y * F}px`, width: `${scale * F}px` });
+		this.framed.setCssStyles({ left: `${x * F}px`, top: `${y * F}px`, width: `${scale * F}px` });
 		this.syncZoomNumber();
 	}
 

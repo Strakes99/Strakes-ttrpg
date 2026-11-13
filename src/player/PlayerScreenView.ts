@@ -2,7 +2,7 @@ import { Component, ItemView, MarkdownRenderer, Notice, resolveSubpath, setIcon,
 import { T } from "../i18n";
 import type StrakesTTRPG from "../main";
 import { renderConditionChips } from "../initiative/conditionUi";
-import { DEAD_ID } from "../initiative/conditions";
+import { DEAD_ID, isDefeatedEnemy } from "../initiative/conditions";
 import { renderPortrait } from "../initiative/portrait";
 import { resizeObserverFor } from "../ui/dom";
 import { Combatant, VIEW_TYPE_PLAYER } from "../types";
@@ -101,8 +101,7 @@ export class PlayerScreenView extends ItemView {
 
 	private applySettings(): void {
 		const s = this.plugin.settings;
-		this.contentEl.style.setProperty("--strakes-player-bg", s.playerBackground);
-		this.contentEl.style.setProperty("--strakes-player-font", `${s.playerFontSize}px`);
+		this.contentEl.setCssProps({ "--strakes-player-bg": s.playerBackground, "--strakes-player-font": `${s.playerFontSize}px` });
 	}
 
 	// ---------- Contenido ----------
@@ -203,13 +202,13 @@ export class PlayerScreenView extends ItemView {
 			const row = list.createDiv("strakes-pi-row");
 			row.toggleClass("is-current", c.id === tracker.state.currentId);
 			row.toggleClass("is-player", c.isPlayer);
-			// Tachado solo para enemigos: un PJ/aliado a 0 PV queda Inconsciente, no muerto.
-			const down = !c.isPlayer && c.hp !== null && c.hp <= 0;
+			// Tachado solo para enemigos: un PJ/aliado a 0 PG queda Inconsciente, no muerto.
+			const down = isDefeatedEnemy(c);
 			row.toggleClass("is-down", down);
 			row.createSpan({ cls: "strakes-pi-name", text: c.name });
 			const extra = this.hpText(c);
 			if (extra) row.createSpan({ cls: "strakes-pi-hp", text: extra });
-			// Condiciones: solo iconos, sin interacción. Incluye Ensangrentado (automática por PV),
+			// Condiciones: solo iconos, sin interacción. Incluye Ensangrentado (automática por PG),
 			// que sustituye al antiguo «estado de los enemigos». Un enemigo tachado solo muestra
 			// Muerto a los jugadores; las demás condiciones, solo en el panel del DM.
 			const conds = row.createSpan("strakes-pi-cond");
@@ -219,35 +218,35 @@ export class PlayerScreenView extends ItemView {
 		this.layoutInitiative();
 	}
 
-	/** PV como «30(18)/45» (actuales (temporales) / máximos), si se muestran para ese tipo. */
+	/** PG como «30(18)/45» (actuales (temporales) / máximos), si se muestran para ese tipo. */
 	private hpText(c: Combatant): string {
 		const s = this.plugin.settings;
 		const showHp = c.isPlayer ? s.showPlayerHp : s.showNpcHp;
 		if (!showHp || c.hp === null) return "";
-		// Un enemigo a 0 PV o menos (tachado) deja de mostrar sus PV aunque esté activado.
-		if (!c.isPlayer && c.hp <= 0) return "";
+		// Un enemigo a 0 PG o menos (tachado) deja de mostrar sus PG aunque esté activado.
+		if (isDefeatedEnemy(c)) return "";
 		return `${c.hp}${c.tempHp ? `(${c.tempHp})` : ""}${c.maxHp !== null ? `/${c.maxHp}` : ""}`;
 	}
 
 	/**
 	 * Modo Tarjetas: una tarjeta por combatiente, una al lado de otra (con filas extra si
-	 * no caben). Cada tarjeta: nombre encima, retrato cuadrado, PV (si se muestran) y
+	 * no caben). Cada tarjeta: nombre encima, retrato cuadrado, PG (si se muestran) y
 	 * condiciones. El turno actual lleva un recuadro blanco brillante.
 	 */
 	private renderCards(host: HTMLElement, visible: Combatant[]): void {
 		const s = this.plugin.settings;
 		const tracker = this.plugin.tracker;
 		host.addClass("mode-cards");
-		host.style.setProperty("--card-gap", `${Math.max(0, s.cardGap)}px`);
+		host.setCssProps({ "--card-gap": `${Math.max(0, s.cardGap)}px` });
 		const wrap = host.createDiv("strakes-pc-wrap");
 		wrap.createDiv({ cls: "strakes-pi-round strakes-pc-round", text: T(`Ronda ${tracker.state.round}`, `Round ${tracker.state.round}`) });
 		const grid = wrap.createDiv("strakes-pc-grid");
 		for (const c of visible) {
-			const down = !c.isPlayer && c.hp !== null && c.hp <= 0;
+			const down = isDefeatedEnemy(c);
 			const card = grid.createDiv("strakes-pc-card");
 			card.toggleClass("is-down", down);
 			card.toggleClass("is-player", c.isPlayer);
-			// Recuadro del turno actual: nombre + retrato + PV.
+			// Recuadro del turno actual: nombre + retrato + PG.
 			const frame = card.createDiv("strakes-pc-frame");
 			frame.toggleClass("is-current", c.id === tracker.state.currentId);
 			const name = frame.createDiv({ cls: "strakes-pc-name" });
@@ -270,7 +269,7 @@ export class PlayerScreenView extends ItemView {
 	}
 
 	/**
-	 * Tarjetas: el texto (nombres y PV) tiene siempre el tamaño configurado. Las tarjetas
+	 * Tarjetas: el texto (nombres y PG) tiene siempre el tamaño configurado. Las tarjetas
 	 * se reparten en filas según el ancho de la ventana, y el número de filas según su
 	 * altura completa (también con una nota o imagen en pantalla). Se respeta el tamaño de
 	 * retrato configurado; solo si así no caben, se reduce el retrato lo justo (mínimo
@@ -282,8 +281,7 @@ export class PlayerScreenView extends ItemView {
 		const wrap = host.querySelector<HTMLElement>(".strakes-pc-wrap");
 		const availH = this.contentEl.clientHeight;
 		const max = Math.max(24, s.cardSize);
-		host.style.setProperty("--card-size", `${max}px`);
-		host.style.setProperty("--init-text", `${this.textSize()}px`);
+		host.setCssProps({ "--card-size": `${max}px`, "--init-text": `${this.textSize()}px` });
 		host.removeClass("can-scroll");
 		if (!wrap || !availH) return;
 		const fits = () => wrap.offsetHeight <= availH;
@@ -292,11 +290,11 @@ export class PlayerScreenView extends ItemView {
 		let hi = max;
 		while (lo < hi) {
 			const mid = Math.ceil((lo + hi) / 2);
-			host.style.setProperty("--card-size", `${mid}px`);
+			host.setCssProps({ "--card-size": `${mid}px` });
 			if (fits()) lo = mid;
 			else hi = mid - 1;
 		}
-		host.style.setProperty("--card-size", `${lo}px`);
+		host.setCssProps({ "--card-size": `${lo}px` });
 		host.toggleClass("can-scroll", !fits());
 	}
 
@@ -351,10 +349,10 @@ export class PlayerScreenView extends ItemView {
 	}
 
 	/**
-	 * Lista: en columnas y con el tamaño de letra que quepa (ver fitList); sin contenido
-	 * ocupa toda la pantalla, con contenido una caja en la esquina elegida.
+	 * Lista: en columnas, con el tamaño de texto configurado (ver fitList); sin contenido
+	 * ocupa casi toda la pantalla, con contenido una caja en la esquina elegida.
 	 * Tarjetas: sin contenido ocupan toda la pantalla; con contenido, la parte superior.
-	 * En ningún modo hay desplazamiento.
+	 * El desplazamiento solo aparece como último recurso, si no cabe todo (clase can-scroll).
 	 */
 	private layoutInitiative(): void {
 		const host = this.initHost;
