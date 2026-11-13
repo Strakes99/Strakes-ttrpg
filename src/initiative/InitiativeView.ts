@@ -36,6 +36,8 @@ export class InitiativeView extends ItemView {
 		this.buildAddForm(root.createDiv("strakes-init-add"));
 		this.registerEvent(this.plugin.events.on("combat", () => this.scheduleRender()));
 		this.registerEvent(this.plugin.events.on("settings", () => this.scheduleRender()));
+		// Los SVG se cargan tras el arranque: redibujar los iconos de las condiciones.
+		this.registerEvent(this.plugin.events.on("icons", () => this.scheduleRender()));
 		this.updateGap = watchStatusBarGap(this, root);
 		// Mover el panel entre la mitad superior/inferior de la barra lateral.
 		this.registerEvent(this.app.workspace.on("layout-change", () => this.updateGap?.()));

@@ -57,6 +57,8 @@ export class PlayerScreenView extends ItemView {
 
 		this.registerEvent(this.plugin.events.on("player-content", () => void this.renderContent()));
 		this.registerEvent(this.plugin.events.on("combat", () => this.renderInitiative()));
+		// Los SVG se cargan tras el arranque: redibujar los iconos de las condiciones.
+		this.registerEvent(this.plugin.events.on("icons", () => this.renderInitiative()));
 		this.registerEvent(
 			this.plugin.events.on("settings", () => {
 				this.applySettings();

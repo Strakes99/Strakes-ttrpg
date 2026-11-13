@@ -5,3 +5,7 @@ data.json
 *.map
 icons/
 .hotreload
+
+# Documentación interna (solo local)
+/docs/
+/CLAUDE.md

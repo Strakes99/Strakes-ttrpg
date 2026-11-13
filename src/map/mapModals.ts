@@ -309,7 +309,7 @@ export class PinModal extends Modal {
 		if (file && file.extension === "md") {
 			const headings = this.app.metadataCache.getFileCache(file)?.headings ?? [];
 			if (headings.length) {
-				new Setting(host).setName("Encabezado (opcional)").addDropdown((dd) => {
+				new Setting(host).setName(T("Encabezado (opcional)", "Heading (optional)")).addDropdown((dd) => {
 					dd.addOption("", T("— Nota completa —", "— Whole note —"));
 					for (const h of headings) dd.addOption(`#${h.heading}`, `${"\u00a0\u00a0".repeat(h.level - 1)}${h.heading}`);
 					dd.setValue(parseWikilink(p.link!).subpath);

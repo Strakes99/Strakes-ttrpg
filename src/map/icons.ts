@@ -14,12 +14,21 @@ export function customIconName(icon: string): string | null {
 	return icon.startsWith(CUSTOM_ICON_PREFIX) ? icon.slice(CUSTOM_ICON_PREFIX.length) : null;
 }
 
+/** Archivos que se leen a la vez al cargar la carpeta de iconos. */
+const READ_BATCH = 64;
+
 export class IconLibrary {
 	/**
-	 * nombre → SVG ya saneado (texto). El nombre es la ruta relativa a la carpeta de
-	 * iconos, sin «.svg»: «espada» o «armas/espada» si está en una subcarpeta.
+	 * nombre → texto del archivo, tal cual (sin sanear). El nombre es la ruta relativa a
+	 * la carpeta de iconos, sin «.svg»: «espada» o «armas/espada» si está en una subcarpeta.
 	 */
-	private icons = new Map<string, string>();
+	private raw = new Map<string, string>();
+	/**
+	 * nombre → <svg> ya saneado, listo para clonar (null = no es un SVG válido).
+	 * Cada icono se sanea la primera vez que se pinta, no al cargar: con miles de iconos,
+	 * sanearlos todos de golpe bloqueaba Obsidian varios segundos.
+	 */
+	private parsed = new Map<string, SVGElement | null>();
 	readonly dir: string;
 
 	constructor(
@@ -30,11 +39,11 @@ export class IconLibrary {
 	}
 
 	names(): string[] {
-		return [...this.icons.keys()].sort((a, b) => a.localeCompare(b));
+		return [...this.raw.keys()].sort((a, b) => a.localeCompare(b));
 	}
 
 	has(name: string): boolean {
-		return this.icons.has(name);
+		return this.raw.has(name);
 	}
 
 	/** Subcarpetas que contienen iconos ("" = carpeta raíz), ordenadas. */
@@ -42,27 +51,46 @@ export class IconLibrary {
 		return [...new Set(this.names().map(iconFolder))].sort((a, b) => a.localeCompare(b));
 	}
 
-	/** Lee todos los .svg de la carpeta y sus subcarpetas (la crea si no existe). */
+	/**
+	 * Lee todos los .svg de la carpeta y sus subcarpetas (la crea si no existe).
+	 * Solo lee los archivos, por tandas en paralelo; el saneado se hace al pintar (ver `parsed`).
+	 */
 	async load(): Promise<void> {
 		const adapter = this.app.vault.adapter;
 		if (!(await adapter.exists(this.dir))) await adapter.mkdir(this.dir);
-		const next = new Map<string, string>();
+		const paths: string[] = [];
 		const walk = async (dir: string, depth: number): Promise<void> => {
 			const listing = await adapter.list(dir);
-			for (const path of listing.files) {
-				if (!path.toLowerCase().endsWith(".svg")) continue;
-				try {
-					const clean = sanitizeSvg(await adapter.read(path));
-					if (clean) next.set(path.slice(this.dir.length + 1).replace(/\.svg$/i, ""), clean);
-					else console.warn(`Strakes TTRPG: "${path}" is not a valid SVG.`);
-				} catch (e) {
-					console.warn(`Strakes TTRPG: couldn't read "${path}"`, e);
-				}
-			}
+			for (const path of listing.files) if (path.toLowerCase().endsWith(".svg")) paths.push(path);
 			if (depth < 8) for (const sub of listing.folders) await walk(sub, depth + 1);
 		};
 		await walk(this.dir, 0);
-		this.icons = next;
+		const next = new Map<string, string>();
+		for (let i = 0; i < paths.length; i += READ_BATCH) {
+			await Promise.all(
+				paths.slice(i, i + READ_BATCH).map(async (path) => {
+					try {
+						next.set(path.slice(this.dir.length + 1).replace(/\.svg$/i, ""), await adapter.read(path));
+					} catch (e) {
+						console.warn(`Strakes TTRPG: couldn't read "${path}"`, e);
+					}
+				}),
+			);
+		}
+		this.raw = next;
+		this.parsed.clear();
+	}
+
+	/** <svg> saneado del icono (se sanea y se guarda la primera vez); null si no existe o no es válido. */
+	private template(name: string): SVGElement | null {
+		const cached = this.parsed.get(name);
+		if (cached !== undefined) return cached;
+		const text = this.raw.get(name);
+		if (text === undefined) return null;
+		const svg = sanitizeSvgElement(text);
+		if (!svg) console.warn(`Strakes TTRPG: "${this.dir}/${name}.svg" is not a valid SVG.`);
+		this.parsed.set(name, svg);
+		return svg;
 	}
 
 	/**
@@ -108,10 +136,9 @@ export class IconLibrary {
 	 * Con `color`, el icono se recolorea entero de ese color (el archivo no cambia).
 	 */
 	render(el: HTMLElement, name: string, color?: string): boolean {
-		const markup = this.icons.get(name);
-		if (!markup) return false;
-		const doc = new DOMParser().parseFromString(markup, "image/svg+xml");
-		const svg = el.doc.importNode(doc.documentElement, true) as unknown as SVGElement;
+		const template = this.template(name);
+		if (!template) return false;
+		const svg = el.doc.importNode(template, true);
 		if (color) recolorSvg(svg, color);
 		svg.classList.add("strakes-custom-icon");
 		el.appendChild(svg);
@@ -159,8 +186,14 @@ function basename(path: string): string {
  * Conserva sus colores originales. Devuelve null si no es un SVG válido.
  */
 export function sanitizeSvg(text: string): string | null {
+	const svg = sanitizeSvgElement(text);
+	return svg ? new XMLSerializer().serializeToString(svg) : null;
+}
+
+/** Como `sanitizeSvg`, pero devuelve el elemento <svg> ya saneado (sin pasarlo a texto). */
+function sanitizeSvgElement(text: string): SVGElement | null {
 	const doc = new DOMParser().parseFromString(text, "image/svg+xml");
-	const svg = doc.documentElement;
+	const svg = doc.documentElement as unknown as SVGElement | null;
 	if (!svg || svg.nodeName.toLowerCase() !== "svg" || doc.getElementsByTagName("parsererror").length) return null;
 
 	for (const tag of ["script", "foreignObject", "iframe", "object", "embed"])
@@ -185,7 +218,7 @@ export function sanitizeSvg(text: string): string | null {
 	svg.removeAttribute("width");
 	svg.removeAttribute("height");
 	// Los colores del SVG se respetan tal cual.
-	return new XMLSerializer().serializeToString(svg);
+	return svg;
 }
 
 /** Biblioteca compartida (la crea el plugin al cargar). */

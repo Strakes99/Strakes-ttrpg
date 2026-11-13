@@ -856,6 +856,22 @@ input.strakes-portrait-zoom-num {
 	display: flex;
 	min-height: 0;
 }
+.strakes-map-error {
+	flex: 1;
+	padding: var(--size-4-8) var(--size-4-6);
+	max-width: 42em;
+	margin: 0 auto;
+	color: var(--text-normal);
+}
+.strakes-map-error h3 {
+	color: var(--text-error);
+	margin-top: 0;
+}
+.strakes-map-error-detail {
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
 .strakes-map-canvas {
 	flex: 1;
 	min-width: 0;

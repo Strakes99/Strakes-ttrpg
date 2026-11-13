@@ -113,7 +113,16 @@ export class MapView extends TextFileView {
 	private mapEl!: HTMLElement;
 	private panelEl!: HTMLElement;
 	private statusEl!: HTMLElement;
+	private errorEl!: HTMLElement;
 	private panelOpen = true;
+	/**
+	 * Texto original de un .smap que no se pudo leer (JSON no válido o que no es un objeto).
+	 * Mientras no es null, el mapa no se muestra ni se edita y getViewData() devuelve este
+	 * texto tal cual: así ningún guardado de Obsidian puede sobrescribir el archivo dañado.
+	 */
+	private brokenText: string | null = null;
+	/** Aviso de imagen no encontrada. Va en la barra de estado junto a las demás indicaciones (ver renderStatus). */
+	private imageWarning = "";
 
 	constructor(leaf: WorkspaceLeaf, private plugin: StrakesTTRPG) {
 		super(leaf);
@@ -151,6 +160,8 @@ export class MapView extends TextFileView {
 		const body = root.createDiv("strakes-map-body");
 		this.mapEl = body.createDiv("strakes-map-canvas");
 		this.panelEl = body.createDiv("strakes-map-panel");
+		this.errorEl = body.createDiv("strakes-map-error");
+		this.errorEl.hide();
 		this.statusEl = root.createDiv("strakes-map-status");
 
 		this.addAction("settings", T("Propiedades del mapa", "Map properties"), () => this.openProps());
@@ -166,17 +177,24 @@ export class MapView extends TextFileView {
 	}
 
 	getViewData(): string {
+		if (this.brokenText !== null) return this.brokenText;
 		return JSON.stringify(this.mapData ?? {}, null, "\t");
 	}
 
 	setViewData(text: string, clear: boolean): void {
 		let raw: unknown = {};
+		let problem: string | null = null;
 		try {
 			raw = text.trim() ? JSON.parse(text) : {};
+			if (!raw || typeof raw !== "object" || Array.isArray(raw)) problem = T("No contiene un objeto JSON.", "It doesn't contain a JSON object.");
 		} catch (e) {
-			new Notice(T("El archivo del mapa no es JSON válido.", "The map file isn't valid JSON."));
-			console.error(e);
+			problem = e instanceof Error ? e.message : String(e);
 		}
+		if (problem !== null) {
+			this.showBroken(text, problem);
+			return;
+		}
+		this.hideBroken();
 		this.mapData = normalizeMap(raw);
 		if (clear) {
 			this.needsFit = true;
@@ -194,7 +212,50 @@ export class MapView extends TextFileView {
 		void this.refresh();
 	}
 
+	/**
+	 * Archivo dañado: en lugar del mapa, un aviso. Nada se edita ni se guarda, y el
+	 * historial de deshacer se vacía para que no pueda restaurar un mapa anterior encima.
+	 */
+	private showBroken(text: string, problem: string): void {
+		this.brokenText = text;
+		this.mapData = null;
+		this.undoStack = [];
+		this.redoStack = [];
+		this.lastSnapshot = null;
+		this.activeRouteId = null;
+		this.mode = "navigate";
+		this.toolbarEl.hide();
+		this.mapEl.hide();
+		this.panelEl.hide();
+		this.statusEl.hide();
+		this.errorEl.empty();
+		this.errorEl.createEl("h3", { text: T("No se puede abrir este mapa", "This map can't be opened") });
+		this.errorEl.createEl("p", {
+			text: T(
+				"El archivo no es JSON válido. No se ha modificado y el plugin no lo va a sobrescribir: corrígelo con un editor de texto o restáuralo desde una copia de seguridad. En cuanto el archivo vuelva a ser válido, el mapa se abrirá solo.",
+				"The file isn't valid JSON. It hasn't been changed and the plugin won't overwrite it: fix it with a text editor or restore it from a backup. As soon as the file is valid again, the map will open on its own.",
+			),
+		});
+		this.errorEl.createEl("p", { cls: "strakes-map-error-detail", text: problem });
+		this.errorEl.show();
+		new Notice(T("El archivo del mapa no es JSON válido.", "The map file isn't valid JSON."));
+		console.error(`Strakes TTRPG: invalid map file "${this.file?.path ?? ""}": ${problem}`);
+	}
+
+	private hideBroken(): void {
+		if (this.brokenText === null) return;
+		this.brokenText = null;
+		this.errorEl.hide();
+		this.errorEl.empty();
+		this.toolbarEl.show();
+		this.mapEl.show();
+		this.panelEl.show();
+		this.needsFit = true;
+		window.setTimeout(() => this.map?.invalidateSize(), 50);
+	}
+
 	clear(): void {
+		this.hideBroken();
 		this.mapData = null;
 		this.groups.forEach((g) => {
 			g.pins.remove();
@@ -208,6 +269,7 @@ export class MapView extends TextFileView {
 	 * cambios reales es un paso (colocar, mover o borrar marcadores, nodos, curvas, capas…).
 	 */
 	private persist(): void {
+		if (this.brokenText !== null || !this.mapData) return;
 		const now = JSON.stringify(this.mapData);
 		if (this.lastSnapshot !== null && now !== this.lastSnapshot) {
 			this.undoStack.push(this.lastSnapshot);
@@ -308,10 +370,12 @@ export class MapView extends TextFileView {
 			this.loadedImage = data.image;
 			const file = this.app.vault.getAbstractFileByPath(data.image);
 			if (!(file instanceof TFile)) {
-				this.statusEl.setText(
-					T(`⚠ Imagen no encontrada: "${data.image}". Ábrela en Propiedades del mapa (⚙).`, `⚠ Image not found: "${data.image}". Open it in Map properties (⚙).`),
+				this.imageWarning = T(
+					`⚠ Imagen no encontrada: "${data.image}". Ábrela en Propiedades del mapa (⚙).`,
+					`⚠ Image not found: "${data.image}". Open it in Map properties (⚙).`,
 				);
 			} else {
+				this.imageWarning = "";
 				const src = this.app.vault.getResourcePath(file);
 				if (!data.width || !data.height) {
 					try {
@@ -781,7 +845,7 @@ export class MapView extends TextFileView {
 			cls: "strakes-panel-meta",
 			text: data.scale
 				? `100 px = ${displayDistance(data.scale * 100, data.unit, this.plugin.settings.displayUnit)}`
-				: T("Sin escala: escribe la distancia de cada tramo (clic en la etiqueta «?»).", "No scale: enter the distance of each segment (click the \"?\" label)."),
+				: T("Sin escala: escribe la distancia de cada tramo (clic en su etiqueta).", "No scale: enter the distance of each segment (click its label)."),
 		});
 	}
 
@@ -854,7 +918,7 @@ export class MapView extends TextFileView {
 						"Curving: drag the route's ◦ points to create curves; drag ● to move them; double-click ● to remove it.",
 					)
 				: T("Edición: arrastra marcadores y nodos. Haz clic en una ruta para curvarla.", "Editing: drag markers and nodes. Click a route to curve it.");
-		const parts = [modeHint(this.mode), editHint, this.measureText].filter(Boolean);
+		const parts = [this.imageWarning, modeHint(this.mode), editHint, this.measureText].filter(Boolean);
 		this.statusEl.setText(parts.join("  ·  "));
 		this.statusEl.toggle(parts.length > 0);
 	}
@@ -1089,7 +1153,7 @@ export class MapView extends TextFileView {
 				.setTitle(T("Duplicar", "Duplicate"))
 				.setIcon("copy")
 				.onClick(() => {
-					const copy: MapPin = { ...structuredClone(pin), id: uid(), x: pin.x + 20, y: pin.y - 20, name: `${pin.name} (copia)` };
+					const copy: MapPin = { ...structuredClone(pin), id: uid(), x: pin.x + 20, y: pin.y - 20, name: T(`${pin.name} (copia)`, `${pin.name} (copy)`) };
 					this.mapData!.pins.push(copy);
 					this.persist();
 					this.renderAll();
@@ -1124,7 +1188,7 @@ export class MapView extends TextFileView {
 			const layerId = this.currentLayerId;
 			route = {
 				id: uid(),
-				name: `Ruta ${data.routes.length + 1}`,
+				name: T(`Ruta ${data.routes.length + 1}`, `Route ${data.routes.length + 1}`),
 				layerId,
 				color: ROUTE_COLORS[data.routes.length % ROUTE_COLORS.length],
 				nodeIds: [],

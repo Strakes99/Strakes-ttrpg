@@ -27,6 +27,9 @@ export class IconPicker {
 	/** Filtro de carpeta: "*" = todas, "" = carpeta principal. */
 	private folder = "*";
 	private query = "";
+	/** Pinta los SVG de los recuadros solo cuando entran en pantalla (ver renderTiles). */
+	private observer: IntersectionObserver | null = null;
+	private searchTimer: number | null = null;
 
 	constructor(
 		parent: HTMLElement,
@@ -42,7 +45,7 @@ export class IconPicker {
 					.setValue(custom !== null ? "" : opts.icon)
 					.onChange((v) => {
 						this.opts.icon = v.trim();
-						this.renderTiles();
+						this.updateSelection();
 						this.opts.onChange(this.opts.icon);
 					});
 			});
@@ -91,9 +94,14 @@ export class IconPicker {
 		}
 		const search = filters.createEl("input", { type: "search", attr: { placeholder: T("Buscar icono…", "Search icons…") } });
 		search.value = this.query;
+		// Con muchos iconos, filtrar en cada tecla se nota: se espera a que deje de escribir.
 		search.oninput = () => {
 			this.query = search.value;
-			this.renderTiles();
+			if (this.searchTimer !== null) search.win.clearTimeout(this.searchTimer);
+			this.searchTimer = search.win.setTimeout(() => {
+				this.searchTimer = null;
+				this.renderTiles();
+			}, 150);
 		};
 		if (this.opts.reload) {
 			const reload = this.opts.reload;
@@ -107,11 +115,18 @@ export class IconPicker {
 		this.renderTiles();
 	}
 
-	/** Recuadros: fondo del color del marcador (o neutro), icono con su color; el elegido, con borde blanco. */
+	/**
+	 * Recuadros: fondo del color del marcador (o neutro), icono con su color; el elegido, con
+	 * borde blanco. Se crean todos los recuadros (vacíos, ligeros), pero cada SVG solo se pinta
+	 * cuando su recuadro entra en la zona visible de la cuadrícula: con miles de iconos,
+	 * pintarlos todos a la vez bloqueaba el diálogo.
+	 */
 	private renderTiles(): void {
 		const grid = this.tilesEl;
 		const lib = getIconLibrary();
 		if (!grid || !lib) return;
+		this.observer?.disconnect();
+		this.observer = null;
 		grid.empty();
 		const all = lib.names();
 		if (!all.length) {
@@ -138,22 +153,47 @@ export class IconPicker {
 			grid.createDiv({ cls: "setting-item-description", text: T("Ningún icono coincide con el filtro.", "No icons match the filter.") });
 			return;
 		}
+		const color = this.opts.iconColor;
+		const names = new Map<Element, string>();
+		const win = grid.win as Window & typeof globalThis;
+		const observer = new win.IntersectionObserver(
+			(entries) => {
+				for (const entry of entries) {
+					if (!entry.isIntersecting) continue;
+					observer.unobserve(entry.target);
+					const name = names.get(entry.target);
+					// Un archivo que no es un SVG válido no se muestra.
+					if (name !== undefined && !lib.render(entry.target as HTMLElement, name, color)) (entry.target as HTMLElement).hide();
+				}
+			},
+			{ root: grid, rootMargin: "200px 0px" },
+		);
+		this.observer = observer;
 		for (const name of shown) {
 			const value = `${CUSTOM_ICON_PREFIX}${name}`;
-			const tile = grid.createEl("button", { cls: "strakes-icon-tile" });
+			const tile = grid.createEl("button", { cls: "strakes-icon-tile", attr: { "data-icon": value } });
 			tile.toggleClass("is-selected", this.opts.icon === value);
-			lib.render(tile, name, this.opts.iconColor);
 			setTooltip(tile, name);
+			names.set(tile, name);
+			observer.observe(tile);
 			tile.onclick = () => {
 				this.opts.icon = this.opts.icon === value ? "" : value;
 				if (this.input) {
 					this.input.value = "";
 					this.input.placeholder = this.opts.icon ? `SVG: ${name}` : (this.opts.placeholder ?? "📍");
 				}
-				this.renderTiles();
+				this.updateSelection();
 				this.opts.onChange(this.opts.icon);
 			};
 		}
+	}
+
+	/** Marca el recuadro del icono elegido sin volver a pintar la cuadrícula. */
+	private updateSelection(): void {
+		const grid = this.tilesEl;
+		if (!grid) return;
+		for (const tile of Array.from(grid.querySelectorAll<HTMLElement>(".strakes-icon-tile")))
+			tile.toggleClass("is-selected", tile.getAttribute("data-icon") === this.opts.icon);
 	}
 }
 

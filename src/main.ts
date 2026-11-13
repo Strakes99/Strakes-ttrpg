@@ -55,16 +55,15 @@ export default class StrakesTTRPG extends Plugin {
 		await this.loadSettings();
 		this.tracker = new InitiativeTracker(this);
 
-		// Iconos SVG personalizados (carpeta icons/ dentro del plugin). Se cargan antes
-		// de registrar las vistas para que los mapas ya los encuentren al abrirse.
+		// Iconos SVG personalizados (carpeta icons/ dentro del plugin). Se leen cuando
+		// Obsidian termina de arrancar, sin retrasar la carga del plugin (con miles de SVG
+		// tarda). Al acabar, el evento "icons" redibuja mapas, iniciativa y pantalla de jugadores.
 		this.icons = new IconLibrary(this.app, this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`);
 		setIconLibrary(this.icons);
 		this.register(() => setIconLibrary(null));
-		try {
-			await this.icons.load();
-		} catch (e) {
-			console.error("Strakes TTRPG: could not load icons", e);
-		}
+		this.app.workspace.onLayoutReady(() => {
+			this.reloadIcons().catch((e) => console.error("Strakes TTRPG: could not load icons", e));
+		});
 
 		this.registerView(VIEW_TYPE_PLAYER, (leaf) => new PlayerScreenView(leaf, this));
 		this.registerView(VIEW_TYPE_INITIATIVE, (leaf) => new InitiativeView(leaf, this));
