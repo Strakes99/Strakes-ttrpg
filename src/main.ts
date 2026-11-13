@@ -3,6 +3,7 @@ import { T } from "./i18n";
 import { InitiativeTracker } from "./initiative/tracker";
 import { InitiativeView } from "./initiative/InitiativeView";
 import { IconLibrary, setIconLibrary } from "./map/icons";
+import { applyAutoNames, AutoNamePin } from "./map/autoName";
 import { linkpathMatchesPath, parseWikilink, wikilinkFor } from "./map/links";
 import { emptyMap } from "./map/mapData";
 import { EmbedContext, MapEmbed } from "./map/MapEmbed";
@@ -352,6 +353,8 @@ export default class StrakesTTRPG extends Plugin {
 							changed = true;
 						}
 					}
+					// Marcadores con AUTO: el nombre sigue a la nota renombrada (y los portales a ellos).
+					if (changed) applyAutoNames(pins.filter((p): p is AutoNamePin => typeof (p as { id?: unknown }).id === "string"));
 					return changed ? JSON.stringify(d, null, "\t") : current;
 				} catch {
 					return current;

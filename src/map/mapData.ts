@@ -50,6 +50,11 @@ export interface MapPin {
 	icon: string;
 	/** Color del icono. Sin definir = colores originales (SVG) o blanco (Lucide, letras). */
 	iconColor?: string;
+	/**
+	 * Casilla AUTO: el nombre sale de la nota enlazada (alias, encabezado o nota) o, en un
+	 * portal sin nota, del marcador destino. Ver map/autoName.ts. Sin definir = nombre a mano.
+	 */
+	autoName?: boolean;
 }
 
 export interface RouteNode {
@@ -152,6 +157,7 @@ export function normalizeMap(raw: unknown, defaultUnit = "km"): MapData {
 		p.color ??= DEFAULT_PIN_COLOR;
 		p.icon ??= "";
 		if (typeof p.iconColor !== "string" || !p.iconColor) p.iconColor = undefined;
+		p.autoName = p.autoName === true ? true : undefined;
 	}
 	for (const rt of data.routes) {
 		// Un .smap escrito a mano puede no traer nombre: sin él fallarían las etiquetas.

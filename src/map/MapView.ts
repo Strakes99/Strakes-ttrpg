@@ -7,6 +7,7 @@ import { confirmDialog, loadImageSize, promptText } from "../ui/modals";
 import { curvePoint, Pt } from "./geometry";
 import { nodeMarker, PIN_TOOLTIP_OPTIONS, pinIcon, pinTooltipText, segmentLabel } from "./render";
 import { PinHoverParent } from "./hover";
+import { applyAutoNames } from "./autoName";
 import { linktextOf, parseWikilink, resolveWikilink } from "./links";
 import {
 	bendsOf,
@@ -927,6 +928,10 @@ export class MapView extends TextFileView {
 
 	private setMode(mode: Mode): void {
 		if (this.mode === "route" && mode !== "route") this.finishRoute();
+		// Se sale de «elegir destino» sin elegirlo (Esc u otra herramienta): si el portal se
+		// quedó sin nombre (AUTO sin destino todavía), se vuelve a abrir su diálogo.
+		const abandoned = this.mode === "pick-target" && mode !== "pick-target" ? this.pickTargetPin : null;
+		if (abandoned) this.pickTargetPin = null;
 		this.mode = mode;
 		this.measureFrom = null;
 		this.calibrateFrom = null;
@@ -937,6 +942,7 @@ export class MapView extends TextFileView {
 		}
 		this.map?.doubleClickZoom[mode === "navigate" ? "enable" : "disable"]();
 		this.renderAll();
+		if (abandoned) this.askNameIfMissing(abandoned);
 	}
 
 	/**
@@ -1012,6 +1018,8 @@ export class MapView extends TextFileView {
 			color: DEFAULT_PIN_COLOR,
 			icon: "",
 			iconColor: DEFAULT_ICON_COLOR,
+			// Los marcadores nuevos toman el nombre automático; escribir uno lo desactiva.
+			autoName: true,
 		};
 		this.openPinModal(pin, true);
 	}
@@ -1037,6 +1045,8 @@ export class MapView extends TextFileView {
 						this.setMode("pick-target");
 					}
 				}
+				// Los portales con AUTO que apuntan a este marcador toman su nombre nuevo.
+				applyAutoNames(data.pins);
 				this.persist();
 				this.renderAll();
 			},
@@ -1054,12 +1064,15 @@ export class MapView extends TextFileView {
 				return;
 			case "pick-target":
 				if (this.pickTargetPin && this.pickTargetPin.id !== pin.id) {
-					this.pickTargetPin.targetPinId = pin.id;
-					this.pickTargetPin.target = undefined;
+					const portal = this.pickTargetPin;
+					portal.targetPinId = pin.id;
+					portal.target = undefined;
 					this.pickTargetPin = null;
+					if (this.mapData) applyAutoNames(this.mapData.pins);
 					new Notice(T(`Portal / escalera enlazado con «${pin.name}»`, `Portal / stairs linked to "${pin.name}"`));
 					this.persist();
 					this.setMode("navigate");
+					this.askNameIfMissing(portal);
 				}
 				return;
 			case "measure":
@@ -1138,6 +1151,15 @@ export class MapView extends TextFileView {
 		new Notice(T(`Destino del portal / escalera «${pin.name}» guardado`, `Destination of portal / stairs "${pin.name}" saved`));
 		this.persist();
 		this.setMode("navigate");
+		this.askNameIfMissing(pin);
+	}
+
+	/**
+	 * Portal con AUTO al que no le salió nombre del destino elegido (un punto fijo o un
+	 * marcador sin nombre propio): se vuelve a abrir su diálogo para ponérselo.
+	 */
+	private askNameIfMissing(pin: MapPin): void {
+		if (!pin.name.trim()) this.openPinModal(pin, false);
 	}
 
 	private pinMenu(pin: MapPin, evt: MouseEvent): void {
@@ -1162,7 +1184,7 @@ export class MapView extends TextFileView {
 				.setTitle(T("Duplicar", "Duplicate"))
 				.setIcon("copy")
 				.onClick(() => {
-					const copy: MapPin = { ...structuredClone(pin), id: uid(), x: pin.x + 20, y: pin.y - 20, name: T(`${pin.name} (copia)`, `${pin.name} (copy)`) };
+					const copy: MapPin = { ...structuredClone(pin), id: uid(), x: pin.x + 20, y: pin.y - 20, name: T(`${pin.name} (copia)`, `${pin.name} (copy)`), autoName: undefined };
 					this.mapData!.pins.push(copy);
 					this.persist();
 					this.renderAll();

@@ -3,6 +3,7 @@ import { T } from "../i18n";
 import { uid } from "../types";
 import { FileInputSuggest, isImageFile, promptText } from "../ui/modals";
 import { IconColorControl, IconPicker } from "../ui/iconPicker";
+import { autoPinName } from "./autoName";
 import { makeWikilink, parseWikilink, resolveWikilink, wikilinkFor } from "./links";
 import { DEFAULT_ICON_COLOR, formatDistance, formatHours, MapData, MapLayer, parseHoursInput, segmentTime, MapPin, MapRoute, nodeMap, segmentDistance } from "./mapData";
 
@@ -166,6 +167,7 @@ export interface PinIconActions {
 
 export class PinModal extends Modal {
 	private pin: MapPin;
+	private autoCheck: HTMLInputElement | null = null;
 	/** Capas creadas en este diálogo; se añaden al mapa solo al guardar. */
 	private newLayers: MapLayer[] = [];
 	private nameInput: HTMLInputElement | null = null;
@@ -197,11 +199,37 @@ export class PinModal extends Modal {
 		el.empty();
 		const p = this.pin;
 
-		new Setting(el).setName(T("Nombre", "Name")).addText((t) => {
-			t.setValue(p.name).onChange((v) => (p.name = v));
+		// Nombre con casilla AUTO: marcada, el nombre sale de la nota o del destino del
+		// portal; escribir en el campo la desmarca (así basta con teclear para ponerlo a mano).
+		const nameSetting = new Setting(el).setName(T("Nombre", "Name")).addText((t) => {
+			t.setValue(p.name).onChange((v) => {
+				p.name = v;
+				if (p.autoName) {
+					p.autoName = false;
+					if (this.autoCheck) this.autoCheck.checked = false;
+					t.setPlaceholder("");
+				}
+			});
 			this.nameInput = t.inputEl;
 			if (this.firstRender) window.setTimeout(() => t.inputEl.focus(), 10);
 		});
+		const autoLabel = nameSetting.controlEl.createEl("label", { cls: "strakes-native-check strakes-auto-name" });
+		const autoCheck = autoLabel.createEl("input", { type: "checkbox" });
+		autoCheck.checked = p.autoName === true;
+		autoLabel.appendText(T("AUTO", "AUTO"));
+		autoLabel.setAttribute(
+			"aria-label",
+			T(
+				"Nombre automático: el de la nota enlazada (o su encabezado o alias) o, en un portal sin nota, el del marcador destino. Escribir un nombre la desmarca.",
+				"Automatic name: the linked note's (or its heading or alias) or, for a portal without a note, the destination marker's. Typing a name unticks it.",
+			),
+		);
+		autoCheck.onchange = () => {
+			p.autoName = autoCheck.checked || undefined;
+			this.refreshAutoName();
+		};
+		this.autoCheck = autoCheck;
+		this.refreshAutoName();
 		this.firstRender = false;
 
 		// Nota enlazada (opcional): se abre con clic principal.
@@ -221,6 +249,7 @@ export class PinModal extends Modal {
 		portal.addToggle((t) =>
 			t.setValue(p.portal).onChange((v) => {
 				p.portal = v;
+				this.refreshAutoName();
 				this.render();
 			}),
 		);
@@ -300,7 +329,7 @@ export class PinModal extends Modal {
 					(f) => f.extension === "md" || f.extension === "smap" || f.extension === "canvas",
 					(f) => {
 						this.setLink(wikilinkFor(this.app, f, this.sourcePath));
-						if (!p.name.trim() && this.nameInput) {
+						if (!p.autoName && !p.name.trim() && this.nameInput) {
 							p.name = f.basename;
 							this.nameInput.value = f.basename;
 						}
@@ -331,6 +360,21 @@ export class PinModal extends Modal {
 	private setLink(link: string | undefined): void {
 		this.pin.link = link;
 		if (this.linkInput) this.linkInput.value = link ?? "";
+		this.refreshAutoName();
+	}
+
+	/** Con AUTO marcada, pone en el campo el nombre automático (vacío si no hay de dónde sacarlo). */
+	private refreshAutoName(): void {
+		const p = this.pin;
+		if (!p.autoName) {
+			this.nameInput?.setAttribute("placeholder", "");
+			return;
+		}
+		p.name = autoPinName(p, this.data.pins) ?? "";
+		if (this.nameInput) {
+			this.nameInput.value = p.name;
+			this.nameInput.setAttribute("placeholder", T("Enlaza una nota o un marcador destino", "Link a note or a destination marker"));
+		}
 	}
 
 	private renderHeadings(host: HTMLElement): void {
@@ -376,6 +420,7 @@ export class PinModal extends Modal {
 				dd.setValue(p.targetPinId ?? "");
 				dd.onChange((v) => {
 					p.targetPinId = v || undefined;
+					this.refreshAutoName();
 					this.render();
 				});
 			})
@@ -388,8 +433,18 @@ export class PinModal extends Modal {
 	}
 
 	private finish(action: PinModalResult["action"]): void {
-		if (action !== "delete" && !this.pin.name.trim()) {
-			new Notice(T("Ponle un nombre al marcador", "Give the marker a name"));
+		// Elegir el destino en el mapa con AUTO y sin nombre: el nombre puede salir de ese
+		// destino (si no sale, el editor vuelve a abrir el diálogo).
+		const nameLater = action === "pick-target" && this.pin.autoName === true;
+		if (action !== "delete" && !nameLater && !this.pin.name.trim()) {
+			new Notice(
+				this.pin.autoName
+					? T(
+							"AUTO no tiene de dónde tomar el nombre: enlaza una nota o un marcador destino, o escribe un nombre.",
+							"AUTO has nowhere to take the name from: link a note or a destination marker, or type a name.",
+						)
+					: T("Ponle un nombre al marcador", "Give the marker a name"),
+			);
 			return;
 		}
 		if (action !== "delete") commitLayers(this.data, this.newLayers);
