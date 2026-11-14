@@ -17,7 +17,8 @@ import {
 	distanceTime,
 	displayDistance,
 	formatTotal,
-	KM_PER_MILE,
+	milesPerUnit,
+	newMapUnit,
 	formatHours,
 	formatTravelTime,
 	MapData,
@@ -196,7 +197,7 @@ export class MapView extends TextFileView {
 			return;
 		}
 		this.hideBroken();
-		this.mapData = normalizeMap(raw, this.plugin.settings.defaultUnit);
+		this.mapData = normalizeMap(raw, newMapUnit(this.plugin.settings.displayUnit));
 		if (clear) {
 			this.needsFit = true;
 			this.mode = "navigate";
@@ -679,10 +680,13 @@ export class MapView extends TextFileView {
 				const b = seg.createEl("button", { text: PACES[pace].label });
 				b.toggleClass("is-active", this.plugin.settings.travelPace === pace);
 				const perDay = PACES[pace].hoursPerDay.toLocaleString(numberLocale());
-				const kmh = this.plugin.settings.displayUnit === "km";
-				const speed = kmh
-					? `${(PACES[pace].mph * KM_PER_MILE).toLocaleString(numberLocale(), { maximumFractionDigits: 1 })} km/h`
-					: T(`${PACES[pace].mph} millas/h`, `${PACES[pace].mph} miles/h`);
+				// Velocidad en la unidad elegida para mostrar (en millas con «Las de cada mapa»).
+				const display = this.plugin.settings.displayUnit;
+				const perUnit = display === "map" ? null : milesPerUnit(display);
+				const speed =
+					perUnit === null || perUnit === 1
+						? T(`${PACES[pace].mph} millas/h`, `${PACES[pace].mph} miles/h`)
+						: `${(PACES[pace].mph / perUnit).toLocaleString(numberLocale(), { maximumFractionDigits: 1 })} ${display}/h`;
 				setTooltip(b, T(`${speed} · ${perDay} h de marcha al día`, `${speed} · ${perDay} h of travel per day`));
 				b.onclick = () => {
 					this.plugin.settings.travelPace = pace;

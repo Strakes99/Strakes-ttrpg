@@ -6,7 +6,7 @@ import { resizeObserverFor } from "../ui/dom";
 import { loadImageSize } from "../ui/modals";
 import { PinHoverParent } from "./hover";
 import { linktextOf, resolveWikilink } from "./links";
-import { isItemVisible, ItemType, MapData, MapPin, nodeMap, normalizeMap, ROUTE_COLORS, routePath } from "./mapData";
+import { isItemVisible, ItemType, MapData, MapPin, newMapUnit, nodeMap, normalizeMap, ROUTE_COLORS, routePath } from "./mapData";
 import { mapBounds, nodeMarker, PIN_TOOLTIP_OPTIONS, pinIcon, pinTooltipText, segmentLabel, toLatLng } from "./render";
 
 /** Lo que Obsidian pasa a quien crea un embed (API interna `app.embedRegistry`). */
@@ -82,7 +82,7 @@ export class MapEmbed extends Component {
 	/** Obsidian lo llama tras crear el embed. */
 	async loadFile(): Promise<void> {
 		try {
-			this.data = normalizeMap(JSON.parse(await this.app.vault.cachedRead(this.file)), this.plugin.settings.defaultUnit);
+			this.data = normalizeMap(JSON.parse(await this.app.vault.cachedRead(this.file)), newMapUnit(this.plugin.settings.displayUnit));
 		} catch {
 			this.ctx.containerEl.empty();
 			this.ctx.containerEl.createDiv({ cls: "strakes-warning", text: T(`No se pudo leer el mapa ${this.file.basename}.`, `Couldn't read the map ${this.file.basename}.`) });

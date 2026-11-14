@@ -65,9 +65,11 @@ export class PlayerScreenView extends ItemView {
 				this.renderInitiative();
 			}),
 		);
-		// Recarga en vivo si se edita la nota que se está mostrando.
+		// Recarga en vivo si se edita la nota que se está mostrando. Se espera al índice de
+		// Obsidian («changed», no «modify»): con el índice antiguo, una sección enviada se
+		// cortaba por posiciones que ya no correspondían al texto nuevo.
 		this.registerEvent(
-			this.app.vault.on("modify", (f) => {
+			this.app.metadataCache.on("changed", (f) => {
 				const c = this.plugin.playerContent;
 				if (c && c.kind === "note" && c.path === f.path) void this.renderContent();
 			}),
@@ -138,7 +140,23 @@ export class PlayerScreenView extends ItemView {
 					markdown = T(`*Nota no encontrada: ${content.path}*`, `*Note not found: ${content.path}*`);
 				} else {
 					sourcePath = file.path;
-					markdown = await this.readNote(file, content.subpath);
+					const read = await this.readNote(file, content.subpath);
+					if (read === null) {
+						// La sección enviada ya no existe (encabezado renombrado o borrado): en lugar de
+						// enseñar la nota entera a los jugadores, se vacía la pantalla y se avisa al DM.
+						comp.unload();
+						const section = (content.subpath ?? "").replace(/^#\^?/, "");
+						new Notice(
+							T(
+								`La sección «${section}» ya no existe en «${file.basename}»: se ha vaciado la pantalla de jugadores.`,
+								`The section "${section}" no longer exists in "${file.basename}": the player screen has been cleared.`,
+							),
+							8000,
+						);
+						if (token === this.renderToken) void this.plugin.sendToPlayers(null);
+						return;
+					}
+					markdown = read;
 					// Nota completa: su título arriba, como al abrirla en Obsidian (título en línea).
 					// Una sección ya empieza por su propio encabezado.
 					if (!content.subpath) target.createDiv({ cls: "inline-title strakes-player-title", text: file.basename });
@@ -161,13 +179,17 @@ export class PlayerScreenView extends ItemView {
 		this.layoutInitiative();
 	}
 
-	/** Lee la nota sin frontmatter y, si hay subpath (#encabezado o #^bloque), solo esa sección. */
-	private async readNote(file: TFile, subpath?: string): Promise<string> {
+	/**
+	 * Lee la nota sin frontmatter y, si hay subpath (#encabezado o #^bloque), solo esa sección.
+	 * null si la sección ya no existe en la nota.
+	 */
+	private async readNote(file: TFile, subpath?: string): Promise<string | null> {
 		const text = await this.app.vault.cachedRead(file);
 		const cache = this.app.metadataCache.getFileCache(file);
 		if (subpath && cache) {
 			const res = resolveSubpath(cache, subpath);
-			if (res) return text.slice(res.start.offset, res.end ? res.end.offset : undefined);
+			if (!res) return null;
+			return text.slice(res.start.offset, res.end ? res.end.offset : undefined);
 		}
 		const fm = cache?.frontmatterPosition;
 		return fm ? text.slice(fm.end.offset).replace(/^\s+/, "") : text;

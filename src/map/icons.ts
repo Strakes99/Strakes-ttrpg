@@ -97,24 +97,54 @@ export class IconLibrary {
 	 * Copia archivos SVG elegidos por el usuario a la carpeta de iconos
 	 * (o a una subcarpeta). Devuelve cuántos se importaron.
 	 */
-	async importFiles(files: FileList | File[], folder = ""): Promise<number> {
+	/**
+	 * Copia archivos SVG a la carpeta de iconos (o a una subcarpeta). Si ya existe un icono
+	 * con ese nombre, `onConflict` decide: reemplazarlo, guardarlo con otro nombre u omitirlo
+	 * (y, con `applyToRest`, hacer lo mismo con los siguientes choques). Sin `onConflict`
+	 * nunca se sobrescribe: se usa el siguiente nombre libre. Devuelve cuántos se importaron.
+	 */
+	async importFiles(files: FileList | File[], folder = "", onConflict?: (c: IconConflict) => Promise<IconConflictChoice>): Promise<number> {
 		const adapter = this.app.vault.adapter;
 		const target = normalizePath(folder ? `${this.dir}/${folder}` : this.dir);
 		if (!(await adapter.exists(target))) await adapter.mkdir(target);
+		const pathOf = (name: string) => normalizePath(`${target}/${name}.svg`);
+		const exists = (name: string) => adapter.exists(pathOf(safeIconName(name)));
+		const list = Array.from(files).filter((f) => f.name.toLowerCase().endsWith(".svg"));
+		let sticky: IconConflictChoice["action"] | null = null;
 		let count = 0;
-		for (const file of Array.from(files)) {
-			if (!file.name.toLowerCase().endsWith(".svg")) continue;
+		for (const [i, file] of list.entries()) {
 			const text = await file.text();
 			if (!sanitizeSvg(text)) {
 				new Notice(T(`«${file.name}» no es un SVG válido; se omitió.`, `"${file.name}" isn't a valid SVG; skipped.`));
 				continue;
 			}
-			const name = basename(file.name).replace(/[\\/:*?"<>|#^[\]]/g, "-").trim() || "icono";
-			await adapter.write(normalizePath(`${target}/${name}.svg`), text);
+			let name = safeIconName(basename(file.name)) || "icono";
+			if (await exists(name)) {
+				const suggested = await this.freeName(name, exists);
+				let choice: IconConflictChoice;
+				if (sticky === "replace") choice = { action: "replace" };
+				else if (sticky === "skip") choice = { action: "skip" };
+				else if (sticky === "rename" || !onConflict) choice = { action: "rename", name: suggested };
+				else {
+					choice = await onConflict({ name, folder, suggested, remaining: list.length - i - 1, exists });
+					if (choice.applyToRest) sticky = choice.action;
+				}
+				if (choice.action === "skip") continue;
+				if (choice.action === "rename") name = safeIconName(choice.name) || suggested;
+			}
+			await adapter.write(pathOf(name), text);
 			count++;
 		}
 		await this.load();
 		return count;
+	}
+
+	/** Primer nombre libre añadiendo un número: «espada» → «espada 2», «espada 3»… */
+	private async freeName(name: string, exists: (name: string) => Promise<boolean>): Promise<string> {
+		for (let n = 2; ; n++) {
+			const candidate = `${name} ${n}`;
+			if (!(await exists(candidate))) return candidate;
+		}
 	}
 
 	/** Abre la carpeta de iconos en el explorador de archivos del sistema. */
@@ -144,6 +174,27 @@ export class IconLibrary {
 		el.appendChild(svg);
 		return true;
 	}
+}
+
+/** Un choque al importar: ya existe un icono con ese nombre en la carpeta de destino. */
+export interface IconConflict {
+	name: string;
+	/** Subcarpeta de destino ("" = carpeta principal). */
+	folder: string;
+	/** Primer nombre libre («espada 2»). */
+	suggested: string;
+	/** Archivos que quedan por importar después de este. */
+	remaining: number;
+	/** ¿Existe ya un icono con este nombre en esa carpeta? */
+	exists: (name: string) => Promise<boolean>;
+}
+
+/** Qué hacer con un choque. `applyToRest`: lo mismo con los siguientes (al renombrar, con el siguiente nombre libre). */
+export type IconConflictChoice = ({ action: "replace" } | { action: "rename"; name: string } | { action: "skip" }) & { applyToRest?: boolean };
+
+/** Nombre de archivo válido para un icono: sin los caracteres que no admiten las rutas ni los enlaces. */
+export function safeIconName(name: string): string {
+	return name.replace(/[\\/:*?"<>|#^[\]]/g, "-").trim();
 }
 
 /** Carpeta de un icono por su nombre ("armas/espada" → "armas"; "espada" → ""). */

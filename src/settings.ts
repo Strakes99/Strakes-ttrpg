@@ -4,6 +4,7 @@ import type StrakesTTRPG from "./main";
 import { ConditionModal, renderConditionIcon } from "./initiative/conditionUi";
 import { allConditions, CC_BY_URL, customInfo, SRD_URL } from "./initiative/conditions";
 import { confirmDialog } from "./ui/modals";
+import { unitOptions } from "./map/mapData";
 import { MapView } from "./map/MapView";
 import { StrakesSettings, VIEW_TYPE_MAP } from "./types";
 
@@ -33,7 +34,7 @@ export class StrakesSettingTab extends PluginSettingTab {
 	 * iniciativa, mapas) para que se actualicen al momento.
 	 */
 	async setControlValue(key: string, value: unknown): Promise<void> {
-		if (key === "defaultUnit" && typeof value === "string") value = value.trim();
+
 		if (key === "mapFolder" && typeof value === "string") value = value.trim().replace(/\/+$/, "");
 		(this.plugin.settings as unknown as Record<string, unknown>)[key] = value;
 		await this.save();
@@ -171,20 +172,15 @@ export class StrakesSettingTab extends PluginSettingTab {
 				heading: T("Mapas", "Maps"),
 				items: [
 					{
-						name: T("Unidad por defecto", "Default unit"),
-						desc: T("Unidad de distancia de los mapas nuevos.", "Distance unit for new maps."),
-						control: { type: "text", key: "defaultUnit" },
-					},
-					{
-						name: T("Unidades para mostrar", "Display units"),
+						name: T("Unidad de distancia", "Distance unit"),
 						desc: T(
-							"Convierte al mostrarlas las distancias y velocidades de todos los mapas. Lo que escribes en cada mapa se guarda siempre en su propia unidad y no cambia.",
-							"Converts the distances and speeds of every map when they're displayed. What you enter in each map is always stored in its own unit and never changes.",
+							"Las distancias y velocidades de todos los mapas se muestran convertidas a esta unidad (lo que escribes en cada mapa se guarda en su propia unidad y no cambia), y los mapas nuevos se crean con ella. Con «Las de cada mapa», cada uno se ve en su unidad y los nuevos se crean en kilómetros.",
+							"Distances and speeds of every map are shown converted to this unit (what you enter in each map is stored in its own unit and never changes), and new maps are created with it. With \"Each map's own\", each map is shown in its unit and new ones are created in kilometers.",
 						),
 						control: {
 							type: "dropdown",
 							key: "displayUnit",
-							options: { map: T("Las de cada mapa", "Each map's own"), km: T("Kilómetros", "Kilometers"), mi: T("Millas", "Miles") },
+							options: { map: T("Las de cada mapa", "Each map's own"), ...Object.fromEntries(unitOptions().map((o) => [o.value, o.label])) },
 						},
 					},
 					{

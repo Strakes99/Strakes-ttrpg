@@ -5,13 +5,14 @@ import { InitiativeView } from "./initiative/InitiativeView";
 import { IconLibrary, setIconLibrary } from "./map/icons";
 import { applyAutoNames, AutoNamePin } from "./map/autoName";
 import { linkpathMatchesPath, parseWikilink, wikilinkFor } from "./map/links";
-import { emptyMap } from "./map/mapData";
+import { emptyMap, newMapUnit } from "./map/mapData";
 import { EmbedContext, MapEmbed } from "./map/MapEmbed";
 import { MapView } from "./map/MapView";
 import { PlayerScreenView } from "./player/PlayerScreenView";
 import { StrakesSettingTab } from "./settings";
 import {
 	DEFAULT_SETTINGS,
+	IMAGE_EXTENSIONS,
 	MAP_EXTENSION,
 	PlayerContent,
 	StrakesSettings,
@@ -19,7 +20,7 @@ import {
 	VIEW_TYPE_MAP,
 	VIEW_TYPE_PLAYER,
 } from "./types";
-import { ImagePickerModal, isImageFile, loadImageSize } from "./ui/modals";
+import { askIconConflict, ImagePickerModal, isImageFile, loadImageSize } from "./ui/modals";
 
 export default class StrakesTTRPG extends Plugin {
 	settings!: StrakesSettings;
@@ -40,7 +41,7 @@ export default class StrakesTTRPG extends Plugin {
 		const input = createEl("input", { type: "file", attr: { accept: ".svg,image/svg+xml", multiple: "" } });
 		input.onchange = async () => {
 			if (!input.files?.length) return;
-			const n = await this.icons.importFiles(input.files, folder);
+			const n = await this.icons.importFiles(input.files, folder, (conflict) => askIconConflict(this.app, conflict));
 			this.events.trigger("icons");
 			new Notice(
 				n
@@ -80,6 +81,9 @@ export default class StrakesTTRPG extends Plugin {
 		this.registerCommands();
 		this.registerMenus();
 		this.registerEvent(this.app.vault.on("rename", (f, old) => void this.onRename(f, old)));
+		this.register(() => {
+			if (this.renameTimer !== null) window.clearTimeout(this.renameTimer);
+		});
 		this.addSettingTab(new StrakesSettingTab(this.app, this));
 	}
 
@@ -301,7 +305,7 @@ export default class StrakesTTRPG extends Plugin {
 		if (folder && !(this.app.vault.getAbstractFileByPath(folder) instanceof TFolder)) await this.app.vault.createFolder(folder);
 		let path = normalizePath(`${folder}/${image.basename}.${MAP_EXTENSION}`);
 		for (let n = 2; this.app.vault.getAbstractFileByPath(path); n++) path = normalizePath(`${folder}/${image.basename} ${n}.${MAP_EXTENSION}`);
-		const data = emptyMap(image.path, size.width, size.height, this.settings.defaultUnit);
+		const data = emptyMap(image.path, size.width, size.height, newMapUnit(this.settings.displayUnit));
 		const file = await this.app.vault.create(path, JSON.stringify(data, null, "\t"));
 		await this.app.workspace.getLeaf(true).openFile(file);
 		new Notice(T(`Mapa creado: ${file.path}`, `Map created: ${file.path}`));
@@ -311,7 +315,11 @@ export default class StrakesTTRPG extends Plugin {
 	private async onRename(file: TAbstractFile, oldPath: string): Promise<void> {
 		if (!(file instanceof TFile)) return;
 		const pc = this.playerContent;
-		if (pc && pc.kind !== "text" && pc.path === oldPath) pc.path = file.path;
+		if (pc && pc.kind !== "text" && pc.path === oldPath) {
+			pc.path = file.path;
+			// Se redibuja para que el título de la nota mostrada lleve el nombre nuevo.
+			this.events.trigger("player-content");
+		}
 
 		// Retratos de los combatientes y retratos recordados por nombre.
 		let portraitsChanged = false;
@@ -326,33 +334,64 @@ export default class StrakesTTRPG extends Plugin {
 			this.events.trigger("combat");
 		}
 
-		// Búsqueda rápida: ¿el mapa menciona la ruta o el nombre antiguo?
-		const oldBase = (oldPath.split("/").pop() ?? oldPath).replace(/\.md$/, "").toLowerCase();
-		const pathNeedle = JSON.stringify(oldPath).slice(1, -1);
+		// Mapas: solo pueden enlazar notas, otros mapas, lienzos e imágenes (la del mapa). Renombrar
+		// cualquier otra cosa no los afecta. Los renombrados se agrupan (mover una carpeta genera
+		// uno por archivo) y cada mapa se revisa una sola vez por grupo.
+		if (!MAP_LINKABLE_EXTENSIONS.has(file.extension.toLowerCase())) return;
+		this.pendingRenames.push({ file, oldPath });
+		if (this.renameTimer !== null) window.clearTimeout(this.renameTimer);
+		this.renameTimer = window.setTimeout(() => {
+			this.renameTimer = null;
+			void this.updateMapsAfterRenames();
+		}, RENAME_BATCH_MS);
+	}
+
+	/** Renombrados pendientes de aplicar a los mapas (ver `onRename`). */
+	private pendingRenames: { file: TFile; oldPath: string }[] = [];
+	private renameTimer: number | null = null;
+
+	/**
+	 * Aplica a los mapas un grupo de renombrados: lee cada .smap una vez y solo reescribe los
+	 * que mencionan alguna de las rutas o nombres antiguos (imagen del mapa y enlaces de los
+	 * marcadores, con los nombres automáticos de los marcadores con AUTO).
+	 */
+	private async updateMapsAfterRenames(): Promise<void> {
+		const batch = this.pendingRenames;
+		this.pendingRenames = [];
+		if (!batch.length) return;
+		// Búsqueda rápida: ¿el mapa menciona la ruta o el nombre antiguo de alguno?
+		const needles = batch.map((r) => ({
+			path: JSON.stringify(r.oldPath).slice(1, -1),
+			base: (r.oldPath.split("/").pop() ?? r.oldPath).replace(/\.md$/, "").toLowerCase(),
+		}));
 		for (const f of this.app.vault.getFiles()) {
-			if (f.extension !== MAP_EXTENSION || f === file) continue;
+			if (f.extension !== MAP_EXTENSION) continue;
 			const text = await this.app.vault.cachedRead(f);
-			if (!text.includes(pathNeedle) && !text.toLowerCase().includes(oldBase)) continue;
+			const lower = text.toLowerCase();
+			if (!needles.some((n) => text.includes(n.path) || lower.includes(n.base))) continue;
 			await this.app.vault.process(f, (current) => {
 				try {
 					const d = JSON.parse(current) as { image?: unknown; pins?: unknown };
-					let changed = false;
-					if (d.image === oldPath) {
-						d.image = file.path;
-						changed = true;
-					}
 					const pins = Array.isArray(d.pins) ? (d.pins as { link?: unknown }[]) : [];
-					for (const p of pins) {
-						if (typeof p.link !== "string") continue;
-						const w = parseWikilink(p.link);
-						if (!linkpathMatchesPath(w.linkpath, oldPath)) continue;
-						// Si el nombre sigue resolviendo a otra nota distinta, ese enlace no era a la renombrada.
-						const still = this.app.metadataCache.getFirstLinkpathDest(w.linkpath, f.path);
-						if (still && still !== file) continue;
-						const updated = wikilinkFor(this.app, file, f.path, w.subpath, w.alias);
-						if (updated !== p.link) {
-							p.link = updated;
+					let changed = false;
+					// En orden: si un archivo se renombró dos veces seguidas, se aplican las dos.
+					for (const { file, oldPath } of batch) {
+						if (d.image === oldPath) {
+							d.image = file.path;
 							changed = true;
+						}
+						for (const p of pins) {
+							if (typeof p.link !== "string") continue;
+							const w = parseWikilink(p.link);
+							if (!linkpathMatchesPath(w.linkpath, oldPath)) continue;
+							// Si el nombre sigue resolviendo a otra nota distinta, ese enlace no era a la renombrada.
+							const still = this.app.metadataCache.getFirstLinkpathDest(w.linkpath, f.path);
+							if (still && still !== file) continue;
+							const updated = wikilinkFor(this.app, file, f.path, w.subpath, w.alias);
+							if (updated !== p.link) {
+								p.link = updated;
+								changed = true;
+							}
 						}
 					}
 					// Marcadores con AUTO: el nombre sigue a la nota renombrada (y los portales a ellos).
@@ -365,3 +404,8 @@ export default class StrakesTTRPG extends Plugin {
 		}
 	}
 }
+
+/** Archivos que un mapa puede enlazar: notas, mapas y lienzos (marcadores) e imágenes (la del mapa). */
+const MAP_LINKABLE_EXTENSIONS = new Set(["md", MAP_EXTENSION, "canvas", ...IMAGE_EXTENSIONS]);
+/** Espera tras el último renombrado antes de revisar los mapas (agrupa los de una carpeta movida). */
+const RENAME_BATCH_MS = 500;

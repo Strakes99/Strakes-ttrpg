@@ -1,6 +1,92 @@
 import { AbstractInputSuggest, App, FuzzySuggestModal, Modal, Setting, TFile } from "obsidian";
 import { T } from "../i18n";
 import { IMAGE_EXTENSIONS } from "../types";
+import type { IconConflict, IconConflictChoice } from "../map/icons";
+
+/**
+ * Al importar un SVG con el nombre de otro ya existente: reemplazarlo, guardarlo con otro
+ * nombre (propone el primero libre) u omitirlo. Cerrar el diálogo equivale a omitir.
+ */
+export function askIconConflict(app: App, conflict: IconConflict): Promise<IconConflictChoice> {
+	return new Promise((resolve) => new IconConflictModal(app, conflict, resolve).open());
+}
+
+class IconConflictModal extends Modal {
+	private choice: IconConflictChoice = { action: "skip" };
+
+	constructor(
+		app: App,
+		private conflict: IconConflict,
+		private resolve: (c: IconConflictChoice) => void,
+	) {
+		super(app);
+	}
+
+	onOpen(): void {
+		const c = this.conflict;
+		const el = this.contentEl;
+		this.titleEl.setText(T(`Ya existe un icono «${c.name}»`, `An icon "${c.name}" already exists`));
+		el.createEl("p", {
+			cls: "setting-item-description",
+			text: c.folder
+				? T(`En la carpeta «${c.folder}». Puedes reemplazarlo, guardar el nuevo con otro nombre u omitirlo.`, `In the "${c.folder}" folder. You can replace it, save the new one with another name or skip it.`)
+				: T("En la carpeta principal de iconos. Puedes reemplazarlo, guardar el nuevo con otro nombre u omitirlo.", "In the main icons folder. You can replace it, save the new one with another name or skip it."),
+		});
+		let newName = c.suggested;
+		const error = el.createDiv({ cls: "strakes-warning" });
+		error.hide();
+		new Setting(el).setName(T("Nuevo nombre", "New name")).addText((t) => {
+			t.setValue(newName).onChange((v) => {
+				newName = v;
+				error.hide();
+			});
+			t.inputEl.addClass("strakes-wide-input");
+		});
+		let applyToRest = false;
+		if (c.remaining > 0)
+			new Setting(el)
+				.setName(T("Hacer lo mismo con el resto", "Do the same for the rest"))
+				.setDesc(T("Para los siguientes iconos con nombre repetido (al guardar con otro nombre, se usa el primero libre).", "For the following icons with a repeated name (when saving with another name, the first free one is used)."))
+				.addToggle((t) => t.setValue(false).onChange((v) => (applyToRest = v)));
+		new Setting(el)
+			.addButton((b) =>
+				b
+					.setButtonText(T("Reemplazar", "Replace"))
+					.setDestructive()
+					.onClick(() => this.done({ action: "replace", applyToRest })),
+			)
+			.addButton((b) => b.setButtonText(T("Omitir", "Skip")).onClick(() => this.done({ action: "skip", applyToRest })))
+			.addButton((b) =>
+				b
+					.setButtonText(T("Guardar con el nuevo nombre", "Save with the new name"))
+					.setCta()
+					.onClick(async () => {
+						const name = newName.trim();
+						if (!name) {
+							error.setText(T("Escribe un nombre.", "Enter a name."));
+							error.show();
+							return;
+						}
+						if (await c.exists(name)) {
+							error.setText(T(`También existe «${name}». Elige otro nombre.`, `"${name}" also exists. Choose another name.`));
+							error.show();
+							return;
+						}
+						this.done({ action: "rename", name, applyToRest });
+					}),
+			);
+	}
+
+	private done(choice: IconConflictChoice): void {
+		this.choice = choice;
+		this.close();
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+		this.resolve(this.choice);
+	}
+}
 
 /** Pide un texto al usuario. Resuelve null si se cancela. */
 export function promptText(

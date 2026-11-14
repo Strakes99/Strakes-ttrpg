@@ -5,7 +5,7 @@ import { FileInputSuggest, isImageFile, promptText } from "../ui/modals";
 import { IconColorControl, IconPicker } from "../ui/iconPicker";
 import { autoPinName } from "./autoName";
 import { makeWikilink, parseWikilink, resolveWikilink, wikilinkFor } from "./links";
-import { DEFAULT_ICON_COLOR, formatDistance, formatHours, MapData, MapLayer, parseHoursInput, segmentTime, MapPin, MapRoute, nodeMap, segmentDistance } from "./mapData";
+import { DEFAULT_ICON_COLOR, formatDistance, formatHours, MapData, MapLayer, parseHoursInput, segmentTime, MapPin, MapRoute, nodeMap, segmentDistance, unitOptions } from "./mapData";
 
 // ---------- Tramo (clic en la etiqueta) ----------
 
@@ -602,8 +602,14 @@ export class MapPropsModal extends Modal {
 		});
 		new Setting(el)
 			.setName(T("Unidad de distancia", "Distance unit"))
-			.setDesc(T("km, millas, leguas, días de viaje…", "km, miles, leagues, days of travel…"))
-			.addText((t) => t.setValue(p.unit).onChange((v) => (p.unit = v.trim())));
+			.setDesc(T("Cambiarla no convierte las distancias ya escritas: solo cambia su unidad.", "Changing it doesn't convert the distances already entered: it only changes their unit."))
+			.addDropdown((dd) => {
+				const options = unitOptions();
+				for (const o of options) dd.addOption(o.value, o.label);
+				// Una unidad que no está en la lista (mapas antiguos o escritos a mano) se conserva.
+				if (p.unit && !options.some((o) => o.value === p.unit)) dd.addOption(p.unit, p.unit);
+				dd.setValue(p.unit).onChange((v) => (p.unit = v));
+			});
 		new Setting(el)
 			.setName(T("Escala", "Scale"))
 			.setDesc(T("Unidades por píxel de la imagen. Vacío = mapa sin escala (solo distancias manuales por tramo).", "Units per image pixel. Empty = map without scale (only manual distances per segment)."))

@@ -270,8 +270,27 @@ export function formatDistance(value: number, unit: string): string {
 
 export const KM_PER_MILE = 1.609344;
 
-/** Unidad para mostrar: la del mapa, kilómetros o millas. */
-export type DisplayUnit = "map" | "km" | "mi";
+/**
+ * Unidad para mostrar (ajuste «Unidad de distancia»): «map» = la de cada mapa, o una de
+ * `unitOptions()` («km», «mi», «leguas»…). Es también la unidad de los mapas nuevos.
+ */
+export type DisplayUnit = string;
+
+/** Unidades del selector (ajustes y Propiedades del mapa). Todas las reconoce `milesPerUnit`. */
+export function unitOptions(): { value: string; label: string }[] {
+	return [
+		{ value: "km", label: T("Kilómetros", "Kilometers") },
+		{ value: "mi", label: T("Millas", "Miles") },
+		{ value: T("leguas", "leagues"), label: T("Leguas", "Leagues") },
+		{ value: "m", label: T("Metros", "Meters") },
+		{ value: "ft", label: T("Pies", "Feet") },
+	];
+}
+
+/** Unidad de los mapas nuevos: la elegida para mostrar, o kilómetros con «Las de cada mapa». */
+export function newMapUnit(display: DisplayUnit): string {
+	return display === "map" || milesPerUnit(display) === null ? "km" : display;
+}
 
 /**
  * Distancia guardada en la unidad del mapa, lista para mostrar en la unidad elegida.
@@ -281,14 +300,14 @@ export type DisplayUnit = "map" | "km" | "mi";
  */
 export function displayDistance(value: number, unit: string, display: DisplayUnit): string {
 	if (display !== "map") {
-		const mpu = milesPerUnit(unit);
-		if (mpu !== null) {
-			const target = display === "mi" ? "mi" : "km";
+		const from = milesPerUnit(unit);
+		const to = milesPerUnit(display);
+		if (from !== null && to !== null) {
 			// El mapa ya está en esa unidad: no hay conversión, se muestra como siempre.
-			if (mpu === (display === "mi" ? 1 : 1 / KM_PER_MILE)) return formatDistance(value, target);
+			if (from === to) return formatDistance(value, display);
 			// Convertida: con hasta 2 decimales (3,1 mi → «4,99 km»).
-			const converted = display === "mi" ? value * mpu : value * mpu * KM_PER_MILE;
-			return `${converted.toLocaleString(numberLocale(), { maximumFractionDigits: 2 })} ${target}`;
+			const converted = (value * from) / to;
+			return `${converted.toLocaleString(numberLocale(), { maximumFractionDigits: 2 })} ${display}`;
 		}
 	}
 	return formatDistance(value, unit);
