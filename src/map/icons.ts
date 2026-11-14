@@ -42,10 +42,6 @@ export class IconLibrary {
 		return [...this.raw.keys()].sort((a, b) => a.localeCompare(b));
 	}
 
-	has(name: string): boolean {
-		return this.raw.has(name);
-	}
-
 	/** Subcarpetas que contienen iconos ("" = carpeta raíz), ordenadas. */
 	folders(): string[] {
 		return [...new Set(this.names().map(iconFolder))].sort((a, b) => a.localeCompare(b));
@@ -93,10 +89,6 @@ export class IconLibrary {
 		return svg;
 	}
 
-	/**
-	 * Copia archivos SVG elegidos por el usuario a la carpeta de iconos
-	 * (o a una subcarpeta). Devuelve cuántos se importaron.
-	 */
 	/**
 	 * Copia archivos SVG a la carpeta de iconos (o a una subcarpeta). Si ya existe un icono
 	 * con ese nombre, `onConflict` decide: reemplazarlo, guardarlo con otro nombre u omitirlo
@@ -193,7 +185,7 @@ export interface IconConflict {
 export type IconConflictChoice = ({ action: "replace" } | { action: "rename"; name: string } | { action: "skip" }) & { applyToRest?: boolean };
 
 /** Nombre de archivo válido para un icono: sin los caracteres que no admiten las rutas ni los enlaces. */
-export function safeIconName(name: string): string {
+function safeIconName(name: string): string {
 	return name.replace(/[\\/:*?"<>|#^[\]]/g, "-").trim();
 }
 

@@ -603,7 +603,7 @@ export class InitiativeTracker {
 	setEntryCaster(cid: string, condId: string, caster: CasterRef | null): void {
 		const found = this.entry(cid, condId);
 		if (!found) return;
-		const { c, e } = found;
+		const { e } = found;
 		if (caster) e.caster = caster;
 		else delete e.caster;
 		const d = e.duration;
@@ -612,7 +612,9 @@ export class InitiativeTracker {
 			delete e.duration;
 			new Notice(T("La duración dependía del lanzador y se ha quitado: elige otra.", "The duration depended on the caster and has been removed: choose another."));
 		} else if (d && d.kind === "concentration") {
-			this.linkConcentration(c, e);
+			// Si no se puede aplicar la Concentración al lanzador (p. ej. está oculta), se quita
+			// solo la duración, como en setEntryDuration (si no, terminaría la condición entera).
+			if (!this.linkConcentration(e)) delete e.duration;
 		} else if (d && (d.kind === "turn-end" || d.kind === "turn-start") && d.of === "caster") {
 			d.armed = false;
 		}
@@ -627,12 +629,12 @@ export class InitiativeTracker {
 	setEntryDuration(cid: string, condId: string, duration: { kind: "turn-end" | "turn-start"; of: "target" | "caster" } | { kind: "rounds"; rounds: number } | { kind: "concentration" } | null): void {
 		const found = this.entry(cid, condId);
 		if (!found) return;
-		const { c, e } = found;
+		const { e } = found;
 		if (!duration) delete e.duration;
 		else if (duration.kind === "rounds") e.duration = { kind: "rounds", rounds: duration.rounds, left: duration.rounds, anchorId: this.state.currentId };
 		else if (duration.kind === "concentration") {
 			e.duration = { kind: "concentration" };
-			if (!this.linkConcentration(c, e)) delete e.duration;
+			if (!this.linkConcentration(e)) delete e.duration;
 		} else e.duration = { kind: duration.kind, of: duration.of, armed: false };
 		this.changed();
 	}
@@ -641,7 +643,7 @@ export class InitiativeTracker {
 	 * Liga una condición a la concentración de su lanzador: si no tiene, se le aplica la
 	 * primera condición de concentración disponible y se avisa. Devuelve false si no se pudo.
 	 */
-	private linkConcentration(_c: Combatant, e: ConditionEntry): boolean {
+	private linkConcentration(e: ConditionEntry): boolean {
 		const caster = this.combatants.find((x) => x.id === this.casterId(e));
 		if (!caster || e.duration?.kind !== "concentration") return false;
 		let conc = this.concentrationEntry(caster);

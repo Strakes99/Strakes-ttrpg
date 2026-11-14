@@ -8,6 +8,12 @@ import { unitOptions } from "./map/mapData";
 import { MapView } from "./map/MapView";
 import { StrakesSettings, VIEW_TYPE_MAP } from "./types";
 
+/** Primera línea con texto de una descripción en Markdown, sin marcas de formato (para la lista). */
+function firstLine(markdown: string): string {
+	const line = markdown.split("\n").find((l) => l.trim()) ?? "";
+	return line.replace(/^#+\s*/, "").replace(/\*\*|__|\*|`/g, "").trim();
+}
+
 /**
  * Pestaña de ajustes con la API declarativa de Obsidian 1.13 (`getSettingDefinitions`):
  * Obsidian dibuja los controles, los incluye en su buscador de ajustes y lee y escribe los
@@ -15,12 +21,6 @@ import { StrakesSettings, VIEW_TYPE_MAP } from "./types";
  * condiciones, condiciones personalizadas, iconos SVG) usan `render`. Para volver a
  * dibujar la pestaña tras un cambio de estructura se llama a `this.update()`.
  */
-/** Primera línea con texto de una descripción en Markdown, sin marcas de formato (para la lista). */
-function firstLine(markdown: string): string {
-	const line = markdown.split("\n").find((l) => l.trim()) ?? "";
-	return line.replace(/^#+\s*/, "").replace(/\*\*|__|\*|`/g, "").trim();
-}
-
 export class StrakesSettingTab extends PluginSettingTab {
 	constructor(
 		app: App,
@@ -34,7 +34,6 @@ export class StrakesSettingTab extends PluginSettingTab {
 	 * iniciativa, mapas) para que se actualicen al momento.
 	 */
 	async setControlValue(key: string, value: unknown): Promise<void> {
-
 		if (key === "mapFolder" && typeof value === "string") value = value.trim().replace(/\/+$/, "");
 		(this.plugin.settings as unknown as Record<string, unknown>)[key] = value;
 		await this.save();

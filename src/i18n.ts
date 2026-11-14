@@ -11,7 +11,7 @@ export interface Localized {
 	en: string;
 }
 
-export function lang(): Lang {
+function lang(): Lang {
 	const locale = (moment.locale() || "").toLowerCase();
 	return locale.startsWith("es") ? "es" : "en";
 }

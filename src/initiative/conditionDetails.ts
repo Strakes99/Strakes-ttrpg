@@ -9,13 +9,13 @@ import type { InitiativeTracker } from "./tracker";
 /**
  * Datos de cada condición aplicada (no de la condición en general): duración, lanzador,
  * salvación que se repite y, en las de concentración, el hechizo. Se asignan desde la ficha
- * de la condición (clic en su icono), con botones «+ Duración», «+ Lanzador», «+ Salvación».
+ * de la condición (clic en su icono), con los botones «Duración», «Lanzador», «Salvación» y, en las de concentración, «Hechizo».
  */
 
 // ---------- Textos ----------
 
 /** Duración en palabras: «hasta el final del siguiente turno de Mago», «3 rondas más»… */
-export function describeDuration(tracker: InitiativeTracker, c: Combatant, e: ConditionEntry): string {
+function describeDuration(tracker: InitiativeTracker, c: Combatant, e: ConditionEntry): string {
 	const d = e.duration;
 	if (!d) return "";
 	if (d.kind === "rounds")
@@ -31,7 +31,7 @@ export function describeDuration(tracker: InitiativeTracker, c: Combatant, e: Co
 }
 
 /** Salvación en palabras: «Sabiduría CD 13, al final de cada turno». */
-export function describeSave(s: EntrySave): string {
+function describeSave(s: EntrySave): string {
 	const dc = s.dc ? ` CD ${s.dc}` : "";
 	return s.when === "end"
 		? T(`${s.ability}${dc}, al final de cada turno`, `${s.ability}${s.dc ? ` DC ${s.dc}` : ""}, at the end of each turn`)
@@ -104,7 +104,7 @@ export function renderEntryDetails(parent: HTMLElement, plugin: StrakesTTRPG, c:
 		"user",
 		T("Lanzador", "Caster"),
 		e.caster ? T(`Lanzador: ${tracker.casterName(e)}`, `Caster: ${tracker.casterName(e)}`) : "",
-		() => pickCaster(app, plugin, c, (caster) => tracker.setEntryCaster(c.id, e.id, caster)),
+		() => pickCaster(app, plugin, (caster) => tracker.setEntryCaster(c.id, e.id, caster)),
 		() => tracker.setEntryCaster(c.id, e.id, null),
 	);
 	row(
@@ -124,7 +124,7 @@ type CasterOption = { kind: "combatant"; c: Combatant; current: boolean } | { ki
  * Buscador de lanzador: los combatientes (quien tiene el turno, primero y marcado) y
  * «Otro…» para escribir un texto (trampa, entorno), solo informativo.
  */
-export function pickCaster(app: App, plugin: StrakesTTRPG, _target: Combatant, onPick: (caster: { id: string } | { text: string }) => void): void {
+function pickCaster(app: App, plugin: StrakesTTRPG, onPick: (caster: { id: string } | { text: string }) => void): void {
 	new CasterPicker(app, plugin, onPick).open();
 }
 
@@ -269,7 +269,7 @@ class DurationModal extends Modal {
 			else caster.setDesc(this.tracker.casterName(this.e));
 			caster.addButton((b) =>
 				b.setButtonText(this.e.caster ? T("Cambiar…", "Change…") : T("Elegir…", "Choose…")).onClick(() =>
-					pickCaster(this.app, this.plugin, this.c, (picked) => {
+					pickCaster(this.app, this.plugin, (picked) => {
 						this.tracker.setEntryCaster(this.c.id, this.e.id, picked);
 						this.refreshEntry();
 						this.render();

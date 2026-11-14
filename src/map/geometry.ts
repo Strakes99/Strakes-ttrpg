@@ -85,7 +85,7 @@ export function nearestOnPolyline(pts: Pt[], p: Pt): { dist: number; index: numb
 	return best;
 }
 
-export function distToSegment(p: Pt, a: Pt, b: Pt): number {
+function distToSegment(p: Pt, a: Pt, b: Pt): number {
 	const dx = b.x - a.x;
 	const dy = b.y - a.y;
 	const len2 = dx * dx + dy * dy;

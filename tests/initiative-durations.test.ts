@@ -182,6 +182,25 @@ const has = (c: Combatant, id: string) => c.conditions.some((e) => e.id === id);
 	tr.damage(mage.id, 25);
 	t("el lanzador cae a 0 PG: termina la ligada", has(orc, "restrained"), false);
 }
+// Cambiar el lanzador de una duración de concentración cuando no se le puede aplicar
+// (Concentración oculta): se quita solo la duración, no la condición.
+{
+	const plugin = fakePlugin();
+	const tr = new InitiativeTracker(plugin);
+	const mage = tr.add({ name: "Mago", initiative: 20, hp: 20, maxHp: 20, isPlayer: true });
+	const cleric = tr.add({ name: "Clériga", initiative: 18, hp: 20, maxHp: 20, isPlayer: true });
+	const orc = tr.add({ name: "Orco", initiative: 15, hp: 15, maxHp: 15 });
+	tr.addCondition(orc.id, "restrained");
+	tr.setEntryCaster(orc.id, "restrained", { id: mage.id });
+	tr.setEntryDuration(orc.id, "restrained", { kind: "concentration" });
+	plugin.settings.conditionOverrides.concentration = { hidden: true };
+	clearNotices();
+	tr.setEntryCaster(orc.id, "restrained", { id: cleric.id });
+	const entry = orc.conditions.find((x) => x.id === "restrained");
+	t("nuevo lanzador sin Concentración posible: la condición sigue", !!entry, true);
+	t("nuevo lanzador sin Concentración posible: se quita la duración", entry?.duration, undefined);
+	t("nuevo lanzador sin Concentración posible: avisa", notices().some((n) => n.includes("No hay ninguna condición de concentración")), true);
+}
 
 // ---------- Salvación que se repite ----------
 {

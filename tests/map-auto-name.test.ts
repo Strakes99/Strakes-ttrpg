@@ -48,6 +48,13 @@ const pair: AutoNamePin[] = [
 ];
 applyAutoNames(pair);
 t("escalera hacia un destino con nota", pair.map((p) => p.name), ["Torre", "Torre"]);
+// Un destino que no es portal, con AUTO y sin nota, tiene nombre propio (puesto a mano): se toma.
+const toPlain: AutoNamePin[] = [
+	{ id: "q1", name: "", portal: true, targetPinId: "q2", autoName: true },
+	{ id: "q2", name: "Pozo", autoName: true },
+];
+applyAutoNames(toPlain);
+t("portal hacia un marcador normal con AUTO y sin nota", toPlain[0].name, "Pozo");
 
 // applyAutoNames: solo toca los que tienen AUTO, y en orden (primero enlaces, luego portales).
 const map: AutoNamePin[] = [

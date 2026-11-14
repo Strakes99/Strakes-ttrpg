@@ -125,10 +125,9 @@ export function emptyMap(image: string, width: number, height: number, unit: str
 	};
 }
 
-/** Valida el JSON del mapa y rellena valores ausentes (p. ej. si se editó a mano). */
 /**
- * Completa un mapa leído del archivo con los valores por defecto. `defaultUnit` se usa
- * solo si el archivo no indica unidad (p. ej. un .smap escrito a mano).
+ * Valida el JSON del mapa y rellena los valores ausentes (p. ej. si se editó a mano).
+ * `defaultUnit` se usa solo si el archivo no indica unidad.
  */
 export function normalizeMap(raw: unknown, defaultUnit = "km"): MapData {
 	const r = (raw && typeof raw === "object" ? raw : {}) as Partial<MapData>;
@@ -268,7 +267,7 @@ export function formatDistance(value: number, unit: string): string {
 	return `${rounded.toLocaleString(numberLocale())} ${unit}`.trim();
 }
 
-export const KM_PER_MILE = 1.609344;
+const KM_PER_MILE = 1.609344;
 
 /**
  * Unidad para mostrar (ajuste «Unidad de distancia»): «map» = la de cada mapa, o una de

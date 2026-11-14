@@ -97,9 +97,9 @@ export function editSegmentDialog(app: App, data: MapData, route: MapRoute, i: n
 	});
 }
 
-/** Desplegable de capa: «Sin capa», las capas del usuario y la opción de crear una nueva. */
 /**
- * Desplegable de capa de los diálogos de marcador y ruta. Las capas creadas aquí van a
+ * Desplegable de capa de los diálogos de marcador y ruta: «Sin capa», las capas del
+ * usuario y la opción de crear una nueva. Las capas creadas aquí van a
  * `pending` (del diálogo) y no al mapa: solo se añaden al guardar (`commitLayers`), así
  * que cancelar el diálogo no deja capas nuevas en el mapa.
  */

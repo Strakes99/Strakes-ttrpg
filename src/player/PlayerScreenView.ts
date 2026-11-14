@@ -144,7 +144,9 @@ export class PlayerScreenView extends ItemView {
 					if (read === null) {
 						// La sección enviada ya no existe (encabezado renombrado o borrado): en lugar de
 						// enseñar la nota entera a los jugadores, se vacía la pantalla y se avisa al DM.
+						// Solo el dibujado más reciente: con varios guardados seguidos, un aviso.
 						comp.unload();
+						if (token !== this.renderToken) return;
 						const section = (content.subpath ?? "").replace(/^#\^?/, "");
 						new Notice(
 							T(
@@ -153,7 +155,7 @@ export class PlayerScreenView extends ItemView {
 							),
 							8000,
 						);
-						if (token === this.renderToken) void this.plugin.sendToPlayers(null);
+						void this.plugin.sendToPlayers(null);
 						return;
 					}
 					markdown = read;
@@ -186,7 +188,10 @@ export class PlayerScreenView extends ItemView {
 	private async readNote(file: TFile, subpath?: string): Promise<string | null> {
 		const text = await this.app.vault.cachedRead(file);
 		const cache = this.app.metadataCache.getFileCache(file);
-		if (subpath && cache) {
+		if (subpath) {
+			// Sin índice todavía no se sabe dónde está la sección: nada (nunca la nota entera). Al
+			// indexarla, el evento «changed» la vuelve a dibujar.
+			if (!cache) return "";
 			const res = resolveSubpath(cache, subpath);
 			if (!res) return null;
 			return text.slice(res.start.offset, res.end ? res.end.offset : undefined);

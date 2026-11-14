@@ -11,15 +11,12 @@ export interface ConditionCatalog {
 export const SRD_URL = "https://www.dndbeyond.com/srd";
 export const CC_BY_URL = "https://creativecommons.org/licenses/by/4.0/legalcode";
 
-export const BLOODIED_ID = "bloodied";
-export const DEAD_ID = "dead";
-export const CONCENTRATION_ID = "concentration";
-export const INCAPACITATED_ID = "incapacitated";
-export const UNCONSCIOUS_ID = "unconscious";
-export const EXHAUSTION_ID = "exhaustion";
-export const PRONE_ID = "prone";
+const DEAD_ID = "dead";
+const INCAPACITATED_ID = "incapacitated";
+const EXHAUSTION_ID = "exhaustion";
+const PRONE_ID = "prone";
 /** Nivel de Agotamiento con el que la criatura muere (SRD 5.2). */
-export const EXHAUSTION_DEATH_LEVEL = 6;
+const EXHAUSTION_DEATH_LEVEL = 6;
 
 /**
  * Condiciones de las reglas básicas (SRD 5.2, licencia CC-BY-4.0).
@@ -306,11 +303,11 @@ export const BUILTIN_CONDITIONS: BuiltinCondition[] = [
 			s("Impactos críticos automáticos", "Automatic Critical Hits", "Cualquier tirada de ataque que te impacte es un Impacto Crítico si el atacante está a 5 pies de ti o menos.", "Any attack roll that hits you is a Critical Hit if the attacker is within 5 feet of you."),
 			s("Inconsciente del entorno", "Unaware", "No eres consciente de tu entorno.", "You're unaware of your surroundings."),
 		],
+		// Al terminar Inconsciente sigues Derribado.
 		rules: { hpTriggers: [{ threshold: "zero", who: "allies" }], leaves: [PRONE_ID], announce: true },
 	},
 ];
 
-/** Al terminar Inconsciente sigues Derribado (regla de la condición). */
 // ---------- Catálogo: integradas (con los cambios del usuario) y personalizadas ----------
 
 /** Descripción de una integrada en Markdown: cada apartado con título es un encabezado `##`. */

@@ -60,7 +60,7 @@ const nameOf = (pin: AutoNamePin): string => (typeof pin.name === "string" ? pin
 
 /** ¿El nombre de este marcador sale de su destino (AUTO, portal, sin enlace)? */
 function nameComesFromTarget(pin: AutoNamePin): boolean {
-	return pin.autoName === true && nameFromLink(pin.link) === null;
+	return pin.autoName === true && pin.portal === true && nameFromLink(pin.link) === null;
 }
 
 /**

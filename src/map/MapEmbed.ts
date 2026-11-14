@@ -42,6 +42,8 @@ export class MapEmbed extends Component {
 	/** true mientras se ve el mapa completo encuadrado: al cambiar el tamaño, se re-encuadra. */
 	private showingWhole = false;
 	private fitting = false;
+	/** Lo que hay que deshacer al quitar el mapa construido (observador de tamaño, rueda). */
+	private domCleanup: (() => void)[] = [];
 	private pinHover = new PinHoverParent(() => this.plugin.settings.pinPreviewTitle);
 
 	constructor(
@@ -75,8 +77,20 @@ export class MapEmbed extends Component {
 	}
 
 	onunload(): void {
+		this.teardown();
+	}
+
+	/** Quita el mapa construido: así, si el archivo vuelve a ser válido, buildDom lo crea de nuevo. */
+	private teardown(): void {
+		for (const fn of this.domCleanup.splice(0)) fn();
 		this.map?.remove();
 		this.map = null;
+		this.wrapper = null;
+		this.mapEl = null;
+		this.content = null;
+		this.imageOverlay = null;
+		this.loadedImage = "";
+		this.fitted = false;
 	}
 
 	/** Obsidian lo llama tras crear el embed. */
@@ -84,6 +98,8 @@ export class MapEmbed extends Component {
 		try {
 			this.data = normalizeMap(JSON.parse(await this.app.vault.cachedRead(this.file)), newMapUnit(this.plugin.settings.displayUnit));
 		} catch {
+			this.data = null;
+			this.teardown();
 			this.ctx.containerEl.empty();
 			this.ctx.containerEl.createDiv({ cls: "strakes-warning", text: T(`No se pudo leer el mapa ${this.file.basename}.`, `Couldn't read the map ${this.file.basename}.`) });
 			return;
@@ -149,7 +165,7 @@ export class MapEmbed extends Component {
 		});
 		ro.observe(host);
 		ro.observe(this.mapEl);
-		this.register(() => ro.disconnect());
+		this.domCleanup.push(() => ro.disconnect());
 	}
 
 	/**
@@ -240,7 +256,7 @@ export class MapEmbed extends Component {
 		};
 
 		win.addEventListener("wheel", onWheel, { capture: true, passive: false });
-		this.register(() => {
+		this.domCleanup.push(() => {
 			win.removeEventListener("wheel", onWheel, { capture: true });
 			if (timer) win.clearTimeout(timer);
 		});
@@ -440,7 +456,7 @@ export class MapEmbed extends Component {
 		if (!data || !map || !data.width || !data.height) return;
 		this.fitted = true;
 		map.invalidateSize();
-		const wanted = decodeURIComponent(this.subpath.replace(/^#/, "")).trim().toLowerCase();
+		const wanted = safeDecode(this.subpath.replace(/^#/, "")).trim().toLowerCase();
 		const pin = wanted ? data.pins.find((p) => p.name.trim().toLowerCase() === wanted) : undefined;
 		if (pin) {
 			map.fitBounds(mapBounds(data), { animate: false });
@@ -449,5 +465,14 @@ export class MapEmbed extends Component {
 			if (wanted) new Notice(T(`Mapa ${this.file.basename}: no hay ningún marcador llamado «${wanted}».`, `Map ${this.file.basename}: there's no marker named "${wanted}".`));
 			this.fitWhole(false);
 		}
+	}
+}
+
+/** decodeURIComponent sin lanzar con un «%» suelto (p. ej. ![[mapa.smap#50%]]): se usa el texto tal cual. */
+function safeDecode(text: string): string {
+	try {
+		return decodeURIComponent(text);
+	} catch {
+		return text;
 	}
 }

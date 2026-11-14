@@ -26,7 +26,7 @@ export function pinIcon(pin: MapPin): L.DivIcon {
 export type PinIconKind = "custom" | "lucide" | "emoji" | "text" | "default";
 
 /** Qué clase de icono es el valor del campo «Icono» de un pin. */
-export function pinIconKind(icon: string): PinIconKind {
+function pinIconKind(icon: string): PinIconKind {
 	if (!icon) return "default";
 	if (customIconName(icon) !== null) return "custom";
 	const ids = getIconIds();
@@ -55,7 +55,7 @@ export function renderPinIconInto(el: HTMLElement, icon: string, color: string |
 	else el.setText(icon);
 }
 
-export function defaultPinIcon(pin: MapPin): string {
+function defaultPinIcon(pin: MapPin): string {
 	return pin.portal ? "orbit" : pin.link ? "scroll-text" : "map-pin";
 }
 

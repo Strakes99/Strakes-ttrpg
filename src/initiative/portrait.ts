@@ -77,8 +77,6 @@ export function fitCrop(path: string, width: number, height: number): Portrait {
 /**
  * Flujo completo: si ya hay retrato, abre el editor; si no, elige una imagen de la
  * bóveda y después el editor. `onDone(null)` = retrato quitado; no se llama si se cancela.
- */
-/**
  * @param name Nombre del personaje: el buscador de imágenes se abre con él escrito (sin el
  * número: «Goblin 3» → «Goblin»).
  */
@@ -108,7 +106,7 @@ function pickPortraitImage(app: App, onPicked: (p: Portrait) => void, name = "")
  * entera se ve detrás, semitransparente fuera del marco; arrastrar = mover, rueda o
  * barra = zoom. Se puede salir de los límites de la imagen (esa zona queda transparente).
  */
-export class PortraitModal extends Modal {
+class PortraitModal extends Modal {
 	private p: Portrait;
 	private natural = { width: 1, height: 1 };
 	private stage!: HTMLElement;

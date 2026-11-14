@@ -100,6 +100,9 @@ export default class StrakesTTRPG extends Plugin {
 		this.settings.collapsedMapSections = Array.isArray(loaded.collapsedMapSections) ? [...loaded.collapsedMapSections] : [];
 		this.settings.customConditions = Array.isArray(loaded.customConditions) ? [...loaded.customConditions] : [];
 		this.settings.conditionOverrides = loaded.conditionOverrides && typeof loaded.conditionOverrides === "object" ? { ...loaded.conditionOverrides } : {};
+		// «Leguas» se guarda en el idioma de la interfaz: si el idioma cambió, se adapta (si no,
+		// el desplegable de ajustes no mostraría la opción elegida).
+		if (["leguas", "leagues"].includes(this.settings.displayUnit)) this.settings.displayUnit = T("leguas", "leagues");
 		this.settings.portraitMemory = loaded.portraitMemory && typeof loaded.portraitMemory === "object" ? { ...loaded.portraitMemory } : {};
 		// Condiciones de los combatientes: lista de { id, level }. Lo que no lo sea se descarta.
 		this.settings.combat.combatants = (this.settings.combat.combatants ?? []).map((c) => ({
