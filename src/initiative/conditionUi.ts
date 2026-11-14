@@ -1,10 +1,11 @@
-import { App, Component, MarkdownRenderer, Menu, Modal, Notice, Setting, setTooltip } from "obsidian";
+import { App, Component, MarkdownRenderer, Menu, Modal, Notice, Setting, setIcon, setTooltip } from "obsidian";
 import { T } from "../i18n";
 import type StrakesTTRPG from "../main";
 import { renderPinIconInto } from "../map/render";
 import { Combatant, ConditionOverride, ConditionRules, CustomCondition, HpTrigger, RuleTarget, uid } from "../types";
 import { IconColorControl, IconPicker } from "../ui/iconPicker";
 import { ActiveCondition, allConditions, BUILTIN_CONDITIONS, builtinInfo, combatantConditions, ConditionInfo } from "./conditions";
+import { entryTooltipLines, renderEntryDetails } from "./conditionDetails";
 
 const DEFAULT_CUSTOM_COLOR = "#e03131";
 
@@ -38,18 +39,25 @@ export function renderConditionChips(container: HTMLElement, c: Combatant, opts:
 		renderConditionIcon(chip, a.info);
 		if (a.level) chip.createSpan({ cls: "strakes-cond-level", text: String(a.level) });
 		const title = a.level ? T(`${a.info.name} (nivel ${a.level})`, `${a.info.name} (level ${a.level})`) : a.info.name;
-		setTooltip(
-			chip,
-			a.auto
-				? T(`${title} · automática (${a.reason})`, `${title} · automatic (${a.reason})`)
-				: a.explicit
-					? title
-					: T(`${title} · aplicada por ${a.impliedBy.join(", ")}`, `${title} · applied by ${a.impliedBy.join(", ")}`),
-		);
+		// Datos de esta aplicación (duración, lanzador…): solo en el panel del DM.
+		const entry = opts.interactive && a.explicit ? c.conditions.find((x) => x.id === a.info.id) : undefined;
+		const extra = entry ? entryTooltipLines(opts.plugin.tracker, c, entry) : [];
+		if (entry?.duration) {
+			// Marca de duración: las rondas que quedan o un reloj de arena.
+			const timer = chip.createSpan("strakes-cond-timer");
+			if (entry.duration.kind === "rounds") timer.setText(String(entry.duration.left));
+			else setIcon(timer, "hourglass");
+		}
+		const base = a.auto
+			? T(`${title} · automática (${a.reason})`, `${title} · automatic (${a.reason})`)
+			: a.explicit
+				? title
+				: T(`${title} · aplicada por ${a.impliedBy.join(", ")}`, `${title} · applied by ${a.impliedBy.join(", ")}`);
+		setTooltip(chip, [base, ...extra].join("\n"));
 		if (!opts.interactive) continue;
 		chip.addEventListener("click", (e) => {
 			e.stopPropagation();
-			toggleConditionCard(chip, a, opts.plugin.app);
+			toggleConditionCard(chip, a, opts.plugin, c);
 		});
 		chip.addEventListener("contextmenu", (e) => {
 			e.preventDefault();
@@ -91,7 +99,8 @@ export function closeConditionCard(): void {
 }
 
 /** Abre (o cierra, si ya estaba abierta) la descripción de la condición junto a su icono. */
-function toggleConditionCard(anchor: HTMLElement, a: ActiveCondition, app: App): void {
+function toggleConditionCard(anchor: HTMLElement, a: ActiveCondition, plugin: StrakesTTRPG, c: Combatant): void {
+	const app = plugin.app;
 	if (openCard?.anchor === anchor) {
 		closeConditionCard();
 		return;
@@ -112,6 +121,9 @@ function toggleConditionCard(anchor: HTMLElement, a: ActiveCondition, app: App):
 	const description = a.info.description.trim();
 	if (description) void MarkdownRenderer.render(app, description, text, "", markdown).then(() => place());
 	else text.setText(T("Sin descripción.", "No description."));
+	// Las puestas a mano: duración, lanzador, salvación (y hechizo, si es una concentración).
+	const entry = a.explicit ? c.conditions.find((x) => x.id === a.info.id) : undefined;
+	if (entry) renderEntryDetails(card, plugin, c, entry, a.info);
 	card.createDiv({
 		cls: "strakes-cond-card-hint",
 		text: a.auto ? T(`Se quita sola ${a.endsWhen}.`, `It goes away on its own ${a.endsWhen}.`) : T("Clic derecho en el icono para quitarla.", "Right-click the icon to remove it."),
@@ -233,7 +245,7 @@ function cleanRules(r: ConditionRules): ConditionRules {
 	if (r.damageSave?.ability.trim()) out.damageSave = { ability: r.damageSave.ability.trim() };
 	if (r.defeats) out.defeats = true;
 	if (r.announce) out.announce = true;
-	if (r.duration) out.duration = structuredClone(r.duration);
+	if (r.concentration) out.concentration = true;
 	return out;
 }
 
@@ -597,6 +609,15 @@ export class ConditionModal extends Modal {
 		new Setting(box)
 			.setName(T("Avisar al aplicarse o terminar sola", "Notify when applied or ended automatically"))
 			.addToggle((t) => t.setValue(!!r.announce).onChange((v) => (r.announce = v || undefined)));
+		new Setting(box)
+			.setName(T("Es una concentración", "Is a concentration"))
+			.setDesc(
+				T(
+					"En su ficha se indica el hechizo, y las condiciones que duran «mientras el lanzador mantenga la Concentración» terminan al perderla o cambiar de hechizo (Concentración).",
+					"Its card lets you set the spell, and conditions that last \"while the caster keeps Concentration\" end when it's lost or the spell changes (Concentration).",
+				),
+			)
+			.addToggle((t) => t.setValue(!!r.concentration).onChange((v) => (r.concentration = v || undefined)));
 	}
 
 	private async saveCustom(): Promise<void> {

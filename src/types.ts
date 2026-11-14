@@ -43,10 +43,41 @@ export interface ConditionEntry {
 	id: string;
 	level?: number;
 	/**
-	 * Reservado (aún sin uso): id del combatiente que la aplicó, para duraciones como «hasta
-	 * el final del siguiente turno del lanzador» (ver `ConditionDuration`).
+	 * Lanzador: quién la causó. Un combatiente (`id`) o, para trampas y entornos, un texto
+	 * solo informativo (sin turnos ni Concentración, no sirve para duraciones «del lanzador»).
 	 */
-	sourceId?: string;
+	caster?: CasterRef;
+	/** Duración de esta aplicación concreta (ver `EntryDuration`). */
+	duration?: EntryDuration;
+	/** Tirada de salvación que se repite en cada turno del objetivo. */
+	save?: EntrySave;
+	/** Solo en condiciones de concentración (`rules.concentration`): en qué hechizo se concentra. */
+	focus?: string;
+}
+
+export type CasterRef = { id: string } | { text: string };
+
+/**
+ * Duración de una condición aplicada (se asigna desde su ficha; no es de la condición en
+ * general). Solo cuenta el botón «Siguiente turno».
+ * - `turn-end` / `turn-start`: hasta el final / el inicio del siguiente turno del objetivo
+ *   o del lanzador. «Siguiente» = el primero que empieza después de aplicarla; `armed`
+ *   indica que ese turno ya empezó (para `turn-end`).
+ * - `rounds`: `left` rondas más; se descuenta al empezar el turno de `anchorId` (quien tenía
+ *   el turno al aplicarla) o, sin él, al cambiar de ronda.
+ * - `concentration`: mientras el lanzador mantenga su concentración en el mismo hechizo
+ *   (`focus` = el hechizo al ligarla).
+ */
+export type EntryDuration =
+	| { kind: "turn-end" | "turn-start"; of: "target" | "caster"; armed?: boolean }
+	| { kind: "rounds"; rounds: number; left: number; anchorId: string | null }
+	| { kind: "concentration"; focus?: string };
+
+/** Salvación que se repite al final o al inicio de cada turno del objetivo. CD opcional. */
+export interface EntrySave {
+	ability: string;
+	dc?: number;
+	when: "end" | "start";
 }
 
 /** A quién afecta una regla automática: enemigos, PJ y aliados, o todos. */
@@ -69,14 +100,6 @@ export interface LevelTrigger {
 	minLevel: number;
 }
 
-/**
- * Reservado para duraciones (aún sin uso ni interfaz): terminar al final del siguiente
- * turno del objetivo o del lanzador, o repetir una tirada de salvación.
- */
-export interface ConditionDuration {
-	endsAt?: "end-of-target-next-turn" | "end-of-caster-next-turn";
-	repeatSave?: { ability: string; dc?: number };
-}
 
 /**
  * Automatismos de una condición. Los tienen igual las de las reglas básicas y las
@@ -99,8 +122,11 @@ export interface ConditionRules {
 	defeats?: boolean;
 	/** Avisa al DM cuando se aplica o termina sola. */
 	announce?: boolean;
-	/** Reservado (aún sin uso). */
-	duration?: ConditionDuration;
+	/**
+	 * Es una concentración: en su ficha se indica el hechizo, y las condiciones con duración
+	 * «concentración del lanzador» terminan cuando se pierde o se cambia de hechizo.
+	 */
+	concentration?: boolean;
 }
 
 /** Condición creada por el usuario. */

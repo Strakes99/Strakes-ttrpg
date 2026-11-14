@@ -138,6 +138,7 @@ export const BUILTIN_CONDITIONS: BuiltinCondition[] = [
 			s("Incapacitado o muerto", "Incapacitated or Dead", "Tu Concentración termina si tienes la condición de Incapacitado o mueres.", "Your Concentration ends if you have the Incapacitated condition or you die."),
 		],
 		rules: {
+			concentration: true,
 			endsWith: [INCAPACITATED_ID, DEAD_ID],
 			endsAtZeroHp: true,
 			damageSave: { ability: { es: "Constitución", en: "Constitution" } },

@@ -271,7 +271,96 @@ body.strakes-player-window .view-header {
 	width: 72%;
 	height: 72%;
 }
-.strakes-pc-conds .strakes-cond-level {
+.strakes-pc-conds /* Marca de duración en el icono de una condición (reloj de arena o rondas que quedan). */
+.strakes-cond-timer {
+	position: absolute;
+	right: -3px;
+	top: -3px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 12px;
+	height: 12px;
+	padding: 0 2px;
+	border-radius: 6px;
+	background: var(--background-primary);
+	border: 1px solid var(--text-muted);
+	color: var(--text-muted);
+	font-size: 8px;
+	font-weight: 700;
+	line-height: 1;
+}
+.strakes-cond-timer svg {
+	width: 8px;
+	height: 8px;
+}
+/* Ficha: duración, lanzador, salvación y hechizo de la condición aplicada. */
+.strakes-cond-details {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin-top: 8px;
+}
+.strakes-cond-detail-add {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: var(--font-ui-smaller);
+	padding: 2px 8px;
+	height: auto;
+}
+.strakes-cond-detail-add svg,
+.strakes-cond-detail-icon svg {
+	width: 12px;
+	height: 12px;
+}
+.strakes-cond-detail {
+	flex-basis: 100%;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-normal);
+}
+.strakes-cond-detail-icon {
+	display: inline-flex;
+	color: var(--text-muted);
+}
+.strakes-cond-detail-text {
+	flex: 1;
+}
+.strakes-cond-detail .clickable-icon {
+	padding: 2px;
+}
+/* Buscador de lanzador y avisos con botones. */
+.strakes-caster-option {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.strakes-caster-tag {
+	font-size: var(--font-ui-smaller);
+	padding: 0 6px;
+	border-radius: var(--radius-s);
+	background: var(--background-modifier-hover);
+}
+.strakes-caster-tag.is-player {
+	color: var(--color-blue);
+}
+.strakes-caster-tag.is-enemy {
+	color: var(--color-red);
+}
+.strakes-caster-current {
+	margin-left: auto;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-accent);
+}
+.strakes-notice-buttons {
+	display: flex;
+	gap: 6px;
+	margin-top: 6px;
+}
+.strakes-cond-level {
 	font-size: max(9px, calc(var(--cond-size) * 0.4));
 	min-width: calc(var(--cond-size) * 0.5);
 	height: calc(var(--cond-size) * 0.5);
@@ -644,6 +733,95 @@ input.strakes-portrait-zoom-num {
 	outline-offset: -2px;
 }
 /* Nivel de Agotamiento */
+/* Marca de duración en el icono de una condición (reloj de arena o rondas que quedan). */
+.strakes-cond-timer {
+	position: absolute;
+	right: -3px;
+	top: -3px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 12px;
+	height: 12px;
+	padding: 0 2px;
+	border-radius: 6px;
+	background: var(--background-primary);
+	border: 1px solid var(--text-muted);
+	color: var(--text-muted);
+	font-size: 8px;
+	font-weight: 700;
+	line-height: 1;
+}
+.strakes-cond-timer svg {
+	width: 8px;
+	height: 8px;
+}
+/* Ficha: duración, lanzador, salvación y hechizo de la condición aplicada. */
+.strakes-cond-details {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin-top: 8px;
+}
+.strakes-cond-detail-add {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: var(--font-ui-smaller);
+	padding: 2px 8px;
+	height: auto;
+}
+.strakes-cond-detail-add svg,
+.strakes-cond-detail-icon svg {
+	width: 12px;
+	height: 12px;
+}
+.strakes-cond-detail {
+	flex-basis: 100%;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-normal);
+}
+.strakes-cond-detail-icon {
+	display: inline-flex;
+	color: var(--text-muted);
+}
+.strakes-cond-detail-text {
+	flex: 1;
+}
+.strakes-cond-detail .clickable-icon {
+	padding: 2px;
+}
+/* Buscador de lanzador y avisos con botones. */
+.strakes-caster-option {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.strakes-caster-tag {
+	font-size: var(--font-ui-smaller);
+	padding: 0 6px;
+	border-radius: var(--radius-s);
+	background: var(--background-modifier-hover);
+}
+.strakes-caster-tag.is-player {
+	color: var(--color-blue);
+}
+.strakes-caster-tag.is-enemy {
+	color: var(--color-red);
+}
+.strakes-caster-current {
+	margin-left: auto;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-accent);
+}
+.strakes-notice-buttons {
+	display: flex;
+	gap: 6px;
+	margin-top: 6px;
+}
 .strakes-cond-level {
 	position: absolute;
 	right: -2px;

@@ -12,9 +12,11 @@ export const moment = { locale: (): string => g.__LOC ?? "es" };
 
 /** Los avisos se guardan en globalThis.__NOTICES para poder comprobarlos (ver helpers.ts). */
 export class Notice {
-	constructor(message: string) {
-		(g.__NOTICES ??= []).push(message);
+	/** Texto del aviso; si es un fragmento (avisos con botones), su texto. */
+	constructor(message: string | { textContent?: string | null }) {
+		(g.__NOTICES ??= []).push(typeof message === "string" ? message : (message.textContent ?? ""));
 	}
+	hide(): void {}
 }
 
 export class Modal {

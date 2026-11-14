@@ -23,7 +23,7 @@ tr.add({ name: "Goblin 2", initiative: 10, hp: 7, maxHp: 7, ac: 15 });
 tr.addCondition(g1.id, "poisoned");
 const copy = tr.duplicate(g1.id);
 t("la copia se llama Goblin 3", copy?.name, "Goblin 3");
-t("copia PG, CA, iniciativa y condiciones", copy && [copy.hp, copy.maxHp, copy.ac, copy.initiative, copy.conditions.map((e) => e.id)], [7, 7, 15, 12, ["poisoned"]]);
+t("copia PG, CA e iniciativa, pero no las condiciones", copy && [copy.hp, copy.maxHp, copy.ac, copy.initiative, copy.conditions.map((e) => e.id)], [7, 7, 15, 12, []]);
 t("la copia tiene otro id", copy !== null && copy.id !== g1.id, true);
 t("se puede deshacer", tr.canUndoAdd, true);
 tr.undoAdd();

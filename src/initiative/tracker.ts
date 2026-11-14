@@ -1,8 +1,8 @@
 import { Notice } from "obsidian";
 import { T } from "../i18n";
 import type StrakesTTRPG from "../main";
-import { ActiveCondition, combatantConditions, concentrationDC, conditionById, isDefeatedEnemy } from "./conditions";
-import { Combatant, CombatState, Portrait, uid } from "../types";
+import { ActiveCondition, allConditions, combatantConditions, concentrationDC, conditionById, isDefeatedEnemy } from "./conditions";
+import { CasterRef, Combatant, CombatState, ConditionEntry, EntryDuration, EntrySave, Portrait, uid } from "../types";
 import { memoryKey, recalledPortrait, rememberPortrait, splitName } from "./portrait";
 
 /**
@@ -101,15 +101,24 @@ export class InitiativeTracker {
 	}
 
 	/**
-	 * Duplica un combatiente (con sus PG, condiciones y retrato) con el siguiente número libre
-	 * de su nombre: con Goblin 1…6, «Goblin 4» da «Goblin 7». Se puede deshacer y rehacer
-	 * como cualquier alta.
+	 * Duplica un combatiente como uno nuevo: siguiente número libre del nombre (con Goblin 1…6,
+	 * «Goblin 4» da «Goblin 7»), PG completos, CA, la misma iniciativa (queda a su lado) y si
+	 * es PJ/aliado u oculto. Sin condiciones; el retrato es el recordado para ese nombre. Se
+	 * puede deshacer y rehacer como cualquier alta.
 	 */
 	duplicate(id: string): Combatant | null {
 		const c = this.combatants.find((x) => x.id === id);
 		if (!c) return null;
-		const { id: _id, ...rest } = structuredClone(c);
-		const copy = this.add({ ...rest, name: nextNumberedName(c.name, this.combatants.map((x) => x.name)) });
+		const hp = c.maxHp ?? c.hp;
+		const copy = this.add({
+			name: nextNumberedName(c.name, this.combatants.map((x) => x.name)),
+			initiative: c.initiative,
+			hp,
+			maxHp: c.maxHp,
+			ac: c.ac,
+			isPlayer: c.isPlayer,
+			hidden: c.hidden,
+		});
 		this.recordAdded([copy]);
 		return copy;
 	}
@@ -428,16 +437,252 @@ export class InitiativeTracker {
 				if (i >= 0) rounds++;
 			}
 			if (!this.skipsTurn(list[idx])) {
+				const from = this.state.currentId;
 				this.state.currentId = list[idx].id;
 				this.state.round += rounds;
+				this.passTurn(i >= 0 ? from : null, list[idx].id, rounds);
 				this.changed();
 				return;
 			}
 		}
 		// Todos son enemigos tachados: avance normal, sin saltar.
 		const n = i + 1 >= list.length ? 0 : i + 1;
-		if (i >= 0 && n === 0) this.state.round++;
+		const wrapped = i >= 0 && n === 0 ? 1 : 0;
+		const from = this.state.currentId;
+		this.state.round += wrapped;
 		this.state.currentId = list[n].id;
+		this.passTurn(i >= 0 ? from : null, list[n].id, wrapped);
+		this.changed();
+	}
+
+	// ---------- Duraciones, lanzador y salvaciones de las condiciones aplicadas ----------
+
+	/** Id del lanzador si es un combatiente (no un texto). */
+	private casterId(e: ConditionEntry): string | null {
+		return e.caster && "id" in e.caster ? e.caster.id : null;
+	}
+
+	/** Nombre del lanzador: el del combatiente o el texto. */
+	casterName(e: ConditionEntry): string {
+		if (!e.caster) return "";
+		if ("text" in e.caster) return e.caster.text;
+		return this.combatants.find((x) => x.id === (e.caster as { id: string }).id)?.name ?? T("(ya no está)", "(no longer present)");
+	}
+
+	/**
+	 * Efectos de pasar el turno con «Siguiente turno»: termina el turno de `fromId` y empieza
+	 * el de `toId`; `roundsPassed` = rondas que se han completado. Termina las duraciones que
+	 * tocan y avisa de las salvaciones que se repiten.
+	 */
+	private passTurn(fromId: string | null, toId: string, roundsPassed: number): void {
+		const endings: { c: Combatant; id: string; reason: string }[] = [];
+		const saves: { c: Combatant; e: ConditionEntry; s: EntrySave }[] = [];
+		for (const c of this.combatants) {
+			for (const e of c.conditions) {
+				const d = e.duration;
+				if (d && d.kind !== "concentration") {
+					const reason = this.tickDuration(c, e, d, fromId, toId, roundsPassed);
+					if (reason) {
+						endings.push({ c, id: e.id, reason });
+						continue;
+					}
+				}
+				if (e.save && ((e.save.when === "end" && fromId === c.id) || (e.save.when === "start" && toId === c.id))) saves.push({ c, e, s: e.save });
+			}
+		}
+		for (const x of endings) this.endEntry(x.c, x.id, x.reason);
+		for (const x of saves) if (x.c.conditions.includes(x.e)) this.saveNotice(x.c, x.e, x.s);
+	}
+
+	/** Avanza una duración por turnos o rondas. Devuelve el motivo si termina ahora. */
+	private tickDuration(c: Combatant, e: ConditionEntry, d: Exclude<EntryDuration, { kind: "concentration" }>, fromId: string | null, toId: string, roundsPassed: number): string | null {
+		if (d.kind === "rounds") {
+			const anchorAlive = d.anchorId !== null && this.combatants.some((x) => x.id === d.anchorId);
+			if (anchorAlive ? toId === d.anchorId : roundsPassed > 0) d.left -= anchorAlive ? 1 : roundsPassed;
+			return d.left <= 0 ? T(`${d.rounds} ronda${d.rounds === 1 ? "" : "s"}`, `${d.rounds} round${d.rounds === 1 ? "" : "s"}`) : null;
+		}
+		const anchor = d.of === "target" ? c.id : this.casterId(e);
+		if (!anchor) return null;
+		const whose = this.combatants.find((x) => x.id === anchor)?.name ?? "";
+		if (d.kind === "turn-start") return toId === anchor ? T(`inicio del turno de ${whose}`, `start of ${whose}'s turn`) : null;
+		// turn-end: termina al acabar un turno de `anchor` que empezó después de aplicarla.
+		if (fromId === anchor && d.armed) return T(`final del turno de ${whose}`, `end of ${whose}'s turn`);
+		if (toId === anchor) d.armed = true;
+		return null;
+	}
+
+	/** Aviso (fijo hasta pulsarlo) de una salvación que se repite: «Superada» la quita. */
+	private saveNotice(c: Combatant, e: ConditionEntry, s: EntrySave): void {
+		const info = conditionById(e.id, this.plugin.settings);
+		if (!info) return;
+		const dc = s.dc ? ` CD ${s.dc}` : "";
+		const frag = createFragment();
+		frag.createDiv({
+			text: T(`${c.name} repite la salvación de ${s.ability}${dc} contra ${info.name}.`, `${c.name} repeats the ${s.ability}${dc ? ` (DC ${s.dc})` : ""} save against ${info.name}.`),
+		});
+		const buttons = frag.createDiv({ cls: "strakes-notice-buttons" });
+		const notice = new Notice(frag, 0);
+		const success = buttons.createEl("button", { text: T("Superada: quitar", "Success: remove"), cls: "mod-cta" });
+		const fail = buttons.createEl("button", { text: T("Fallada", "Failure") });
+		success.onclick = (ev) => {
+			ev.stopPropagation();
+			notice.hide();
+			// En una acumulable, superarla quita un nivel (como el clic derecho), no todos.
+			if (c.conditions.includes(e)) this.removeCondition(c.id, e.id, { oneLevel: !!info.maxLevel });
+		};
+		fail.onclick = (ev) => {
+			ev.stopPropagation();
+			notice.hide();
+		};
+	}
+
+	/** Termina una condición aplicada (por su duración o su concentración): deja lo suyo y avisa. */
+	private endEntry(c: Combatant, condId: string, reason: string): void {
+		const entry = c.conditions.find((x) => x.id === condId);
+		if (!entry) return;
+		const info = conditionById(condId, this.plugin.settings, true);
+		const before = this.autoConditions(c);
+		// Acumulable con más de un nivel (Agotamiento): baja uno y la duración ya cumplida se
+		// quita; los demás niveles siguen. Para quitarlos todos, el DM lo hace a mano.
+		if (info?.maxLevel && (entry.level ?? 1) > 1) {
+			entry.level = (entry.level ?? 1) - 1;
+			delete entry.duration;
+			this.followAutoChanges(c, before, true);
+			this.checkEndings(c);
+			new Notice(
+				T(`${c.name}: ${info.name} baja a nivel ${entry.level} (${reason}).`, `${c.name}: ${info.name} drops to level ${entry.level} (${reason}).`),
+				6000,
+			);
+			return;
+		}
+		c.conditions = c.conditions.filter((x) => x.id !== condId);
+		const left = this.leave(c, info?.rules.leaves);
+		this.followAutoChanges(c, before, true);
+		this.checkEndings(c);
+		const name = info?.name ?? condId;
+		new Notice(
+			left.length
+				? T(`${c.name}: termina ${name} (${reason}; sigue ${left.join(", ")}).`, `${c.name}: ${name} ends (${reason}; still ${left.join(", ")}).`)
+				: T(`${c.name}: termina ${name} (${reason}).`, `${c.name}: ${name} ends (${reason}).`),
+			6000,
+		);
+	}
+
+	/** Condición de concentración que tiene a mano un combatiente (Concentración u otra con `rules.concentration`). */
+	concentrationEntry(c: Combatant): ConditionEntry | null {
+		return c.conditions.find((e) => conditionById(e.id, this.plugin.settings)?.rules.concentration) ?? null;
+	}
+
+	/**
+	 * Las condiciones con duración «concentración del lanzador» terminan si el lanzador ya
+	 * no tiene concentración o se concentra en otro hechizo. Se comprueba en cada cambio.
+	 */
+	private checkConcentrationLinks(): void {
+		for (const c of this.combatants) {
+			for (const e of [...c.conditions]) {
+				const d = e.duration;
+				if (d?.kind !== "concentration") continue;
+				const caster = this.combatants.find((x) => x.id === this.casterId(e));
+				const conc = caster ? this.concentrationEntry(caster) : null;
+				let reason = "";
+				if (!caster) reason = T("el lanzador ya no está", "the caster is no longer present");
+				else if (!conc) reason = T(`${caster.name} pierde la Concentración`, `${caster.name} loses Concentration`);
+				else if (d.focus !== undefined && conc.focus !== d.focus) reason = T(`${caster.name} cambia de hechizo`, `${caster.name} changes spell`);
+				if (reason) this.endEntry(c, e.id, reason);
+			}
+		}
+	}
+
+	private entry(cid: string, condId: string): { c: Combatant; e: ConditionEntry } | null {
+		const c = this.combatants.find((x) => x.id === cid);
+		const e = c?.conditions.find((x) => x.id === condId);
+		return c && e ? { c, e } : null;
+	}
+
+	/** Asigna o quita el lanzador. Si la duración dependía de él y ya no puede, se quita (con aviso). */
+	setEntryCaster(cid: string, condId: string, caster: CasterRef | null): void {
+		const found = this.entry(cid, condId);
+		if (!found) return;
+		const { c, e } = found;
+		if (caster) e.caster = caster;
+		else delete e.caster;
+		const d = e.duration;
+		const needsCombatant = d && ((d.kind !== "rounds" && d.kind !== "concentration" && d.of === "caster") || d.kind === "concentration");
+		if (needsCombatant && !this.casterId(e)) {
+			delete e.duration;
+			new Notice(T("La duración dependía del lanzador y se ha quitado: elige otra.", "The duration depended on the caster and has been removed: choose another."));
+		} else if (d && d.kind === "concentration") {
+			this.linkConcentration(c, e);
+		} else if (d && (d.kind === "turn-end" || d.kind === "turn-start") && d.of === "caster") {
+			d.armed = false;
+		}
+		this.changed();
+	}
+
+	/**
+	 * Asigna o quita la duración. Las de turnos empiezan sin contar el turno en curso; las de
+	 * rondas se anclan a quien tiene el turno ahora; la de concentración se liga al lanzador
+	 * (si no tiene Concentración, se le aplica y se avisa).
+	 */
+	setEntryDuration(cid: string, condId: string, duration: { kind: "turn-end" | "turn-start"; of: "target" | "caster" } | { kind: "rounds"; rounds: number } | { kind: "concentration" } | null): void {
+		const found = this.entry(cid, condId);
+		if (!found) return;
+		const { c, e } = found;
+		if (!duration) delete e.duration;
+		else if (duration.kind === "rounds") e.duration = { kind: "rounds", rounds: duration.rounds, left: duration.rounds, anchorId: this.state.currentId };
+		else if (duration.kind === "concentration") {
+			e.duration = { kind: "concentration" };
+			if (!this.linkConcentration(c, e)) delete e.duration;
+		} else e.duration = { kind: duration.kind, of: duration.of, armed: false };
+		this.changed();
+	}
+
+	/**
+	 * Liga una condición a la concentración de su lanzador: si no tiene, se le aplica la
+	 * primera condición de concentración disponible y se avisa. Devuelve false si no se pudo.
+	 */
+	private linkConcentration(_c: Combatant, e: ConditionEntry): boolean {
+		const caster = this.combatants.find((x) => x.id === this.casterId(e));
+		if (!caster || e.duration?.kind !== "concentration") return false;
+		let conc = this.concentrationEntry(caster);
+		if (!conc) {
+			const info = allConditions(this.plugin.settings).find((x) => x.rules.concentration);
+			if (!info) {
+				new Notice(T("No hay ninguna condición de concentración disponible (¿está oculta?).", "There's no concentration condition available (is it hidden?)."));
+				return false;
+			}
+			conc = { id: info.id };
+			caster.conditions.push(conc);
+			new Notice(T(`${caster.name} no tenía ${info.name}: se le ha aplicado.`, `${caster.name} didn't have ${info.name}: it has been applied.`), 6000);
+		}
+		e.duration.focus = conc.focus;
+		return true;
+	}
+
+	/** Asigna o quita la salvación que se repite. */
+	setEntrySave(cid: string, condId: string, save: EntrySave | null): void {
+		const found = this.entry(cid, condId);
+		if (!found) return;
+		if (save) found.e.save = save;
+		else delete found.e.save;
+		this.changed();
+	}
+
+	/**
+	 * Hechizo de una concentración. Ponerlo por primera vez no rompe nada (las condiciones
+	 * ligadas toman ese nombre); cambiarlo por otro termina las ligadas a la concentración.
+	 */
+	setFocus(cid: string, condId: string, focus: string | null): void {
+		const found = this.entry(cid, condId);
+		if (!found) return;
+		const old = found.e.focus;
+		const next = focus?.trim() || undefined;
+		if (next) found.e.focus = next;
+		else delete found.e.focus;
+		if (old === undefined && next !== undefined)
+			for (const other of this.combatants)
+				for (const e of other.conditions)
+					if (e.duration?.kind === "concentration" && e.duration.focus === undefined && this.casterId(e) === cid) e.duration.focus = next;
 		this.changed();
 	}
 
@@ -498,6 +743,7 @@ export class InitiativeTracker {
 	}
 
 	private changed(): void {
+		this.checkConcentrationLinks();
 		void this.plugin.saveSettings();
 		this.plugin.events.trigger("combat");
 	}
