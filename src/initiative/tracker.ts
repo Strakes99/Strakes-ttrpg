@@ -3,7 +3,7 @@ import { T } from "../i18n";
 import type StrakesTTRPG from "../main";
 import { activeConditions, CONCENTRATION_ID, concentrationDC, INCAPACITATED_ID, isDefeatedEnemy, REMAINS_AFTER, UNCONSCIOUS_ID } from "./conditions";
 import { Combatant, CombatState, Portrait, uid } from "../types";
-import { memoryKey, recalledPortrait, rememberPortrait } from "./portrait";
+import { memoryKey, recalledPortrait, rememberPortrait, splitName } from "./portrait";
 
 /**
  * Grupo en el nombre: «Goblin x3» o «Goblin ×3» → base «Goblin», cantidad 3.
@@ -13,6 +13,22 @@ import { memoryKey, recalledPortrait, rememberPortrait } from "./portrait";
 export function splitGroup(text: string): { base: string; count: number | null } {
 	const m = text.trim().match(/^(.+?)\s+[x×]\s*(\d+)$/i);
 	return m ? { base: m[1], count: parseInt(m[2], 10) } : { base: text.trim(), count: null };
+}
+
+/**
+ * Siguiente nombre numerado libre: el mayor número ya usado con la misma base, más uno.
+ * Un nombre sin número cuenta como el 1 («Strahd» → «Strahd 2»). Sin distinguir mayúsculas.
+ */
+export function nextNumberedName(name: string, existing: readonly string[]): string {
+	const base = splitName(name).base;
+	const key = base.toLowerCase();
+	let max = 1;
+	for (const other of existing) {
+		const s = splitName(other);
+		if (s.base.toLowerCase() !== key) continue;
+		max = Math.max(max, s.number ? parseInt(s.number, 10) : 1);
+	}
+	return `${base} ${max + 1}`;
 }
 
 export interface RollResult {
@@ -82,6 +98,20 @@ export class InitiativeTracker {
 		this.undoAdds.push(group);
 		this.redoAdds = [];
 		this.changed();
+	}
+
+	/**
+	 * Duplica un combatiente (con sus PG, condiciones y retrato) con el siguiente número libre
+	 * de su nombre: con Goblin 1…6, «Goblin 4» da «Goblin 7». Se puede deshacer y rehacer
+	 * como cualquier alta.
+	 */
+	duplicate(id: string): Combatant | null {
+		const c = this.combatants.find((x) => x.id === id);
+		if (!c) return null;
+		const { id: _id, ...rest } = structuredClone(c);
+		const copy = this.add({ ...rest, name: nextNumberedName(c.name, this.combatants.map((x) => x.name)) });
+		this.recordAdded([copy]);
+		return copy;
 	}
 
 	/** Quita el último grupo añadido (en su estado actual, para poder rehacerlo tal cual). */

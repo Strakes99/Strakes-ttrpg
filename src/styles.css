@@ -396,9 +396,7 @@ input.strakes-portrait-zoom-num {
 	box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
 	pointer-events: none;
 }
-.strakes-px-input {
-	width: 6em;
-}
+
 .strakes-pi-round {
 	font-weight: 700;
 	opacity: 0.75;
@@ -766,6 +764,14 @@ input.strakes-portrait-zoom-num {
 	cursor: pointer;
 }
 /* Ajustes: cuadrícula de condiciones de las reglas básicas */
+/* Fila de ajustes con contenido a todo el ancho debajo (cuadrícula de condiciones). */
+.setting-item.strakes-setting-wide {
+	flex-wrap: wrap;
+}
+.strakes-setting-wide > .strakes-setting-block {
+	flex-basis: 100%;
+	margin-top: var(--size-4-2);
+}
 .strakes-builtin-cond-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));

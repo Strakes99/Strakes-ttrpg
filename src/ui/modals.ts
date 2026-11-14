@@ -76,7 +76,9 @@ export function confirmDialog(app: App, title: string, message: string, okText =
 			.addButton((b) =>
 				b
 					.setButtonText(okText)
-					.setWarning()
+					// Destructiva (eliminar, vaciar…): en rojo. Con setCta() Obsidian la pinta con el
+					// color de acento en lugar de rojo, así que no se combina.
+					.setDestructive()
 					.onClick(() => {
 						ok = true;
 						m.close();

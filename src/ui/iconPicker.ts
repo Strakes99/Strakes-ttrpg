@@ -152,7 +152,8 @@ export class IconPicker {
 		}
 		const color = this.opts.iconColor;
 		const names = new Map<Element, string>();
-		const win = grid.win as Window & typeof globalThis;
+		// IntersectionObserver de la ventana del propio elemento (puede ser una ventana emergente).
+		const win = grid.win as Window & { IntersectionObserver: typeof IntersectionObserver };
 		const observer = new win.IntersectionObserver(
 			(entries) => {
 				for (const entry of entries) {

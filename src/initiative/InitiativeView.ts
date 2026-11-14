@@ -133,12 +133,14 @@ export class InitiativeView extends ItemView {
 		m.addItem((i) =>
 			i
 				.setTitle(T("Quitar enemigos (conservar PJ y aliados)", "Remove enemies (keep PCs and allies)"))
+				.setWarning(true)
 				.setIcon("user-minus")
 				.onClick(() => this.tracker.clearMonsters()),
 		);
 		m.addItem((i) =>
 			i
 				.setTitle(T("Vaciar todo", "Clear all"))
+				.setWarning(true)
 				.setIcon("trash-2")
 				.onClick(async () => {
 					if (await confirmDialog(this.app, T("Vaciar iniciativa", "Clear initiative"), T("¿Eliminar a todos los combatientes?", "Remove all combatants?")))
@@ -306,15 +308,14 @@ export class InitiativeView extends ItemView {
 				.setTitle(T("Duplicar", "Duplicate"))
 				.setIcon("copy")
 				.onClick(() => {
-					const { id: _id, ...rest } = c;
-					this.tracker.add({ ...rest, conditions: c.conditions.map((e) => ({ ...e })), name: `${c.name} (2)` });
+					this.tracker.duplicate(c.id);
 				}),
 		);
 		m.addSeparator();
 		m.addItem((i) => i.setTitle(T("Subir", "Move up")).setIcon("arrow-up").onClick(() => this.tracker.move(c.id, -1)));
 		m.addItem((i) => i.setTitle(T("Bajar", "Move down")).setIcon("arrow-down").onClick(() => this.tracker.move(c.id, 1)));
 		m.addSeparator();
-		m.addItem((i) => i.setTitle(T("Eliminar", "Remove")).setIcon("trash-2").onClick(() => this.tracker.remove(c.id)));
+		m.addItem((i) => i.setTitle(T("Eliminar", "Remove")).setWarning(true).setIcon("trash-2").onClick(() => this.tracker.remove(c.id)));
 		m.showAtMouseEvent(evt);
 	}
 

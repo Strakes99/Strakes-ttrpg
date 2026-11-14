@@ -4,7 +4,20 @@ import type StrakesTTRPG from "../main";
 import { renderPinIconInto } from "../map/render";
 import { Combatant, ConditionOverride, CustomCondition, uid } from "../types";
 import { IconColorControl, IconPicker } from "../ui/iconPicker";
-import { ActiveCondition, activeConditions, allConditions, autoReason, BUILTIN_CONDITIONS, builtinInfo, ConditionInfo, isBloodied, isDead, REMAINS_AFTER, sectionsToText } from "./conditions";
+import { ActiveCondition, activeConditions, allConditions, autoReason, BUILTIN_CONDITIONS, builtinInfo, ConditionInfo, isBloodied, isDead, isDeadByHp, REMAINS_AFTER, sectionsToText } from "./conditions";
+
+/** Condiciones automáticas por PG y por Agotamiento de un combatiente (para `activeConditions`). */
+function autoOpts(c: Combatant): { bloodied: boolean; dead: boolean; deadByExhaustion: boolean } {
+	const dead = isDead(c);
+	return { bloodied: isBloodied(c.hp, c.maxHp), dead, deadByExhaustion: dead && !isDeadByHp(c) };
+}
+
+/** Cuándo se quita sola una condición automática. */
+function goesAwayWhen(a: ActiveCondition): { es: string; en: string } {
+	return a.byExhaustion
+		? { es: "al bajar el Agotamiento", en: "when Exhaustion goes down" }
+		: { es: "cuando cambian los PG", en: "when HP changes" };
+}
 
 const DEFAULT_CUSTOM_COLOR = "#e03131";
 
@@ -30,7 +43,7 @@ export interface ConditionChipsOptions {
  * atenuadas. Agotamiento muestra su nivel.
  */
 export function renderConditionChips(container: HTMLElement, c: Combatant, opts: ConditionChipsOptions): void {
-	const all = activeConditions(c.conditions, opts.plugin.settings, { bloodied: isBloodied(c.hp, c.maxHp), dead: isDead(c) });
+	const all = activeConditions(c.conditions, opts.plugin.settings, autoOpts(c));
 	const list = opts.onlyIds ? all.filter((a) => opts.onlyIds!.includes(a.info.id)) : all;
 	for (const a of list) {
 		const chip = container.createSpan("strakes-cond-chip");
@@ -41,7 +54,7 @@ export function renderConditionChips(container: HTMLElement, c: Combatant, opts:
 		setTooltip(
 			chip,
 			a.auto || a.autoPlaced
-				? T(`${title} · automática (${autoReason(a.info.id)})`, `${title} · automatic (${autoReason(a.info.id)})`)
+				? T(`${title} · automática (${autoReason(a.info.id, a.byExhaustion)})`, `${title} · automatic (${autoReason(a.info.id, a.byExhaustion)})`)
 				: a.explicit
 					? title
 					: T(`${title} · aplicada por ${a.impliedBy.join(", ")}`, `${title} · applied by ${a.impliedBy.join(", ")}`),
@@ -59,8 +72,8 @@ export function renderConditionChips(container: HTMLElement, c: Combatant, opts:
 			if (a.auto || a.autoPlaced) {
 				new Notice(
 					T(
-						`${a.info.name} es automática (${autoReason(a.info.id)}): se quita sola cuando cambian los PG.`,
-						`${a.info.name} is automatic (${autoReason(a.info.id)}): it goes away on its own when HP changes.`,
+						`${a.info.name} es automática (${autoReason(a.info.id, a.byExhaustion)}): se quita sola ${goesAwayWhen(a).es}.`,
+						`${a.info.name} is automatic (${autoReason(a.info.id, a.byExhaustion)}): it goes away on its own ${goesAwayWhen(a).en}.`,
 					),
 				);
 				return;
@@ -102,7 +115,7 @@ function toggleConditionCard(anchor: HTMLElement, a: ActiveCondition): void {
 	const head = card.createDiv("strakes-cond-card-head");
 	renderConditionIcon(head.createSpan(), a.info);
 	head.createSpan({ cls: "strakes-cond-card-title", text: a.level ? T(`${a.info.name} · nivel ${a.level}`, `${a.info.name} · level ${a.level}`) : a.info.name });
-	if (a.auto || a.autoPlaced) card.createDiv({ cls: "strakes-cond-card-note", text: T(`Automática (${autoReason(a.info.id)}).`, `Automatic (${autoReason(a.info.id)}).`) });
+	if (a.auto || a.autoPlaced) card.createDiv({ cls: "strakes-cond-card-note", text: T(`Automática (${autoReason(a.info.id, a.byExhaustion)}).`, `Automatic (${autoReason(a.info.id, a.byExhaustion)}).`) });
 	else if (!a.explicit)
 		card.createDiv({ cls: "strakes-cond-card-note", text: T(`Aplicada por ${a.impliedBy.join(", ")}.`, `Applied by ${a.impliedBy.join(", ")}.`) });
 	if (a.info.description !== undefined) {
@@ -118,7 +131,7 @@ function toggleConditionCard(anchor: HTMLElement, a: ActiveCondition): void {
 		cls: "strakes-cond-card-hint",
 		text:
 			a.auto || a.autoPlaced
-				? T("Se quita sola cuando cambian los PG.", "It goes away on its own when HP changes.")
+				? T(`Se quita sola ${goesAwayWhen(a).es}.`, `It goes away on its own ${goesAwayWhen(a).en}.`)
 				: T("Clic derecho en el icono para quitarla.", "Right-click the icon to remove it."),
 	});
 
@@ -160,7 +173,7 @@ function toggleConditionCard(anchor: HTMLElement, a: ActiveCondition): void {
 export function showConditionMenu(evt: MouseEvent, c: Combatant, plugin: StrakesTTRPG): void {
 	const tracker = plugin.tracker;
 	const active = new Map(c.conditions.map((e) => [e.id, e]));
-	const effective = activeConditions(c.conditions, plugin.settings, { bloodied: isBloodied(c.hp, c.maxHp), dead: isDead(c) });
+	const effective = activeConditions(c.conditions, plugin.settings, autoOpts(c));
 	const implied = new Set(effective.filter((a) => !a.explicit && !a.auto).map((a) => a.info.id));
 	const autoIds = new Set(effective.filter((a) => a.auto).map((a) => a.info.id));
 	const m = new Menu();

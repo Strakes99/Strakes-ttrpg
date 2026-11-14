@@ -294,7 +294,7 @@ export class PinModal extends Modal {
 			buttons.addButton((b) =>
 				b
 					.setButtonText(T("Eliminar", "Delete"))
-					.setWarning()
+					.setDestructive()
 					.onClick(() => this.finish("delete")),
 			);
 		buttons.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => this.close()));
@@ -543,7 +543,7 @@ export class RouteModal extends Modal {
 			.addButton((b) =>
 				b
 					.setButtonText(T("Eliminar ruta", "Delete route"))
-					.setWarning()
+					.setDestructive()
 					.onClick(() => {
 						this.onDone(null, true);
 						this.close();

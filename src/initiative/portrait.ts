@@ -193,7 +193,7 @@ export class PortraitModal extends Modal {
 			.addButton((b) =>
 				b
 					.setButtonText(T("Quitar retrato", "Remove portrait"))
-					.setWarning()
+					.setDestructive()
 					.onClick(() => this.finish(null)),
 			)
 			.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => this.close()))

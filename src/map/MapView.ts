@@ -1194,6 +1194,7 @@ export class MapView extends TextFileView {
 		m.addItem((i) =>
 			i
 				.setTitle(T("Eliminar", "Delete"))
+				.setWarning(true)
 				.setIcon("trash-2")
 				.onClick(() => {
 					const data = this.mapData!;
@@ -1450,6 +1451,7 @@ export class MapView extends TextFileView {
 		m.addItem((i) =>
 			i
 				.setTitle(T("Eliminar ruta", "Delete route"))
+				.setWarning(true)
 				.setIcon("trash-2")
 				.onClick(() => {
 					data.routes = data.routes.filter((r) => r.id !== route.id);
@@ -1502,6 +1504,7 @@ export class MapView extends TextFileView {
 		m.addItem((i) =>
 			i
 				.setTitle(T("Eliminar nodo", "Delete node"))
+				.setWarning(true)
 				.setIcon("trash-2")
 				.onClick(() => {
 					deleteNode(data, node.id);
@@ -1681,6 +1684,7 @@ export class MapView extends TextFileView {
 		m.addItem((i) =>
 			i
 				.setTitle(T("Eliminar capa…", "Delete layer…"))
+				.setWarning(true)
 				.setIcon("trash-2")
 				.onClick(async () => {
 					const nP = data.pins.filter((p) => p.layerId === layerId).length;

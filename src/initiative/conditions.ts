@@ -16,6 +16,9 @@ export const DEAD_ID = "dead";
 export const CONCENTRATION_ID = "concentration";
 export const INCAPACITATED_ID = "incapacitated";
 export const UNCONSCIOUS_ID = "unconscious";
+export const EXHAUSTION_ID = "exhaustion";
+/** Nivel de Agotamiento con el que la criatura muere (SRD 5.2). */
+export const EXHAUSTION_DEATH_LEVEL = 6;
 
 /**
  * Condiciones de las reglas básicas (SRD 5.2, licencia CC-BY-4.0).
@@ -341,6 +344,8 @@ export interface ActiveCondition {
 	explicit: boolean;
 	/** Activada automáticamente por los PG (Ensangrentado). */
 	auto?: boolean;
+	/** Muerto automático por Agotamiento 6, no por los PG (cambia el motivo que se muestra). */
+	byExhaustion?: boolean;
 	/**
 	 * Guardada en el combatiente, pero la puso el plugin (Inconsciente al caer un PJ/aliado
 	 * a 0 PG). Se muestra como automática y el clic derecho solo avisa (como con `auto`); desde el menú de condiciones sí se puede quitar.
@@ -352,24 +357,36 @@ export interface ActiveCondition {
  * ¿Muerto por sus PG? Enemigo: 0 PG o menos. PJ/aliado: PG iguales o inferiores al
  * negativo de sus PG máximos (p. ej. −45 con 45 máximos).
  */
-export function isDead(c: { isPlayer: boolean; hp: number | null; maxHp: number | null }): boolean {
+export function isDead(c: { isPlayer: boolean; hp: number | null; maxHp: number | null; conditions?: ConditionEntry[] }): boolean {
+	return isDeadByHp(c) || diesFromExhaustion(c);
+}
+
+/** Muerte por PG (ver `isDead`). */
+export function isDeadByHp(c: { isPlayer: boolean; hp: number | null; maxHp: number | null }): boolean {
 	if (c.hp === null) return false;
 	if (!c.isPlayer) return c.hp <= 0;
 	return c.maxHp !== null && c.maxHp > 0 && c.hp <= -c.maxHp;
 }
 
+/** Agotamiento de nivel 6 o más: la criatura muere (SRD 5.2). */
+export function diesFromExhaustion(c: { conditions?: ConditionEntry[] }): boolean {
+	const e = c.conditions?.find((x) => x.id === EXHAUSTION_ID);
+	return !!e && (e.level ?? 1) >= EXHAUSTION_DEATH_LEVEL;
+}
+
 /**
- * Enemigo derrotado: 0 PG o menos. Se tacha, su turno se salta y los jugadores dejan de
- * ver sus PG y sus condiciones (salvo Muerto). Los PJ y aliados nunca cuentan como
- * derrotados: a 0 PG quedan Inconscientes.
+ * Enemigo derrotado = enemigo muerto: 0 PG o menos, o Agotamiento 6 (ver `isDead`). Se
+ * tacha, su turno se salta y los jugadores dejan de ver sus PG y sus condiciones (salvo
+ * Muerto). Los PJ y aliados nunca cuentan como derrotados: a 0 PG quedan Inconscientes.
  */
-export function isDefeatedEnemy(c: { isPlayer: boolean; hp: number | null }): boolean {
-	return !c.isPlayer && c.hp !== null && c.hp <= 0;
+export function isDefeatedEnemy(c: { isPlayer: boolean; hp: number | null; maxHp: number | null; conditions?: ConditionEntry[] }): boolean {
+	return !c.isPlayer && isDead(c);
 }
 
 /** Motivo de una condición automática, para mostrarlo al DM. */
 /** Por qué se aplica sola una condición automática (para tooltips y avisos). */
-export function autoReason(id: string): string {
+export function autoReason(id: string, byExhaustion = false): string {
+	if (byExhaustion) return T(`Agotamiento ${EXHAUSTION_DEATH_LEVEL}`, `Exhaustion ${EXHAUSTION_DEATH_LEVEL}`);
 	if (id === "bloodied") return T("PG a la mitad o menos", "HP at half or less");
 	if (id === UNCONSCIOUS_ID) return T("0 PG o menos", "0 HP or less");
 	return T("por sus PG", "from its HP");
@@ -385,7 +402,11 @@ export function isBloodied(hp: number | null, maxHp: number | null): boolean {
  * cadena: una condición propia puede aplicar Paralizado, que aplica Incapacitado) y
  * Ensangrentado si sus PG lo indican. Sin duplicados; las que ya no existen se ignoran.
  */
-export function activeConditions(entries: ConditionEntry[], catalog: ConditionCatalog, opts: { bloodied?: boolean; dead?: boolean } = {}): ActiveCondition[] {
+export function activeConditions(
+	entries: ConditionEntry[],
+	catalog: ConditionCatalog,
+	opts: { bloodied?: boolean; dead?: boolean; deadByExhaustion?: boolean } = {},
+): ActiveCondition[] {
 	const out: ActiveCondition[] = [];
 	const byId = new Map<string, ActiveCondition>();
 	for (const e of entries) {
@@ -407,6 +428,7 @@ export function activeConditions(entries: ConditionEntry[], catalog: ConditionCa
 		const info = conditionById(id, catalog);
 		if (!info) continue;
 		const a: ActiveCondition = { info, impliedBy: [], explicit: false, auto: true };
+		if (id === DEAD_ID && opts.deadByExhaustion) a.byExhaustion = true;
 		byId.set(id, a);
 		out.push(a);
 	}
