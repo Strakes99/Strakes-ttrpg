@@ -1,5 +1,5 @@
 import { InitiativeTracker } from "../src/initiative/tracker";
-import { ConditionCatalog, conditionById, activeConditions, sectionsToText, BUILTIN_CONDITIONS, builtinInfo } from "../src/initiative/conditions";
+import { ConditionCatalog, conditionById, activeConditions, BUILTIN_CONDITIONS, builtinMarkdown } from "../src/initiative/conditions";
 import { clearNotices, fakePlugin, notices, t } from "./helpers";
 clearNotices();
 const plugin = fakePlugin();
@@ -40,4 +40,5 @@ t("override aplica otra condición", activeConditions([{ id: "poisoned", level: 
 const cat2: ConditionCatalog = { customConditions: [], conditionOverrides: { exhaustion: { maxLevel: null }, paralyzed: { implies: [] } } };
 t("quitar acumulativa a Agotamiento", conditionById("exhaustion", cat2)!.maxLevel, undefined);
 t("quitar la condición aplicada", activeConditions([{ id: "paralyzed" }], cat2).length, 1);
-t("texto de apartados", sectionsToText(builtinInfo(BUILTIN_CONDITIONS.find((b) => b.id === "grappled")!).sections).split("\n\n")[0], "Velocidad 0. Tu Velocidad es 0 y no puede aumentar.");
+t("texto de apartados (Markdown)", builtinMarkdown(BUILTIN_CONDITIONS.find((b) => b.id === "grappled")!).split("\n\n").slice(0, 2), ["## Velocidad 0", "Tu Velocidad es 0 y no puede aumentar."]);
+t("la descripción de una integrada es ese Markdown", conditionById("grappled", cat2)!.description.startsWith("## Velocidad 0\n\n"), true);

@@ -1,7 +1,7 @@
 import { Notice } from "obsidian";
 import { T } from "../i18n";
 import type StrakesTTRPG from "../main";
-import { activeConditions, CONCENTRATION_ID, concentrationDC, INCAPACITATED_ID, isDefeatedEnemy, REMAINS_AFTER, UNCONSCIOUS_ID } from "./conditions";
+import { ActiveCondition, combatantConditions, concentrationDC, conditionById, isDefeatedEnemy } from "./conditions";
 import { Combatant, CombatState, Portrait, uid } from "../types";
 import { memoryKey, recalledPortrait, rememberPortrait, splitName } from "./portrait";
 
@@ -158,7 +158,8 @@ export class InitiativeTracker {
 		// Retrato: el elegido (y se recuerda para ese nombre) o el último usado con ese nombre.
 		if (c.portrait) rememberPortrait(this.plugin, c.name, c.portrait);
 		else if (c.portrait === undefined) c.portrait = recalledPortrait(this.plugin, c.name);
-		this.syncUnconscious(c);
+		// Avisos de las automáticas con las que ya entra (p. ej. un PJ a 0 PG: Inconsciente).
+		this.followAutoChanges(c, new Map(), true);
 		this.combatants.push(c);
 		this.sortInPlace();
 		this.changed();
@@ -169,20 +170,13 @@ export class InitiativeTracker {
 		const c = this.combatants.find((x) => x.id === id);
 		if (!c) return;
 		const oldHp = c.hp;
+		const before = this.autoConditions(c);
 		Object.assign(c, patch);
-		// Concentración y daño: tirada de Constitución con CD = máx(10, daño/2), hasta 30.
-		if ("hp" in patch && oldHp !== null && c.hp !== null && c.hp < oldHp && this.hasConcentration(c) && c.hp > 0) {
-			const damage = oldHp - c.hp;
-			new Notice(
-				T(
-					`${c.name} recibe ${damage} de daño: tirada de salvación de Constitución CD ${concentrationDC(damage)} para mantener la Concentración.`,
-					`${c.name} takes ${damage} damage: DC ${concentrationDC(damage)} Constitution saving throw to maintain Concentration.`,
-				),
-				8000,
-			);
-		}
-		this.syncUnconscious(c);
-		this.checkConcentration(c);
+		// Bajar los PG a mano también es daño (avisos de tiradas de salvación).
+		if ("hp" in patch && oldHp !== null && c.hp !== null && c.hp < oldHp) this.damageSaves(c, oldHp - c.hp);
+		// Cambiar de bando (PJ ↔ enemigo) no «cura» nada: las automáticas que terminan por eso no dejan nada ni avisan.
+		this.followAutoChanges(c, before, "hp" in patch);
+		this.checkEndings(c);
 		if (resort) this.sortInPlace();
 		this.changed();
 	}
@@ -203,53 +197,115 @@ export class InitiativeTracker {
 	heal(id: string, amount: number): void {
 		const c = this.combatants.find((x) => x.id === id);
 		if (!c || amount <= 0 || c.hp === null) return;
+		const before = this.autoConditions(c);
 		c.hp = c.maxHp !== null ? Math.min(c.maxHp, c.hp + amount) : c.hp + amount;
-		this.syncUnconscious(c);
+		this.followAutoChanges(c, before, true);
+		// Lo que deja una automática al terminar puede acabar con otra («termina si tiene…»).
+		this.checkEndings(c);
 		this.changed();
 	}
 
 	/**
 	 * Daño: se gasta primero de los PG temporales y el resto de los PG, que pueden quedar
-	 * en negativo. Con Concentración, avisa de la tirada de Constitución por el daño total.
+	 * en negativo. Las condiciones con «aviso al recibir daño» (Concentración) avisan de su
+	 * tirada de salvación por el daño total.
 	 */
 	damage(id: string, amount: number): void {
 		const c = this.combatants.find((x) => x.id === id);
 		if (!c || amount <= 0) return;
+		const before = this.autoConditions(c);
 		const fromTemp = Math.min(c.tempHp ?? 0, amount);
 		if (fromTemp) c.tempHp = (c.tempHp ?? 0) - fromTemp || null;
 		const rest = amount - fromTemp;
 		if (rest && c.hp !== null) c.hp = c.hp - rest;
-		if (this.hasConcentration(c) && (c.hp === null || c.hp > 0))
-			new Notice(
-				T(
-					`${c.name} recibe ${amount} de daño: tirada de salvación de Constitución CD ${concentrationDC(amount)} para mantener la Concentración.`,
-					`${c.name} takes ${amount} damage: DC ${concentrationDC(amount)} Constitution saving throw to maintain Concentration.`,
-				),
-				8000,
-			);
-		this.syncUnconscious(c);
-		this.checkConcentration(c);
+		this.damageSaves(c, amount);
+		this.followAutoChanges(c, before, true);
+		this.checkEndings(c);
 		this.changed();
 	}
 
+	// ---------- Automatismos de las condiciones (ver ConditionRules) ----------
+
+	/** Condiciones que el combatiente tiene ahora por sus reglas automáticas (por id). */
+	private autoConditions(c: Combatant): Map<string, ActiveCondition> {
+		return new Map(combatantConditions(c, this.plugin.settings).filter((a) => a.auto).map((a) => [a.info.id, a]));
+	}
+
 	/**
-	 * PJ y aliados: a 0 PG o menos quedan Inconscientes (se añade sola). Al subir de 0 se
-	 * quita esa Inconsciente automática y, como dice la regla, siguen Derribados.
-	 * Una Inconsciente añadida a mano (p. ej. por un conjuro) no se toca.
+	 * Compara las automáticas de antes y de después de un cambio: avisa de las que se
+	 * aplican o terminan (si tienen «avisar»), y las que terminan dejan sus condiciones de
+	 * «al terminar, deja» (Inconsciente → Derribado). Con `natural` = false (cambio de bando),
+	 * las que terminan no dejan nada ni avisan.
 	 */
-	private syncUnconscious(c: Combatant): void {
-		const autoIdx = c.conditions.findIndex((e) => e.id === UNCONSCIOUS_ID && e.auto);
-		const down = c.isPlayer && c.hp !== null && c.hp <= 0;
-		if (down && !c.conditions.some((e) => e.id === UNCONSCIOUS_ID)) {
-			c.conditions.push({ id: UNCONSCIOUS_ID, auto: true });
-			new Notice(T(`${c.name} cae a ${c.hp} PG: queda Inconsciente.`, `${c.name} drops to ${c.hp} HP and falls Unconscious.`), 6000);
-		} else if (!down && autoIdx >= 0) {
-			c.conditions.splice(autoIdx, 1);
-			// Si dejó de ser PJ/aliado no es que recupere la consciencia: solo se quita.
-			if (c.isPlayer) {
-				for (const r of REMAINS_AFTER[UNCONSCIOUS_ID] ?? []) if (!c.conditions.some((e) => e.id === r)) c.conditions.push({ id: r });
-				new Notice(T(`${c.name} recupera la consciencia (sigue Derribado).`, `${c.name} regains consciousness (still Prone).`), 6000);
+	private followAutoChanges(c: Combatant, before: Map<string, ActiveCondition>, natural: boolean): void {
+		const after = this.autoConditions(c);
+		for (const [id, a] of after)
+			if (!before.has(id) && a.info.rules.announce)
+				new Notice(T(`${c.name}: ${a.info.name} (${a.reason ?? ""}).`, `${c.name}: ${a.info.name} (${a.reason ?? ""}).`), 6000);
+		if (!natural) return;
+		for (const [id, a] of before) {
+			if (after.has(id)) continue;
+			const left = this.leave(c, a.info.rules.leaves);
+			if (a.info.rules.announce)
+				new Notice(
+					left.length
+						? T(`${c.name}: termina ${a.info.name} (sigue ${left.join(", ")}).`, `${c.name}: ${a.info.name} ends (still ${left.join(", ")}).`)
+						: T(`${c.name}: termina ${a.info.name}.`, `${c.name}: ${a.info.name} ends.`),
+					6000,
+				);
+		}
+	}
+
+	/** Añade a mano las condiciones de «al terminar, deja» que falten. Devuelve sus nombres. */
+	private leave(c: Combatant, ids: string[] | undefined): string[] {
+		const names: string[] = [];
+		for (const id of ids ?? []) {
+			const info = conditionById(id, this.plugin.settings);
+			if (!info) continue;
+			if (!c.conditions.some((e) => e.id === id)) c.conditions.push(info.maxLevel ? { id, level: 1 } : { id });
+			names.push(info.name);
+		}
+		return names;
+	}
+
+	/**
+	 * Avisos de «tirada de salvación al recibir daño» (Concentración): CD = máx(10, daño/2),
+	 * hasta 30. No avisa si la condición va a terminar igualmente (termina a 0 PG y ya está a 0).
+	 */
+	private damageSaves(c: Combatant, damage: number): void {
+		for (const a of combatantConditions(c, this.plugin.settings)) {
+			const save = a.info.rules.damageSave;
+			if (!save) continue;
+			if (a.info.rules.endsAtZeroHp && c.hp !== null && c.hp <= 0) continue;
+			const dc = concentrationDC(damage);
+			new Notice(
+				T(
+					`${c.name} recibe ${damage} de daño: tirada de salvación de ${save.ability} CD ${dc} para mantener ${a.info.name}.`,
+					`${c.name} takes ${damage} damage: DC ${dc} ${save.ability} saving throw to maintain ${a.info.name}.`,
+				),
+				8000,
+			);
+		}
+	}
+
+	/**
+	 * Condiciones que terminan solas (Concentración): a 0 PG, o si el combatiente tiene
+	 * alguna de sus condiciones de «termina si aparece». Al terminar dejan las suyas.
+	 */
+	private checkEndings(c: Combatant): void {
+		for (const e of [...c.conditions]) {
+			const info = conditionById(e.id, this.plugin.settings);
+			if (!info) continue;
+			let reason = "";
+			if (info.rules.endsAtZeroHp && c.hp !== null && c.hp <= 0) reason = T("0 PG", "0 HP");
+			else if (info.rules.endsWith?.length) {
+				const ender = combatantConditions(c, this.plugin.settings).find((a) => a.info.id !== info.id && info.rules.endsWith!.includes(a.info.id));
+				if (ender) reason = ender.info.name;
 			}
+			if (!reason) continue;
+			c.conditions = c.conditions.filter((x) => x.id !== e.id);
+			this.leave(c, info.rules.leaves);
+			new Notice(T(`${c.name} pierde ${info.name} (${reason}).`, `${c.name} loses ${info.name} (${reason}).`), 6000);
 		}
 	}
 
@@ -268,20 +324,6 @@ export class InitiativeTracker {
 		this.changed();
 	}
 
-	private hasConcentration(c: Combatant): boolean {
-		return c.conditions.some((e) => e.id === CONCENTRATION_ID);
-	}
-
-	/** La Concentración termina si el combatiente queda Incapacitado o a 0 PG. */
-	private checkConcentration(c: Combatant): void {
-		if (!this.hasConcentration(c)) return;
-		let reason = "";
-		if (c.hp !== null && c.hp <= 0) reason = T("0 PG", "0 HP");
-		else if (activeConditions(c.conditions, this.plugin.settings).some((a) => a.info.id === INCAPACITATED_ID)) reason = T("Incapacitado", "Incapacitated");
-		if (!reason) return;
-		c.conditions = c.conditions.filter((e) => e.id !== CONCENTRATION_ID);
-		new Notice(T(`${c.name} pierde la Concentración (${reason}).`, `${c.name} loses Concentration (${reason}).`), 6000);
-	}
 
 	// ---------- Condiciones ----------
 
@@ -292,6 +334,7 @@ export class InitiativeTracker {
 	addCondition(id: string, condId: string, maxLevel?: number): void {
 		const c = this.combatants.find((x) => x.id === id);
 		if (!c) return;
+		const before = this.autoConditions(c);
 		const existing = c.conditions.find((e) => e.id === condId);
 		if (existing) {
 			if (!maxLevel) return;
@@ -299,26 +342,33 @@ export class InitiativeTracker {
 		} else {
 			c.conditions.push(maxLevel ? { id: condId, level: 1 } : { id: condId });
 		}
-		this.checkConcentration(c);
+		// Subir un nivel puede activar automáticas (Agotamiento 6 → Muerto).
+		this.followAutoChanges(c, before, true);
+		this.checkEndings(c);
 		this.changed();
 	}
 
 	/**
-	 * Quita una condición (o un nivel, si es acumulable). `remains`: condiciones que
-	 * quedan al terminar esta (Inconsciente → sigues Derribado).
+	 * Quita una condición (o un nivel, si es acumulable). Al quitarla del todo deja sus
+	 * condiciones de «al terminar, deja» (Inconsciente → sigue Derribado).
 	 */
-	removeCondition(id: string, condId: string, opts: { oneLevel?: boolean; remains?: string[] } = {}): void {
+	removeCondition(id: string, condId: string, opts: { oneLevel?: boolean } = {}): void {
 		const c = this.combatants.find((x) => x.id === id);
 		if (!c) return;
 		const idx = c.conditions.findIndex((e) => e.id === condId);
 		if (idx < 0) return;
+		const before = this.autoConditions(c);
 		const entry = c.conditions[idx];
 		if (opts.oneLevel && (entry.level ?? 1) > 1) {
 			entry.level = (entry.level ?? 1) - 1;
 		} else {
 			c.conditions.splice(idx, 1);
-			for (const r of opts.remains ?? []) if (!c.conditions.some((e) => e.id === r)) c.conditions.push({ id: r });
+			this.leave(c, conditionById(condId, this.plugin.settings)?.rules.leaves);
 		}
+		// Bajar un nivel puede terminar automáticas (Muerto por Agotamiento).
+		this.followAutoChanges(c, before, true);
+		// Lo que deja la condición quitada puede acabar con otra («termina si tiene…»).
+		this.checkEndings(c);
 		this.changed();
 	}
 
@@ -360,7 +410,7 @@ export class InitiativeTracker {
 
 	/** Enemigo tachado (0 PG o menos): su turno se salta. Los PJ y aliados nunca se saltan. */
 	private skipsTurn(c: Combatant): boolean {
-		return isDefeatedEnemy(c);
+		return isDefeatedEnemy(c, this.plugin.settings);
 	}
 
 	/** Siguiente turno, saltando a los enemigos tachados. Al dar la vuelta, sube la ronda. */

@@ -1,5 +1,5 @@
 import { Localized, T, tr } from "../i18n";
-import { ConditionEntry, ConditionOverride, CustomCondition } from "../types";
+import { ConditionEntry, ConditionOverride, ConditionRules, CustomCondition, HpTrigger } from "../types";
 
 /** Datos del usuario que afectan al catálogo: condiciones propias y cambios a las integradas. */
 export interface ConditionCatalog {
@@ -17,6 +17,7 @@ export const CONCENTRATION_ID = "concentration";
 export const INCAPACITATED_ID = "incapacitated";
 export const UNCONSCIOUS_ID = "unconscious";
 export const EXHAUSTION_ID = "exhaustion";
+export const PRONE_ID = "prone";
 /** Nivel de Agotamiento con el que la criatura muere (SRD 5.2). */
 export const EXHAUSTION_DEATH_LEVEL = 6;
 
@@ -30,6 +31,9 @@ export interface ConditionSection {
 	text: Localized;
 }
 
+/** Automatismos de una integrada: como `ConditionRules`, con la característica de la salvación traducible. */
+export type BuiltinRules = Omit<ConditionRules, "damageSave"> & { damageSave?: { ability: Localized } };
+
 export interface BuiltinCondition {
 	id: string;
 	name: Localized;
@@ -38,10 +42,15 @@ export interface BuiltinCondition {
 	implies?: string[];
 	/** Niveles acumulables (Agotamiento: 6). */
 	maxLevel?: number;
+	/** Apartados de la descripción; se muestran como encabezados `##` en Markdown. */
 	sections: ConditionSection[];
+	rules?: BuiltinRules;
 }
 
-/** Lo que necesita la interfaz para pintar y describir una condición (integrada o personalizada). */
+/**
+ * Una condición lista para usar, sea integrada o personalizada: las dos funcionan igual
+ * (mismo editor, mismos automatismos). Ver `conditionById` y `allConditions`.
+ */
 export interface ConditionInfo {
 	id: string;
 	name: string;
@@ -50,10 +59,12 @@ export interface ConditionInfo {
 	color?: string;
 	implies: string[];
 	maxLevel?: number;
-	sections: { title: string; text: string }[];
-	/** Texto libre (condiciones personalizadas). */
-	description?: string;
+	/** Descripción en Markdown (negrita, cursiva, encabezados…). */
+	description: string;
+	rules: ConditionRules;
 	custom: boolean;
+	/** Integrada oculta por el usuario (solo aparece al pedir `includeHidden`). */
+	hidden: boolean;
 }
 
 const s = (titleEs: string, titleEn: string, textEs: string, textEn: string): ConditionSection => ({
@@ -80,6 +91,7 @@ export const BUILTIN_CONDITIONS: BuiltinCondition[] = [
 		sections: [
 			s("", "", "Una criatura está Ensangrentada mientras le quede la mitad de sus Puntos de Golpe o menos.", "A creature is Bloodied while it has half its Hit Points or fewer remaining."),
 		],
+		rules: { hpTriggers: [{ threshold: "percent", percent: 50, who: "all" }] },
 	},
 	{
 		id: "dead",
@@ -100,6 +112,14 @@ export const BUILTIN_CONDITIONS: BuiltinCondition[] = [
 				"If damage reduces you to 0 Hit Points and the remaining damage equals or exceeds your Hit Point maximum, you die.",
 			),
 		],
+		rules: {
+			hpTriggers: [
+				{ threshold: "zero", who: "enemies" },
+				{ threshold: "negative-max", who: "allies" },
+			],
+			levelTriggers: [{ conditionId: EXHAUSTION_ID, minLevel: EXHAUSTION_DEATH_LEVEL }],
+			defeats: true,
+		},
 	},
 	{
 		id: "concentration",
@@ -117,6 +137,11 @@ export const BUILTIN_CONDITIONS: BuiltinCondition[] = [
 			s("Daño", "Damage", "Si recibes daño, debes tener éxito en una tirada de salvación de Constitución para mantener la Concentración. La CD es igual a 10 o la mitad del daño recibido (redondeando hacia abajo), el número que sea mayor, hasta una CD máxima de 30.", "If you take damage, you must succeed on a Constitution saving throw to maintain Concentration. The DC equals 10 or half the damage taken (round down), whichever number is higher, up to a maximum DC of 30."),
 			s("Incapacitado o muerto", "Incapacitated or Dead", "Tu Concentración termina si tienes la condición de Incapacitado o mueres.", "Your Concentration ends if you have the Incapacitated condition or you die."),
 		],
+		rules: {
+			endsWith: [INCAPACITATED_ID, DEAD_ID],
+			endsAtZeroHp: true,
+			damageSave: { ability: { es: "Constitución", en: "Constitution" } },
+		},
 	},
 	{
 		id: "charmed",
@@ -280,13 +305,27 @@ export const BUILTIN_CONDITIONS: BuiltinCondition[] = [
 			s("Impactos críticos automáticos", "Automatic Critical Hits", "Cualquier tirada de ataque que te impacte es un Impacto Crítico si el atacante está a 5 pies de ti o menos.", "Any attack roll that hits you is a Critical Hit if the attacker is within 5 feet of you."),
 			s("Inconsciente del entorno", "Unaware", "No eres consciente de tu entorno.", "You're unaware of your surroundings."),
 		],
+		rules: { hpTriggers: [{ threshold: "zero", who: "allies" }], leaves: [PRONE_ID], announce: true },
 	},
 ];
 
 /** Al terminar Inconsciente sigues Derribado (regla de la condición). */
-export const REMAINS_AFTER: Record<string, string[]> = { unconscious: ["prone"] };
+// ---------- Catálogo: integradas (con los cambios del usuario) y personalizadas ----------
 
-/** Condición integrada con los cambios del usuario (nombre, descripción, icono, color, etc.). */
+/** Descripción de una integrada en Markdown: cada apartado con título es un encabezado `##`. */
+export function builtinMarkdown(b: BuiltinCondition): string {
+	return b.sections.map((x) => (tr(x.title) ? `## ${tr(x.title)}\n\n${tr(x.text)}` : tr(x.text))).join("\n\n");
+}
+
+/** Automatismos originales de una integrada, con los textos en el idioma actual. */
+export function builtinRules(b: BuiltinCondition): ConditionRules {
+	const r = b.rules;
+	if (!r) return {};
+	const { damageSave, ...rest } = r;
+	return structuredClone({ ...rest, ...(damageSave ? { damageSave: { ability: tr(damageSave.ability) } } : {}) });
+}
+
+/** Condición integrada con los cambios del usuario (nombre, descripción, icono, color, automatismos…). */
 export function builtinInfo(b: BuiltinCondition, o?: ConditionOverride): ConditionInfo {
 	const color = o && "color" in o ? (o.color ?? undefined) : b.color;
 	const maxLevel = o && "maxLevel" in o ? (o.maxLevel ?? undefined) : b.maxLevel;
@@ -297,15 +336,11 @@ export function builtinInfo(b: BuiltinCondition, o?: ConditionOverride): Conditi
 		color,
 		implies: (o?.implies ?? b.implies ?? []).filter((id) => id !== b.id),
 		maxLevel: maxLevel && maxLevel > 1 ? maxLevel : undefined,
-		sections: b.sections.map((x) => ({ title: tr(x.title), text: tr(x.text) })),
-		description: o?.description,
+		description: o?.description ?? builtinMarkdown(b),
+		rules: o?.rules ?? builtinRules(b),
 		custom: false,
+		hidden: o?.hidden === true,
 	};
-}
-
-/** Apartados de una condición integrada como texto editable («Título. Texto», separados por línea en blanco). */
-export function sectionsToText(sections: { title: string; text: string }[]): string {
-	return sections.map((x) => (x.title ? `${x.title}. ${x.text}` : x.text)).join("\n\n");
 }
 
 export function customInfo(c: CustomCondition): ConditionInfo {
@@ -316,23 +351,40 @@ export function customInfo(c: CustomCondition): ConditionInfo {
 		color: c.color,
 		implies: (c.implies ?? []).filter((id) => id !== c.id),
 		maxLevel: c.maxLevel && c.maxLevel > 1 ? c.maxLevel : undefined,
-		sections: [],
 		description: c.description,
+		rules: c.rules ?? {},
 		custom: true,
+		hidden: false,
 	};
 }
 
-/** Todas las condiciones disponibles: integradas (por orden alfabético del idioma) y personalizadas. */
-export function allConditions(catalog: ConditionCatalog): ConditionInfo[] {
+/**
+ * Todas las condiciones: integradas (por orden alfabético del idioma) y personalizadas.
+ * Las ocultas no se incluyen salvo con `includeHidden` (solo los ajustes las muestran).
+ */
+export function allConditions(catalog: ConditionCatalog, opts: { includeHidden?: boolean } = {}): ConditionInfo[] {
 	const builtins = BUILTIN_CONDITIONS.map((b) => builtinInfo(b, catalog.conditionOverrides[b.id])).sort((a, b) => a.name.localeCompare(b.name));
-	return [...builtins, ...catalog.customConditions.map(customInfo)];
+	const all = [...builtins, ...catalog.customConditions.map(customInfo)];
+	return opts.includeHidden ? all : all.filter((x) => !x.hidden);
 }
 
-export function conditionById(id: string, catalog: ConditionCatalog): ConditionInfo | null {
+/** Una condición por id. Una oculta cuenta como inexistente (no se muestra ni se aplica), salvo con `includeHidden`. */
+export function conditionById(id: string, catalog: ConditionCatalog, includeHidden = false): ConditionInfo | null {
 	const b = BUILTIN_CONDITIONS.find((x) => x.id === id);
-	if (b) return builtinInfo(b, catalog.conditionOverrides[b.id]);
-	const c = catalog.customConditions.find((x) => x.id === id);
-	return c ? customInfo(c) : null;
+	const info = b ? builtinInfo(b, catalog.conditionOverrides[b.id]) : (() => {
+		const c = catalog.customConditions.find((x) => x.id === id);
+		return c ? customInfo(c) : null;
+	})();
+	return info && (includeHidden || !info.hidden) ? info : null;
+}
+
+// ---------- Automatismos ----------
+
+/** Lo que necesitan las reglas automáticas de un combatiente. */
+export interface CombatantState {
+	isPlayer: boolean;
+	hp: number | null;
+	maxHp: number | null;
 }
 
 /** Una condición tal como se ve en un combatiente: elegida a mano, aplicada por otra o automática. */
@@ -342,71 +394,72 @@ export interface ActiveCondition {
 	/** Nombres de las condiciones que la aplican (vacío si se eligió a mano). */
 	impliedBy: string[];
 	explicit: boolean;
-	/** Activada automáticamente por los PG (Ensangrentado). */
+	/** Se aplica sola por sus reglas (PG o nivel de otra condición). */
 	auto?: boolean;
-	/** Muerto automático por Agotamiento 6, no por los PG (cambia el motivo que se muestra). */
-	byExhaustion?: boolean;
-	/**
-	 * Guardada en el combatiente, pero la puso el plugin (Inconsciente al caer un PJ/aliado
-	 * a 0 PG). Se muestra como automática y el clic derecho solo avisa (como con `auto`); desde el menú de condiciones sí se puede quitar.
-	 */
-	autoPlaced?: boolean;
+	/** Solo automáticas: por qué se aplica («PG a la mitad o menos», «Agotamiento 6»…). */
+	reason?: string;
+	/** Solo automáticas: cuándo se quita sola («cuando cambian los PG», «al bajar Agotamiento»). */
+	endsWhen?: string;
+}
+
+function appliesTo(who: HpTrigger["who"], c: CombatantState): boolean {
+	return who === "all" || (who === "enemies" ? !c.isPlayer : c.isPlayer);
+}
+
+/** ¿Se cumple este umbral de PG? */
+export function hpTriggerHolds(t: HpTrigger, c: CombatantState): boolean {
+	if (c.hp === null || !appliesTo(t.who, c)) return false;
+	switch (t.threshold) {
+		case "percent":
+			return c.maxHp !== null && c.maxHp > 0 && c.hp <= (c.maxHp * (t.percent ?? 50)) / 100;
+		case "zero":
+			return c.hp <= 0;
+		case "negative-max":
+			return c.maxHp !== null && c.maxHp > 0 && c.hp <= -c.maxHp;
+	}
+}
+
+/** Texto del umbral para mostrarlo («PG a la mitad o menos»…). */
+export function hpTriggerText(t: HpTrigger): string {
+	switch (t.threshold) {
+		case "percent":
+			return (t.percent ?? 50) === 50 ? T("PG a la mitad o menos", "HP at half or less") : T(`PG al ${t.percent} % o menos`, `HP at ${t.percent}% or less`);
+		case "zero":
+			return T("0 PG o menos", "0 HP or less");
+		case "negative-max":
+			return T("PG en su máximo negativo o menos", "HP at minus its maximum or less");
+	}
+}
+
+/** Nivel con el que tiene a mano una condición acumulativa (0 si no la tiene). */
+function entryLevel(entries: ConditionEntry[], id: string): number {
+	const e = entries.find((x) => x.id === id);
+	return e ? (e.level ?? 1) : 0;
 }
 
 /**
- * ¿Muerto por sus PG? Enemigo: 0 PG o menos. PJ/aliado: PG iguales o inferiores al
- * negativo de sus PG máximos (p. ej. −45 con 45 máximos).
+ * Si una condición se aplica sola ahora mismo, el motivo y cuándo se quitará; null si no.
+ * La condición de un umbral de nivel tiene que existir y no estar oculta.
  */
-export function isDead(c: { isPlayer: boolean; hp: number | null; maxHp: number | null; conditions?: ConditionEntry[] }): boolean {
-	return isDeadByHp(c) || diesFromExhaustion(c);
-}
-
-/** Muerte por PG (ver `isDead`). */
-export function isDeadByHp(c: { isPlayer: boolean; hp: number | null; maxHp: number | null }): boolean {
-	if (c.hp === null) return false;
-	if (!c.isPlayer) return c.hp <= 0;
-	return c.maxHp !== null && c.maxHp > 0 && c.hp <= -c.maxHp;
-}
-
-/** Agotamiento de nivel 6 o más: la criatura muere (SRD 5.2). */
-export function diesFromExhaustion(c: { conditions?: ConditionEntry[] }): boolean {
-	const e = c.conditions?.find((x) => x.id === EXHAUSTION_ID);
-	return !!e && (e.level ?? 1) >= EXHAUSTION_DEATH_LEVEL;
+export function autoCause(info: ConditionInfo, entries: ConditionEntry[], c: CombatantState, catalog: ConditionCatalog): { reason: string; endsWhen: string } | null {
+	for (const t of info.rules.hpTriggers ?? [])
+		if (hpTriggerHolds(t, c)) return { reason: hpTriggerText(t), endsWhen: T("cuando cambian los PG", "when HP changes") };
+	for (const t of info.rules.levelTriggers ?? []) {
+		const source = t.conditionId;
+		const src = source !== info.id ? conditionById(source, catalog) : null;
+		if (src && entryLevel(entries, source) >= t.minLevel)
+			return { reason: `${src.name} ${t.minLevel}`, endsWhen: T(`al bajar ${src.name}`, `when ${src.name} goes down`) };
+	}
+	return null;
 }
 
 /**
- * Enemigo derrotado = enemigo muerto: 0 PG o menos, o Agotamiento 6 (ver `isDead`). Se
- * tacha, su turno se salta y los jugadores dejan de ver sus PG y sus condiciones (salvo
- * Muerto). Los PJ y aliados nunca cuentan como derrotados: a 0 PG quedan Inconscientes.
+ * Condiciones efectivas de un combatiente: las elegidas, las automáticas por sus reglas
+ * (si se pasa `who`, el estado del combatiente) y las que estas aplican, en cadena (una
+ * condición puede aplicar Paralizado, que aplica Incapacitado). Sin duplicados; las que no
+ * existen o están ocultas se ignoran.
  */
-export function isDefeatedEnemy(c: { isPlayer: boolean; hp: number | null; maxHp: number | null; conditions?: ConditionEntry[] }): boolean {
-	return !c.isPlayer && isDead(c);
-}
-
-/** Motivo de una condición automática, para mostrarlo al DM. */
-/** Por qué se aplica sola una condición automática (para tooltips y avisos). */
-export function autoReason(id: string, byExhaustion = false): string {
-	if (byExhaustion) return T(`Agotamiento ${EXHAUSTION_DEATH_LEVEL}`, `Exhaustion ${EXHAUSTION_DEATH_LEVEL}`);
-	if (id === "bloodied") return T("PG a la mitad o menos", "HP at half or less");
-	if (id === UNCONSCIOUS_ID) return T("0 PG o menos", "0 HP or less");
-	return T("por sus PG", "from its HP");
-}
-
-/** ¿Está Ensangrentado por sus PG? (la mitad de sus PG máximos o menos). */
-export function isBloodied(hp: number | null, maxHp: number | null): boolean {
-	return hp !== null && maxHp !== null && maxHp > 0 && hp <= maxHp / 2;
-}
-
-/**
- * Condiciones efectivas de un combatiente: las elegidas, las que estas aplican (en
- * cadena: una condición propia puede aplicar Paralizado, que aplica Incapacitado) y
- * Ensangrentado si sus PG lo indican. Sin duplicados; las que ya no existen se ignoran.
- */
-export function activeConditions(
-	entries: ConditionEntry[],
-	catalog: ConditionCatalog,
-	opts: { bloodied?: boolean; dead?: boolean; deadByExhaustion?: boolean } = {},
-): ActiveCondition[] {
+export function activeConditions(entries: ConditionEntry[], catalog: ConditionCatalog, who?: CombatantState): ActiveCondition[] {
 	const out: ActiveCondition[] = [];
 	const byId = new Map<string, ActiveCondition>();
 	for (const e of entries) {
@@ -417,28 +470,26 @@ export function activeConditions(
 			level: info.maxLevel ? Math.max(1, Math.min(info.maxLevel, e.level ?? 1)) : undefined,
 			impliedBy: [],
 			explicit: true,
-			...(e.auto ? { autoPlaced: true } : {}),
 		};
 		byId.set(info.id, a);
 		out.push(a);
 	}
-	// Automáticas por PG: Muerto y Ensangrentado.
-	for (const [on, id] of [[opts.dead, DEAD_ID], [opts.bloodied, BLOODIED_ID]] as const) {
-		if (!on || byId.has(id)) continue;
-		const info = conditionById(id, catalog);
-		if (!info) continue;
-		const a: ActiveCondition = { info, impliedBy: [], explicit: false, auto: true };
-		if (id === DEAD_ID && opts.deadByExhaustion) a.byExhaustion = true;
-		byId.set(id, a);
-		out.push(a);
-	}
+	if (who)
+		for (const info of allConditions(catalog)) {
+			if (byId.has(info.id)) continue;
+			const cause = autoCause(info, entries, who, catalog);
+			if (!cause) continue;
+			const a: ActiveCondition = { info, impliedBy: [], explicit: false, auto: true, ...cause };
+			byId.set(info.id, a);
+			out.push(a);
+		}
 	// Recorre en anchura: las condiciones aplicadas pueden aplicar a su vez otras.
 	for (let i = 0; i < out.length; i++) {
 		const a = out[i];
 		for (const imp of a.info.implies) {
 			const existing = byId.get(imp);
 			if (existing) {
-				if (!existing.explicit && !existing.impliedBy.includes(a.info.name)) existing.impliedBy.push(a.info.name);
+				if (!existing.explicit && !existing.auto && !existing.impliedBy.includes(a.info.name)) existing.impliedBy.push(a.info.name);
 				continue;
 			}
 			const info = conditionById(imp, catalog);
@@ -451,7 +502,28 @@ export function activeConditions(
 	return out;
 }
 
-/** CD de la tirada de Constitución para mantener la Concentración tras recibir daño. */
+/** Condiciones efectivas de un combatiente, con sus automáticas. */
+export function combatantConditions(c: CombatantState & { conditions: ConditionEntry[] }, catalog: ConditionCatalog): ActiveCondition[] {
+	return activeConditions(c.conditions, catalog, c);
+}
+
+/**
+ * Enemigo derrotado: tiene alguna condición que «derrota» (Muerto, por PG o por
+ * Agotamiento). Se tacha, su turno se salta y los jugadores solo ven esa condición. Los PJ
+ * y aliados nunca cuentan como derrotados.
+ */
+export function isDefeatedEnemy(c: CombatantState & { conditions: ConditionEntry[] }, catalog: ConditionCatalog): boolean {
+	return !c.isPlayer && combatantConditions(c, catalog).some((a) => a.info.rules.defeats);
+}
+
+/** Ids de las condiciones que derrotan (lo único que ven los jugadores de un enemigo derrotado). */
+export function defeatingIds(catalog: ConditionCatalog): string[] {
+	return allConditions(catalog)
+		.filter((x) => x.rules.defeats)
+		.map((x) => x.id);
+}
+
+/** CD de la tirada de salvación al recibir daño (la de Concentración): máx(10, mitad del daño), hasta 30. */
 export function concentrationDC(damage: number): number {
 	return Math.min(30, Math.max(10, Math.floor(damage / 2)));
 }

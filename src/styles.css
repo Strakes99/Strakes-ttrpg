@@ -716,9 +716,49 @@ input.strakes-portrait-zoom-num {
 	font-weight: 600;
 	color: var(--text-normal);
 }
+/* Descripción en Markdown. Los encabezados tienen tamaños propios de la ficha (no los del tema). */
 .strakes-cond-card-text {
 	color: var(--text-muted);
-	white-space: pre-wrap;
+}
+.strakes-cond-card-text > :first-child {
+	margin-top: 0;
+}
+.strakes-cond-card-text > :last-child {
+	margin-bottom: 0;
+}
+.strakes-cond-card-text p,
+.strakes-cond-card-text ul,
+.strakes-cond-card-text ol {
+	margin: 0 0 0.5em;
+}
+.strakes-cond-card-text h1,
+.strakes-cond-card-text h2,
+.strakes-cond-card-text h3,
+.strakes-cond-card-text h4,
+.strakes-cond-card-text h5,
+.strakes-cond-card-text h6 {
+	margin: 0.7em 0 0.2em;
+	color: var(--text-normal);
+	font-family: inherit;
+	font-weight: 700;
+	line-height: 1.3;
+	letter-spacing: normal;
+	font-variant: normal;
+}
+.strakes-cond-card-text h1 {
+	font-size: 1.25em;
+}
+.strakes-cond-card-text h2 {
+	font-size: 1.12em;
+}
+.strakes-cond-card-text h3,
+.strakes-cond-card-text h4,
+.strakes-cond-card-text h5,
+.strakes-cond-card-text h6 {
+	font-size: 1em;
+}
+.strakes-cond-card-text strong {
+	color: var(--text-normal);
 }
 .strakes-cond-card-hint {
 	margin-top: 8px;
@@ -741,6 +781,17 @@ input.strakes-portrait-zoom-num {
 }
 /* Diálogo de condición personalizada */
 .strakes-cond-level-input {
+	width: 4.5em;
+}
+/* Automatismos: filas de umbrales (desplegables, número y papelera). */
+.strakes-rule-row {
+	border-top: none;
+	padding-top: 0;
+}
+.strakes-rule-row .setting-item-info {
+	display: none;
+}
+.strakes-rule-number {
 	width: 4.5em;
 }
 .strakes-cond-implies-setting {
@@ -784,6 +835,18 @@ input.strakes-portrait-zoom-num {
 	justify-content: flex-start;
 	gap: 6px;
 	font-size: var(--font-ui-small);
+}
+.strakes-builtin-cond.is-hidden {
+	opacity: 0.45;
+}
+.strakes-builtin-cond-hidden {
+	margin-left: auto;
+	display: inline-flex;
+	color: var(--text-faint);
+}
+.strakes-builtin-cond-hidden svg {
+	width: 14px;
+	height: 14px;
 }
 .strakes-builtin-cond-mark {
 	margin-left: auto;

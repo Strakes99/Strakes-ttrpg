@@ -100,7 +100,9 @@ export default class StrakesTTRPG extends Plugin {
 		// Condiciones de los combatientes: lista de { id, level }. Lo que no lo sea se descarta.
 		this.settings.combat.combatants = (this.settings.combat.combatants ?? []).map((c) => ({
 			...c,
-			conditions: Array.isArray(c.conditions) ? c.conditions.filter((x) => x && typeof x.id === "string") : [],
+			// Las entradas con `auto` eran la Inconsciente que guardaba el plugin hasta la 1.0.x:
+			// ahora las automáticas se calculan, así que se descartan.
+			conditions: Array.isArray(c.conditions) ? c.conditions.filter((x) => x && typeof x.id === "string" && !(x as { auto?: unknown }).auto) : [],
 			tempHp: typeof c.tempHp === "number" && c.tempHp > 0 ? c.tempHp : null,
 		}));
 	}

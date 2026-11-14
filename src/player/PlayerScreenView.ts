@@ -2,7 +2,7 @@ import { Component, ItemView, MarkdownRenderer, Notice, resolveSubpath, setIcon,
 import { T } from "../i18n";
 import type StrakesTTRPG from "../main";
 import { renderConditionChips } from "../initiative/conditionUi";
-import { DEAD_ID, isDefeatedEnemy } from "../initiative/conditions";
+import { defeatingIds, isDefeatedEnemy } from "../initiative/conditions";
 import { renderPortrait } from "../initiative/portrait";
 import { resizeObserverFor } from "../ui/dom";
 import { Combatant, VIEW_TYPE_PLAYER } from "../types";
@@ -203,7 +203,7 @@ export class PlayerScreenView extends ItemView {
 			row.toggleClass("is-current", c.id === tracker.state.currentId);
 			row.toggleClass("is-player", c.isPlayer);
 			// Tachado solo para enemigos: un PJ/aliado a 0 PG queda Inconsciente, no muerto.
-			const down = isDefeatedEnemy(c);
+			const down = isDefeatedEnemy(c, this.plugin.settings);
 			row.toggleClass("is-down", down);
 			row.createSpan({ cls: "strakes-pi-name", text: c.name });
 			const extra = this.hpText(c);
@@ -212,7 +212,7 @@ export class PlayerScreenView extends ItemView {
 			// que sustituye al antiguo «estado de los enemigos». Un enemigo tachado solo muestra
 			// Muerto a los jugadores; las demás condiciones, solo en el panel del DM.
 			const conds = row.createSpan("strakes-pi-cond");
-			renderConditionChips(conds, c, { interactive: false, plugin: this.plugin, onlyIds: down ? [DEAD_ID] : undefined });
+			renderConditionChips(conds, c, { interactive: false, plugin: this.plugin, onlyIds: down ? defeatingIds(this.plugin.settings) : undefined });
 			if (!conds.childElementCount) conds.remove();
 		}
 		this.layoutInitiative();
@@ -224,7 +224,7 @@ export class PlayerScreenView extends ItemView {
 		const showHp = c.isPlayer ? s.showPlayerHp : s.showNpcHp;
 		if (!showHp || c.hp === null) return "";
 		// Un enemigo a 0 PG o menos (tachado) deja de mostrar sus PG aunque esté activado.
-		if (isDefeatedEnemy(c)) return "";
+		if (isDefeatedEnemy(c, this.plugin.settings)) return "";
 		return `${c.hp}${c.tempHp ? `(${c.tempHp})` : ""}${c.maxHp !== null ? `/${c.maxHp}` : ""}`;
 	}
 
@@ -242,7 +242,7 @@ export class PlayerScreenView extends ItemView {
 		wrap.createDiv({ cls: "strakes-pi-round strakes-pc-round", text: T(`Ronda ${tracker.state.round}`, `Round ${tracker.state.round}`) });
 		const grid = wrap.createDiv("strakes-pc-grid");
 		for (const c of visible) {
-			const down = isDefeatedEnemy(c);
+			const down = isDefeatedEnemy(c, this.plugin.settings);
 			const card = grid.createDiv("strakes-pc-card");
 			card.toggleClass("is-down", down);
 			card.toggleClass("is-player", c.isPlayer);
@@ -257,7 +257,7 @@ export class PlayerScreenView extends ItemView {
 			if (hp) frame.createDiv({ cls: "strakes-pc-hp", text: hp });
 			// Un enemigo tachado solo muestra Muerto (las demás condiciones, solo en el panel del DM).
 			const conds = card.createDiv("strakes-pc-conds");
-			renderConditionChips(conds, c, { interactive: false, plugin: this.plugin, onlyIds: down ? [DEAD_ID] : undefined });
+			renderConditionChips(conds, c, { interactive: false, plugin: this.plugin, onlyIds: down ? defeatingIds(this.plugin.settings) : undefined });
 			if (!conds.childElementCount) conds.remove();
 		}
 		this.layoutInitiative();

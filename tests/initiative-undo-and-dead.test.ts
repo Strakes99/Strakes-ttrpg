@@ -1,5 +1,5 @@
 import { InitiativeTracker } from "../src/initiative/tracker";
-import { activeConditions, isDead } from "../src/initiative/conditions";
+import { CombatantState, activeConditions, combatantConditions } from "../src/initiative/conditions";
 import { fakePlugin, t } from "./helpers";
 const plugin = fakePlugin();
 const tr = new InitiativeTracker(plugin);
@@ -16,10 +16,11 @@ t("todavía se puede rehacer Ana", tr.canRedoAdd, true);
 tr.recordAdded([tr.add({ name: "Orco", initiative: 5 })]);
 t("una alta nueva descarta el rehacer", tr.canRedoAdd, false);
 // Muerto automático
+const isDead = (s: CombatantState) => combatantConditions({ ...s, conditions: [] }, plugin.settings).some((a) => a.info.id === "dead");
 t("enemigo a 0 → muerto", isDead({ isPlayer: false, hp: 0, maxHp: 10 }), true);
 t("enemigo a 1 → vivo", isDead({ isPlayer: false, hp: 1, maxHp: 10 }), false);
 t("PJ a -44 de 45 → vivo", isDead({ isPlayer: true, hp: -44, maxHp: 45 }), false);
 t("PJ a -45 de 45 → muerto", isDead({ isPlayer: true, hp: -45, maxHp: 45 }), true);
 t("PJ sin máximo → nunca", isDead({ isPlayer: true, hp: -99, maxHp: null }), false);
-const ids = activeConditions([], plugin.settings, { dead: true, bloodied: true }).map((a) => a.info.id + (a.auto ? "@" : ""));
-t("Muerto y Ensangrentado automáticas", ids, ["dead@", "bloodied@"]);
+const ids = activeConditions([], plugin.settings, { isPlayer: false, hp: 0, maxHp: 10 }).map((a) => a.info.id + (a.auto ? "@" : ""));
+t("Muerto y Ensangrentado automáticas", ids, ["bloodied@", "dead@"]);

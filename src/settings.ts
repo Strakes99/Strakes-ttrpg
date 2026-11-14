@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, SettingDefinitionItem } from "obsidian";
+import { App, PluginSettingTab, Setting, SettingDefinitionItem, setIcon, setTooltip } from "obsidian";
 import { T } from "./i18n";
 import type StrakesTTRPG from "./main";
 import { ConditionModal, renderConditionIcon } from "./initiative/conditionUi";
@@ -14,6 +14,12 @@ import { StrakesSettings, VIEW_TYPE_MAP } from "./types";
  * condiciones, condiciones personalizadas, iconos SVG) usan `render`. Para volver a
  * dibujar la pestaña tras un cambio de estructura se llama a `this.update()`.
  */
+/** Primera línea con texto de una descripción en Markdown, sin marcas de formato (para la lista). */
+function firstLine(markdown: string): string {
+	const line = markdown.split("\n").find((l) => l.trim()) ?? "";
+	return line.replace(/^#+\s*/, "").replace(/\*\*|__|\*|`/g, "").trim();
+}
+
 export class StrakesSettingTab extends PluginSettingTab {
 	constructor(
 		app: App,
@@ -114,8 +120,8 @@ export class StrakesSettingTab extends PluginSettingTab {
 					{
 						name: T("Condiciones de las reglas básicas", "Basic rules conditions"),
 						desc: T(
-							"Haz clic en una para editarla por completo (nombre, descripción, icono, color, condiciones que aplica, niveles). Las modificadas se marcan con un punto.",
-							"Click one to fully edit it (name, description, icon, color, conditions it applies, levels). Modified ones are marked with a dot.",
+							"Haz clic en una para editarla por completo (nombre, descripción, icono, color, condiciones que aplica, niveles y automatismos) u ocultarla. Las modificadas se marcan con un punto y las ocultas se ven atenuadas.",
+							"Click one to fully edit it (name, description, icon, color, conditions it applies, levels and automations) or hide it. Modified ones are marked with a dot and hidden ones are dimmed.",
 						),
 						render: (setting) => this.renderBuiltinConditions(setting),
 					},
@@ -143,7 +149,7 @@ export class StrakesSettingTab extends PluginSettingTab {
 				onDelete: (index) => void this.deleteCustomCondition(index),
 				items: this.plugin.settings.customConditions.map((cond) => ({
 					name: cond.name,
-					desc: cond.description.split("\n")[0] ?? "",
+					desc: firstLine(cond.description),
 					render: (setting: Setting) => {
 						setting.settingEl.addClass("strakes-custom-cond-row");
 						// La fila puede reutilizarse en update(): sin duplicar el icono.
@@ -244,11 +250,17 @@ export class StrakesSettingTab extends PluginSettingTab {
 		attribution.createEl("a", { text: CC_BY_URL, href: CC_BY_URL });
 		attribution.appendText(".");
 		const grid = block.createDiv("strakes-builtin-cond-grid");
-		for (const info of allConditions(s).filter((x) => !x.custom)) {
+		// También las ocultas (atenuadas): es el único sitio desde el que se vuelven a mostrar.
+		for (const info of allConditions(s, { includeHidden: true }).filter((x) => !x.custom)) {
 			const b = grid.createEl("button", { cls: "strakes-builtin-cond" });
+			b.toggleClass("is-hidden", info.hidden);
 			renderConditionIcon(b.createSpan(), info);
 			b.createSpan({ text: info.name });
-			if (s.conditionOverrides[info.id]) b.createSpan({ cls: "strakes-builtin-cond-mark", text: "•" });
+			if (info.hidden) {
+				const eye = b.createSpan({ cls: "strakes-builtin-cond-hidden" });
+				setIcon(eye, "eye-off");
+				setTooltip(b, T("Oculta: no aparece en ningún menú ni se aplica", "Hidden: not shown in any menu nor applied"));
+			} else if (s.conditionOverrides[info.id]) b.createSpan({ cls: "strakes-builtin-cond-mark", text: "•" });
 			b.onclick = () => new ConditionModal(this.app, this.plugin, { kind: "builtin", id: info.id }, () => this.update()).open();
 		}
 		return () => block.remove();

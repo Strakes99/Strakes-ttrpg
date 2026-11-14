@@ -169,7 +169,7 @@ export class InitiativeView extends ItemView {
 		row.toggleClass("is-current", isCurrent);
 		row.toggleClass("is-player", c.isPlayer);
 		row.toggleClass("is-hidden", c.hidden);
-		row.toggleClass("is-down", isDefeatedEnemy(c));
+		row.toggleClass("is-down", isDefeatedEnemy(c, this.plugin.settings));
 
 		const line1 = row.createDiv("strakes-init-line");
 		const turn = line1.createDiv("strakes-init-turn");

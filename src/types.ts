@@ -35,12 +35,72 @@ export interface Portrait {
 	scale: number;
 }
 
-/** Condición aplicada a un combatiente. `level` solo para las acumulables (Agotamiento). */
+/**
+ * Condición aplicada a mano a un combatiente. `level` solo para las acumulables
+ * (Agotamiento). Las automáticas (por PG o por niveles) no se guardan: se calculan.
+ */
 export interface ConditionEntry {
 	id: string;
 	level?: number;
-	/** Puesta automáticamente por el plugin (Inconsciente al llegar un PJ/aliado a 0 PG). */
-	auto?: boolean;
+	/**
+	 * Reservado (aún sin uso): id del combatiente que la aplicó, para duraciones como «hasta
+	 * el final del siguiente turno del lanzador» (ver `ConditionDuration`).
+	 */
+	sourceId?: string;
+}
+
+/** A quién afecta una regla automática: enemigos, PJ y aliados, o todos. */
+export type RuleTarget = "enemies" | "allies" | "all";
+
+/**
+ * Umbral de PG de una regla automática: un porcentaje del máximo («percent», p. ej. 50 =
+ * Ensangrentado), 0 o menos («zero») o el negativo del máximo o menos («negative-max»).
+ */
+export interface HpTrigger {
+	threshold: "percent" | "zero" | "negative-max";
+	/** Solo con «percent»: 1–100. */
+	percent?: number;
+	who: RuleTarget;
+}
+
+/** La condición se aplica sola cuando otra condición acumulativa llega a un nivel (Agotamiento 6 → Muerto). */
+export interface LevelTrigger {
+	conditionId: string;
+	minLevel: number;
+}
+
+/**
+ * Reservado para duraciones (aún sin uso ni interfaz): terminar al final del siguiente
+ * turno del objetivo o del lanzador, o repetir una tirada de salvación.
+ */
+export interface ConditionDuration {
+	endsAt?: "end-of-target-next-turn" | "end-of-caster-next-turn";
+	repeatSave?: { ability: string; dc?: number };
+}
+
+/**
+ * Automatismos de una condición. Los tienen igual las de las reglas básicas y las
+ * personalizadas; todo es opcional.
+ */
+export interface ConditionRules {
+	/** Se aplica sola según los PG (cualquiera de los umbrales). */
+	hpTriggers?: HpTrigger[];
+	/** Se aplica sola según el nivel de otra condición acumulativa. */
+	levelTriggers?: LevelTrigger[];
+	/** Al terminar (sola o quitándola a mano), deja estas condiciones (Inconsciente → Derribado). */
+	leaves?: string[];
+	/** Termina sola si el combatiente tiene alguna de estas condiciones (Concentración: Incapacitado, Muerto). */
+	endsWith?: string[];
+	/** Termina sola a 0 PG o menos. */
+	endsAtZeroHp?: boolean;
+	/** Al recibir daño, avisa de una tirada de salvación de esta característica con la CD de Concentración. */
+	damageSave?: { ability: string };
+	/** Derrota al enemigo: tachado, sin turno y, para los jugadores, solo se ve esta condición. */
+	defeats?: boolean;
+	/** Avisa al DM cuando se aplica o termina sola. */
+	announce?: boolean;
+	/** Reservado (aún sin uso). */
+	duration?: ConditionDuration;
 }
 
 /** Condición creada por el usuario. */
@@ -56,6 +116,7 @@ export interface CustomCondition {
 	implies?: string[];
 	/** Acumulativa: nivel máximo (2 o más). Sin definir = no acumulativa. */
 	maxLevel?: number;
+	rules?: ConditionRules;
 }
 
 /**
@@ -72,6 +133,13 @@ export interface ConditionOverride {
 	implies?: string[];
 	/** null = no acumulativa. */
 	maxLevel?: number | null;
+	/** Sustituye a todos los automatismos originales. */
+	rules?: ConditionRules;
+	/**
+	 * Oculta: no aparece en ningún menú ni editor, no se aplica sola y ninguna otra la
+	 * aplica. Solo se ve (atenuada) en los ajustes, para volver a mostrarla.
+	 */
+	hidden?: boolean;
 }
 
 export interface CombatState {
