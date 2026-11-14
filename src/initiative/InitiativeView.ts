@@ -4,7 +4,7 @@ import type StrakesTTRPG from "../main";
 import { confirmDialog } from "../ui/modals";
 import { watchStatusBarGap } from "../ui/statusBarGap";
 import { Combatant, InitiativeDisplay, Portrait, VIEW_TYPE_INITIATIVE } from "../types";
-import { editPortrait, recalledPortrait, renderPortrait, splitName } from "./portrait";
+import { editPortrait, memoryKey, recalledPortrait, renderPortrait, splitName } from "./portrait";
 import { closeConditionCard, renderConditionChips, showConditionMenu } from "./conditionUi";
 import { isDefeatedEnemy } from "./conditions";
 import { parseInitiative, splitGroup } from "./tracker";
@@ -181,7 +181,7 @@ export class InitiativeView extends ItemView {
 		const thumb = line1.createEl("button", { cls: "strakes-init-thumb" });
 		renderPortrait(this.app, thumb, c);
 		setTooltip(thumb, c.portrait ? T("Retrato (clic para encuadrarlo o cambiarlo)", "Portrait (click to frame or change it)") : T("Añadir retrato para el modo Tarjetas", "Add a portrait for Cards mode"));
-		thumb.onclick = () => editPortrait(this.app, c.portrait, (p) => this.tracker.setPortrait(c.id, p));
+		thumb.onclick = () => editPortrait(this.app, c.portrait, (p) => this.tracker.setPortrait(c.id, p), c.name);
 
 		const init = line1.createEl("input", { type: "text", cls: "strakes-init-num", value: String(c.initiative) });
 		setTooltip(init, T("Iniciativa (número, +mod o dados como d20+2)", "Initiative (number, +mod or dice like d20+2)"));
@@ -289,7 +289,7 @@ export class InitiativeView extends ItemView {
 			i
 				.setTitle(c.portrait ? T("Encuadrar o cambiar retrato…", "Frame or change portrait…") : T("Añadir retrato…", "Add portrait…"))
 				.setIcon("image")
-				.onClick(() => editPortrait(this.app, c.portrait, (p) => this.tracker.setPortrait(c.id, p))),
+				.onClick(() => editPortrait(this.app, c.portrait, (p) => this.tracker.setPortrait(c.id, p), c.name)),
 		);
 		m.addItem((i) =>
 			i
@@ -341,10 +341,15 @@ export class InitiativeView extends ItemView {
 		const r1 = form.createDiv("strakes-init-line");
 		// Retrato del formulario: el elegido aquí o, si no, el último usado con ese nombre.
 		let formPortrait: Portrait | undefined;
+		// «Quitar retrato» en el formulario: para qué nombre se quitó (clave de memoria). Mientras
+		// el nombre siga siendo ese, no se usa el retrato recordado; al añadir, se olvida.
+		let removedFor: string | null = null;
+		const formBase = () => splitName(splitGroup(name.value).base).base;
+		const removedHere = () => removedFor !== null && removedFor === memoryKey(formBase());
 		const thumb = r1.createEl("button", { cls: "strakes-init-thumb" });
 		const refreshThumb = () => {
-			const base = splitName(splitGroup(name.value).base).base;
-			const shown = formPortrait ?? (base ? recalledPortrait(this.plugin, base) : null);
+			const base = formBase();
+			const shown = formPortrait ?? (base && !removedHere() ? recalledPortrait(this.plugin, base) : null);
 			thumb.empty();
 			if (shown) {
 				renderPortrait(this.app, thumb, { name: base, isPlayer: pj.checked, portrait: shown } as Combatant);
@@ -361,11 +366,17 @@ export class InitiativeView extends ItemView {
 			}
 		};
 		thumb.onclick = () => {
-			const base = splitName(splitGroup(name.value).base).base;
-			editPortrait(this.app, formPortrait ?? (base ? recalledPortrait(this.plugin, base) : null), (p) => {
-				formPortrait = p ?? undefined;
-				refreshThumb();
-			});
+			const base = formBase();
+			editPortrait(
+				this.app,
+				formPortrait ?? (base && !removedHere() ? recalledPortrait(this.plugin, base) : null),
+				(p) => {
+					formPortrait = p ?? undefined;
+					removedFor = p ? null : memoryKey(base);
+					refreshThumb();
+				},
+				base,
+			);
 		};
 		const name = r1.createEl("input", { type: "text", cls: "strakes-init-name", attr: { placeholder: T("Nombre (Goblin x3)", "Name (Goblin x3)") } });
 		name.addEventListener("change", refreshThumb);
@@ -412,11 +423,15 @@ export class InitiativeView extends ItemView {
 					ac: isNaN(acN) ? null : acN,
 					isPlayer: pj.checked,
 					hidden: hid.checked,
-					// Sin retrato elegido: el tracker usa el último recordado para ese nombre.
-					...(formPortrait ? { portrait: { ...formPortrait } } : {}),
+					// Sin retrato elegido: el tracker usa el último recordado para ese nombre,
+					// salvo que se haya quitado en el formulario (null = sin retrato).
+					...(formPortrait ? { portrait: { ...formPortrait } } : removedHere() ? { portrait: null } : {}),
 				});
 				added.push(created);
 			}
+			// Retrato quitado en el formulario: se olvida también el recordado para ese nombre
+			// (como al quitarlo desde una fila).
+			if (removedHere()) delete this.plugin.settings.portraitMemory[memoryKey(base)];
 			// Todo el grupo («Goblin x3») se deshace o rehace de una vez.
 			this.tracker.recordAdded(added);
 			if (rolls.length) new Notice(rolls.join("\n"), 6000);
@@ -427,6 +442,7 @@ export class InitiativeView extends ItemView {
 			// PJ/Aliado se desmarca solo tras cada alta (Oculto no, para evitar sorpresas).
 			pj.checked = false;
 			formPortrait = undefined;
+			removedFor = null;
 			refreshThumb();
 			name.focus();
 		};

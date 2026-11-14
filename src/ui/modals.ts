@@ -182,9 +182,27 @@ export function isImageFile(f: TFile): boolean {
 
 /** Selector difuso de imágenes de la bóveda. */
 export class ImagePickerModal extends FuzzySuggestModal<TFile> {
-	constructor(app: App, private onPick: (f: TFile) => void, placeholder = T("Elige una imagen…", "Choose an image…")) {
+	/**
+	 * @param initialQuery Búsqueda con la que se abre (p. ej. el nombre del personaje en los
+	 * retratos). Queda seleccionada: escribir la sustituye.
+	 */
+	constructor(
+		app: App,
+		private onPick: (f: TFile) => void,
+		placeholder = T("Elige una imagen…", "Choose an image…"),
+		private initialQuery = "",
+	) {
 		super(app);
 		this.setPlaceholder(placeholder);
+	}
+	onOpen(): void {
+		void super.onOpen();
+		const q = this.initialQuery.trim();
+		if (!q) return;
+		this.inputEl.value = q;
+		// Las sugerencias se recalculan con el evento «input», como al escribir.
+		this.inputEl.dispatchEvent(new Event("input"));
+		this.inputEl.select();
 	}
 	getItems(): TFile[] {
 		return this.app.vault.getFiles().filter(isImageFile);

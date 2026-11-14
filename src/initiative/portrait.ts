@@ -78,15 +78,19 @@ export function fitCrop(path: string, width: number, height: number): Portrait {
  * Flujo completo: si ya hay retrato, abre el editor; si no, elige una imagen de la
  * bóveda y después el editor. `onDone(null)` = retrato quitado; no se llama si se cancela.
  */
-export function editPortrait(app: App, current: Portrait | null | undefined, onDone: (p: Portrait | null) => void): void {
+/**
+ * @param name Nombre del personaje: el buscador de imágenes se abre con él escrito (sin el
+ * número: «Goblin 3» → «Goblin»).
+ */
+export function editPortrait(app: App, current: Portrait | null | undefined, onDone: (p: Portrait | null) => void, name = ""): void {
 	if (current && app.vault.getAbstractFileByPath(current.path) instanceof TFile) {
-		new PortraitModal(app, current, onDone).open();
+		new PortraitModal(app, current, onDone, name).open();
 		return;
 	}
-	pickPortraitImage(app, (p) => new PortraitModal(app, p, onDone).open());
+	pickPortraitImage(app, (p) => new PortraitModal(app, p, onDone, name).open(), name);
 }
 
-function pickPortraitImage(app: App, onPicked: (p: Portrait) => void): void {
+function pickPortraitImage(app: App, onPicked: (p: Portrait) => void, name = ""): void {
 	new ImagePickerModal(
 		app,
 		(file) => {
@@ -95,6 +99,7 @@ function pickPortraitImage(app: App, onPicked: (p: Portrait) => void): void {
 				.catch(() => new Notice(T("No se pudo cargar la imagen", "Couldn't load the image")));
 		},
 		T("Elige la imagen del retrato…", "Choose the portrait image…"),
+		splitName(name).base,
 	).open();
 }
 
@@ -123,6 +128,8 @@ export class PortraitModal extends Modal {
 		app: App,
 		portrait: Portrait,
 		private onDone: (p: Portrait | null) => void,
+		/** Nombre del personaje, para el buscador de «Cambiar imagen…». */
+		private name = "",
 	) {
 		super(app);
 		this.p = { ...portrait };
@@ -186,7 +193,7 @@ export class PortraitModal extends Modal {
 		});
 
 		new Setting(el)
-			.addButton((b) => b.setButtonText(T("Cambiar imagen…", "Change image…")).onClick(() => pickPortraitImage(this.app, (np) => this.setImage(np))))
+			.addButton((b) => b.setButtonText(T("Cambiar imagen…", "Change image…")).onClick(() => pickPortraitImage(this.app, (np) => this.setImage(np), this.name)))
 			.addButton((b) => b.setButtonText(T("Encajar", "Fit")).setTooltip(T("Imagen completa dentro del marco", "Whole image inside the frame")).onClick(() => this.preset(fitCrop)))
 			.addButton((b) => b.setButtonText(T("Rellenar", "Fill")).setTooltip(T("La imagen cubre todo el marco", "The image covers the whole frame")).onClick(() => this.preset(coverCrop)));
 		new Setting(el)

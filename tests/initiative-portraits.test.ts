@@ -21,3 +21,14 @@ const o = tr.add({ name: "Orco", initiative: 8 });
 t("nombre sin memoria: sin retrato", o.portrait, null);
 tr.setPortrait(g2.id, null);
 t("quitar retrato lo olvida", plugin.settings.portraitMemory["goblin"], undefined);
+
+// Alta con «sin retrato» (quitado en el formulario): no recupera el recordado para ese nombre.
+{
+	const pl = fakePlugin();
+	const trk = new InitiativeTracker(pl);
+	trk.add({ name: "Lobo 1", initiative: 10, portrait: { path: "lobo.png", x: 0, y: 0, scale: 1 } });
+	const recalled = trk.add({ name: "Lobo 2", initiative: 9 });
+	t("con retrato recordado, un alta normal lo usa", recalled.portrait?.path, "lobo.png");
+	const without = trk.add({ name: "Lobo 3", initiative: 8, portrait: null });
+	t("un alta con portrait: null queda sin retrato", without.portrait, null);
+}

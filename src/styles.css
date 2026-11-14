@@ -133,7 +133,8 @@ body.strakes-player-window .view-header {
 	display: grid;
 	grid-auto-flow: column;
 	grid-auto-columns: max-content;
-	column-gap: 1.2em;
+	/* «gap» y no «column-gap»: el linter de la tienda toma column-gap por multicolumna (CSS columns). */
+	gap: 0 1.2em;
 }
 
 /* Pantalla vacía: la misma lista, ocupando casi toda la pantalla. */
