@@ -27,7 +27,18 @@ import { askIconConflict, ImagePickerModal, isImageFile, loadImageSize } from ".
 
 export default class StrakesTTRPG extends Plugin {
 	settings!: StrakesSettings;
-	/** Eventos internos: "player-content", "combat", "settings", "icons". */
+	/**
+	 * Eventos internos:
+	 *  - "player-content": cambió lo que muestra la pantalla de jugadores (playerContent).
+	 *  - "player-map-view" (animate): cambió la región del mapa que ven los jugadores.
+	 *  - "player-resize": cambió el tamaño de la pantalla de jugadores.
+	 *  - "player-labels" (path): cambiaron las etiquetas de los jugadores de un mapa.
+	 *  - "map-data" (path, data): un mapa cambió en el editor (antes de guardarse).
+	 *  - "map-laser" / "map-pen" (path): cambió el láser o el lápiz de un mapa.
+	 *  - "combat": cambió el combate o las condiciones.
+	 *  - "settings": cambió algún ajuste.
+	 *  - "icons": hay que redibujar los iconos SVG.
+	 */
 	events = new Events();
 	playerContent: PlayerContent = null;
 	tracker!: InitiativeTracker;
@@ -315,6 +326,20 @@ export default class StrakesTTRPG extends Plugin {
 		return st;
 	}
 
+	/** Al renombrar o mover un mapa, su estado en memoria (etiquetas de jugadores, láser, lápiz) pasa a la ruta nueva. */
+	private moveMapState(oldPath: string, newPath: string): void {
+		const move = <T>(map: Map<string, T>): boolean => {
+			const value = map.get(oldPath);
+			if (value === undefined) return false;
+			map.delete(oldPath);
+			map.set(newPath, value);
+			return true;
+		};
+		if (move(this.playerLabelState)) this.events.trigger("player-labels", newPath);
+		if (move(this.laserStates)) this.events.trigger("map-laser", newPath);
+		if (move(this.penStates)) this.events.trigger("map-pen", newPath);
+	}
+
 	/** Proporción (ancho / alto) de la pantalla de jugadores, o null si no está abierta. */
 	playerAspect(): number | null {
 		const view = this.app.workspace.getLeavesOfType(VIEW_TYPE_PLAYER)[0]?.view;
@@ -389,6 +414,9 @@ export default class StrakesTTRPG extends Plugin {
 			// Se redibuja para que el título de la nota mostrada lleve el nombre nuevo.
 			this.events.trigger("player-content");
 		}
+		// Etiquetas de los jugadores, láser y lápiz de un mapa: van por la ruta del .smap, así que
+		// pasan a la nueva (si no, al renombrar o mover un mapa abierto dejarían de verse).
+		this.moveMapState(oldPath, file.path);
 
 		// Retratos de los combatientes y retratos recordados por nombre.
 		let portraitsChanged = false;
