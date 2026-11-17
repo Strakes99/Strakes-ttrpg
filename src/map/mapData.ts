@@ -113,7 +113,6 @@ export interface MapData {
 	unit: string;
 	/** Unidades por píxel. null = mapa sin escala (solo distancias manuales). */
 	scale: number | null;
-	showDistances: boolean;
 	/** Interruptores por tipo, independientes de las capas (vista del DM). */
 	showPins: boolean;
 	showRoutes: boolean;
@@ -140,7 +139,6 @@ export function emptyMap(image: string, width: number, height: number, unit: str
 		height,
 		unit,
 		scale: null,
-		showDistances: true,
 		showPins: true,
 		showRoutes: true,
 		playerPins: false,
@@ -165,7 +163,6 @@ export function normalizeMap(raw: unknown, defaultUnit = "km"): MapData {
 		height: Number(r.height) || 0,
 		unit: typeof r.unit === "string" ? r.unit : defaultUnit,
 		scale: typeof r.scale === "number" && r.scale > 0 ? r.scale : null,
-		showDistances: r.showDistances !== false,
 		showPins: r.showPins !== false,
 		showRoutes: r.showRoutes !== false,
 		playerPins: r.playerPins === true,

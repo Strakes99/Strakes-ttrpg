@@ -1170,6 +1170,74 @@ input.strakes-portrait-zoom-num {
 .strakes-player-rect { stroke: var(--interactive-accent); }
 .strakes-player-rect-halo { stroke: rgba(0, 0, 0, 0.6); }
 .strakes-setting-number { width: 5em; }
+/* Láser y lápiz: su panel va por encima de rutas y marcadores y no recibe el ratón. */
+.leaflet-pane.strakes-drawing-pane {
+	z-index: 640;
+	pointer-events: none;
+}
+.strakes-laser-dot { filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9)); }
+/* Herramientas de dibujo: cursor de mira, también sobre marcadores y rutas. */
+.strakes-map-canvas.leaflet-container[data-mode="laser"],
+.strakes-map-canvas.leaflet-container[data-mode="pen"],
+.strakes-map-canvas.leaflet-container[data-mode="eraser"],
+.strakes-map-canvas.leaflet-container[data-mode="laser"] .leaflet-interactive,
+.strakes-map-canvas.leaflet-container[data-mode="pen"] .leaflet-interactive,
+.strakes-map-canvas.leaflet-container[data-mode="eraser"] .leaflet-interactive {
+	cursor: crosshair;
+}
+/* Selector de color del lápiz en la barra (solo con el lápiz activo). */
+.strakes-pen-color {
+	width: 28px;
+	height: 24px;
+	padding: 0;
+	border: none;
+	background: none;
+	cursor: pointer;
+}
+/* Sección de etiquetas de la barra: 🏷 | ojo (tus etiquetas) y pantalla (las de los jugadores).
+   Clic derecho en la sección: cuadro con una fila por tipo, alineado a la derecha bajo los iconos. */
+.strakes-label-tools {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	/* Barras a los dos lados: la sección se lee como un solo grupo, no como tres botones. */
+	margin: 0 4px;
+	padding: 0 4px;
+	border-left: 1px solid var(--background-modifier-border);
+	border-right: 1px solid var(--background-modifier-border);
+}
+.strakes-label-icon {
+	display: flex;
+	padding: 0 4px;
+	color: var(--text-muted);
+}
+.strakes-label-menu {
+	position: absolute;
+	top: calc(100% + 4px);
+	right: 0;
+	/* Por encima de las capas de Leaflet (z-index hasta 700). */
+	z-index: 1001;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 4px;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-s);
+}
+.strakes-label-row {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+}
+.strakes-label-name {
+	flex: 1;
+	padding: 0 10px 0 4px;
+	white-space: nowrap;
+	font-size: var(--font-ui-small);
+}
 /* Interruptores de visibilidad (ojo = DM, pantalla = jugadores): apagados, tachados y en gris. */
 .strakes-vis-toggle.is-off { color: var(--text-faint); }
 .strakes-panel-row.is-hidden .strakes-panel-name { color: var(--text-faint); }

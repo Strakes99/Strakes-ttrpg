@@ -215,6 +215,27 @@ export class StrakesSettingTab extends PluginSettingTab {
 						render: (setting) => this.sliderWithNumber(setting, "notPlayerTransparency", 0, 95, 1),
 					},
 					{
+						name: T("Color del láser", "Laser color"),
+						desc: T(
+							"Color del punto y de los trazos del láser. El lápiz empieza con este color; mientras está activo se cambia en la barra del mapa.",
+							"Color of the laser dot and strokes. The pen starts with this color; while it's active you can change it in the map toolbar.",
+						),
+						control: { type: "color", key: "laserColor" },
+					},
+					{
+						name: T("Tiempo del láser", "Laser fade time"),
+						desc: T("Segundos que tardan en desvanecerse los trazos del láser al soltar el clic.", "Seconds it takes for laser strokes to fade after you release the click."),
+						render: (setting) => this.sliderWithNumber(setting, "laserFadeSeconds", 0.5, 10, 0.5),
+					},
+					{
+						name: T("Grosor del láser y el lápiz", "Laser and pen thickness"),
+						desc: T(
+							"Grosor de los trazos que se dibujan y del punto del láser, en píxeles. Los trazos del lápiz que ya existen conservan el suyo.",
+							"Thickness of the strokes you draw and of the laser dot, in pixels. Existing pen strokes keep theirs.",
+						),
+						render: (setting) => this.sliderWithNumber(setting, "drawWidth", 1, 20, 1),
+					},
+					{
 						name: T("Iconos SVG para marcadores", "SVG icons for markers"),
 						desc: this.iconsDescription(),
 						render: (setting) => {
@@ -246,7 +267,7 @@ export class StrakesSettingTab extends PluginSettingTab {
 	 * Mientras se arrastra se aplica en directo; se guarda al soltar. Obsidian reutiliza la fila al
 	 * llamar a `update()`: se vacían los controles antes de volver a crearlos.
 	 */
-	private sliderWithNumber(setting: Setting, key: "mapZoomStep" | "notPlayerTransparency", min: number, max: number, step: number): void {
+	private sliderWithNumber(setting: Setting, key: "mapZoomStep" | "notPlayerTransparency" | "laserFadeSeconds" | "drawWidth", min: number, max: number, step: number): void {
 		const el = setting.controlEl;
 		el.empty();
 		const value = this.plugin.settings[key];

@@ -7,7 +7,7 @@ import { loadImageSize } from "../ui/modals";
 import { PinHoverParent } from "./hover";
 import { linktextOf, resolveWikilink } from "./links";
 import { isItemVisible, ItemType, MapData, MapPin, newMapUnit, nodeMap, normalizeMap, ROUTE_COLORS, routePath } from "./mapData";
-import { mapBounds, nodeMarker, PIN_TOOLTIP_OPTIONS, pinIcon, pinTooltipText, segmentLabel, toLatLng } from "./render";
+import { mapBounds, nodeMarker, PIN_TOOLTIP_OPTIONS, pinIcon, pinTooltipText, toLatLng } from "./render";
 
 /** Lo que Obsidian pasa a quien crea un embed (API interna `app.embedRegistry`). */
 export interface EmbedContext {
@@ -370,11 +370,6 @@ export class MapEmbed extends Component {
 				{ color: route.color || ROUTE_COLORS[0], weight: 4, opacity: 0.9, interactive: false },
 			);
 			content.addLayer(line);
-			if (data.showDistances)
-				for (let i = 0; i < route.nodeIds.length - 1; i++) {
-					const label = segmentLabel(route, i, nodes, false);
-					if (label) content.addLayer(label);
-				}
 			for (const id of route.nodeIds) {
 				const n = nodes.get(id);
 				if (n) content.addLayer(nodeMarker(n, route.color, { draggable: false, interactive: false }));

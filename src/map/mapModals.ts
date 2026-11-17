@@ -583,7 +583,6 @@ export interface MapProps {
 	image: string;
 	unit: string;
 	scale: number | null;
-	showDistances: boolean;
 }
 
 export class MapPropsModal extends Modal {
@@ -596,7 +595,7 @@ export class MapPropsModal extends Modal {
 		private onCalibrate: () => void,
 	) {
 		super(app);
-		this.props = { image: data.image, unit: data.unit, scale: data.scale, showDistances: data.showDistances };
+		this.props = { image: data.image, unit: data.unit, scale: data.scale };
 	}
 
 	onOpen(): void {
@@ -639,9 +638,6 @@ export class MapPropsModal extends Modal {
 					this.onCalibrate();
 				}),
 			);
-		new Setting(el)
-			.setName(T("Mostrar etiquetas de los tramos", "Show segment labels"))
-			.addToggle((t) => t.setValue(p.showDistances).onChange((v) => (p.showDistances = v)));
 		new Setting(el)
 			.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => this.close()))
 			.addButton((b) =>

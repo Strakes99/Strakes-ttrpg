@@ -1,8 +1,9 @@
 import * as L from "leaflet";
 import { Component, TFile } from "obsidian";
 import type StrakesTTRPG from "../main";
+import { DrawingLayer } from "../map/drawing";
 import { isPlayerVisible, MapData, newMapUnit, nodeMap, normalizeMap, ROUTE_COLORS, routePath } from "../map/mapData";
-import { mapBounds, nodeMarker, pinIcon, toLatLng } from "../map/render";
+import { mapBounds, nodeMarker, PIN_TOOLTIP_OPTIONS, pinIcon, routeNameLabel, toLatLng } from "../map/render";
 import { MapRegion } from "../types";
 import { resizeObserverFor } from "../ui/dom";
 
@@ -55,6 +56,25 @@ export class PlayerMap extends Component {
 		});
 		this.map = map;
 		this.content = L.layerGroup().addTo(map);
+		// Láser y lápiz del DM, en el mismo punto del mapa que en su editor.
+		const drawing = new DrawingLayer(
+			map,
+			() => this.plugin.settings.laserFadeSeconds * 1000,
+			() => this.plugin.settings.drawWidth,
+		);
+		this.register(() => drawing.remove());
+		drawing.setPen(this.plugin.penFor(this.file.path));
+		drawing.setLaser(this.plugin.laserFor(this.file.path));
+		this.registerEvent(
+			this.plugin.events.on("map-pen", (path) => {
+				if (path === this.file.path) drawing.setPen(this.plugin.penFor(this.file.path));
+			}),
+		);
+		this.registerEvent(
+			this.plugin.events.on("map-laser", (path) => {
+				if (path === this.file.path) drawing.setLaser(this.plugin.laserFor(this.file.path));
+			}),
+		);
 		this.register(() => {
 			map.remove();
 			this.map = null;
@@ -78,6 +98,12 @@ export class PlayerMap extends Component {
 		this.registerEvent(
 			this.plugin.app.vault.on("modify", (f) => {
 				if (f === this.file) void this.readMap();
+			}),
+		);
+		// El DM cambió las etiquetas de los jugadores de este mapa.
+		this.registerEvent(
+			this.plugin.events.on("player-labels", (path) => {
+				if (path === this.file.path) this.render();
 			}),
 		);
 		// El DM envió otra región: con animación si la pidió con «Enviar esta vista».
@@ -110,6 +136,7 @@ export class PlayerMap extends Component {
 		}
 
 		content.clearLayers();
+		const labels = this.plugin.playerLabels(this.file.path);
 		const nodes = nodeMap(data);
 		for (const route of data.routes) {
 			if (!isPlayerVisible(data, "routes", route)) continue;
@@ -122,10 +149,16 @@ export class PlayerMap extends Component {
 				const n = nodes.get(id);
 				if (n) content.addLayer(nodeMarker(n, route.color, { draggable: false, interactive: false }));
 			}
+			if (labels.routes) {
+				const label = routeNameLabel(route, nodes);
+				if (label) content.addLayer(label);
+			}
 		}
 		for (const pin of data.pins) {
 			if (!isPlayerVisible(data, "pins", pin)) continue;
-			content.addLayer(L.marker(toLatLng(pin), { icon: pinIcon(pin), interactive: false, keyboard: false }));
+			const marker = L.marker(toLatLng(pin), { icon: pinIcon(pin), interactive: false, keyboard: false });
+			if (labels.pins && pin.name.trim()) marker.bindTooltip(pin.name, { ...PIN_TOOLTIP_OPTIONS, permanent: true });
+			content.addLayer(marker);
 		}
 
 		if (!this.fitted) this.applyRegion(false);

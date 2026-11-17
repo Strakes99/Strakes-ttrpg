@@ -2,9 +2,10 @@ import * as L from "leaflet";
 import { Keymap, Menu, Notice, Scope, setIcon, setTooltip, TextFileView, TFile, WorkspaceLeaf } from "obsidian";
 import { numberLocale, T } from "../i18n";
 import type StrakesTTRPG from "../main";
-import { MapRegion, uid, VIEW_TYPE_MAP } from "../types";
+import { LabelState, MapRegion, uid, VIEW_TYPE_MAP } from "../types";
 import { confirmDialog, loadImageSize, promptText } from "../ui/modals";
-import { curvePoint, Pt } from "./geometry";
+import { DrawingLayer, laserStrokeExpired, Stroke } from "./drawing";
+import { curvePoint, distToSegment, Pt } from "./geometry";
 import { nodeMarker, PIN_TOOLTIP_OPTIONS, pinIcon, pinTooltipText, segmentLabel } from "./render";
 import { PinHoverParent } from "./hover";
 import { applyAutoNames } from "./autoName";
@@ -50,7 +51,7 @@ import {
 import { editSegmentDialog, MapPropsModal, PinModal, RouteModal } from "./mapModals";
 import { regionBounds } from "../player/PlayerMap";
 
-type Mode = "navigate" | "pin" | "route" | "measure" | "calibrate" | "pick-target";
+type Mode = "navigate" | "pin" | "route" | "measure" | "laser" | "pen" | "eraser" | "calibrate" | "pick-target";
 
 function modeHint(mode: Mode): string {
 	switch (mode) {
@@ -67,6 +68,21 @@ function modeHint(mode: Mode): string {
 			return T(
 				"Clic en dos nodos para calcular la distancia por las rutas visibles (o dos puntos si el mapa tiene escala).",
 				"Click two nodes to calculate the distance along the visible routes (or two points if the map has a scale).",
+			);
+		case "laser":
+			return T(
+				"Láser: mueve el cursor para señalar; mantén el clic y arrastra para dibujar (se desvanece). Clic derecho y arrastrar: mover el mapa. Esc para salir.",
+				"Laser: move the cursor to point; hold the click and drag to draw (it fades). Right-click and drag: move the map. Esc to exit.",
+			);
+		case "pen":
+			return T(
+				"Lápiz: mantén el clic y arrastra para dibujar. Los dibujos no se guardan: se borran al cerrar Obsidian. Clic derecho y arrastrar: mover el mapa. Esc para salir.",
+				"Pen: hold the click and drag to draw. Drawings aren't saved: they're cleared when Obsidian closes. Right-click and drag: move the map. Esc to exit.",
+			);
+		case "eraser":
+			return T(
+				"Borrador: haz clic o arrastra sobre un trazo para borrarlo. Clic derecho en el botón del borrador: borrar todos. Clic derecho y arrastrar: mover el mapa. Esc para salir.",
+				"Eraser: click or drag over a stroke to erase it. Right-click the eraser button: clear all. Right-click and drag: move the map. Esc to exit.",
 			);
 		case "calibrate":
 			return T("Clic en dos puntos cuya distancia real conozcas.", "Click two points whose real distance you know.");
@@ -93,7 +109,8 @@ export class MapView extends TextFileView {
 
 	private mode: Mode = "navigate";
 	private editing = false;
-	private showLabels = false;
+	/** Tus etiquetas (sección de etiquetas de la barra, ojo). No se guardan: al abrir el mapa, apagadas. */
+	private labels: LabelState = { pins: false, routes: false };
 	/** Capa activa: si es una capa del usuario, los pines y rutas nuevos van ahí. */
 	private currentLayerId: string | null = null;
 	private selectedRouteId: string | null = null;
@@ -119,6 +136,13 @@ export class MapView extends TextFileView {
 	/** Marco de la vista de jugadores (div fijo sobre el mapa) y rectángulo de lo que ven ahora. */
 	private frameEl: HTMLElement | null = null;
 	private playerRect: L.LayerGroup | null = null;
+	/** Capa del láser y el lápiz; trazo o borrado en curso; avisos pendientes. */
+	private drawLayer: DrawingLayer | null = null;
+	private drawing: { kind: "laser" | "pen" | "eraser"; stroke: Stroke | null; pointerId: number } | null = null;
+	private drawFrame = 0;
+	private drawDirty = { laser: false, pen: false };
+	/** true tras mover el mapa con el botón derecho: se anula el menú contextual de ese clic. */
+	private suppressContext = false;
 	/** true mientras se adapta tu vista a un cambio de tamaño: esos movimientos no se envían. */
 	private adapting = false;
 
@@ -175,6 +199,12 @@ export class MapView extends TextFileView {
 		this.registerEvent(this.plugin.events.on("player-content", () => this.renderAll()));
 		this.registerEvent(this.plugin.events.on("player-map-view", () => this.updatePlayerFrame()));
 		this.registerEvent(this.plugin.events.on("player-resize", () => this.updatePlayerFrame()));
+		// Etiquetas de los jugadores cambiadas (desde este u otro editor del mismo mapa).
+		this.registerEvent(
+			this.plugin.events.on("player-labels", (path) => {
+				if (path === this.file?.path) this.renderToolbar();
+			}),
+		);
 		this.registerEvent(
 			this.plugin.events.on("settings", () => {
 				this.applyMapSettings();
@@ -205,6 +235,9 @@ export class MapView extends TextFileView {
 
 	async onClose(): Promise<void> {
 		if (this.liveFrame) window.cancelAnimationFrame(this.liveFrame);
+		if (this.drawFrame) this.mapEl.win.cancelAnimationFrame(this.drawFrame);
+		if (this.mode === "laser") this.setLaserPointer(null);
+		this.drawLayer?.remove();
 		this.map?.remove();
 		this.map = null;
 	}
@@ -287,6 +320,7 @@ export class MapView extends TextFileView {
 		this.hideBroken();
 		this.mapData = normalizeMap(raw, newMapUnit(this.plugin.settings.displayUnit));
 		if (clear) {
+			this.labels = { pins: false, routes: false };
 			this.needsFit = true;
 			this.mode = "navigate";
 			this.activeRouteId = null;
@@ -453,6 +487,7 @@ export class MapView extends TextFileView {
 		this.draftLayer = L.layerGroup().addTo(map);
 		this.map = map;
 		this.applyMapSettings();
+		this.setupDrawing(map);
 		// El contenedor puede tener tamaño 0 al abrir la pestaña.
 		window.setTimeout(() => map.invalidateSize(), 50);
 		return map;
@@ -555,6 +590,10 @@ export class MapView extends TextFileView {
 		this.renderStatus();
 		this.mapEl.toggleClass("is-editing", this.editing);
 		this.mapEl.dataset.mode = this.mode;
+		if (this.file) {
+			this.drawLayer?.setPen(this.plugin.penFor(this.file.path));
+			this.drawLayer?.setLaser(this.plugin.laserFor(this.file.path));
+		}
 		this.updatePlayerFrame();
 	}
 
@@ -567,7 +606,7 @@ export class MapView extends TextFileView {
 			keyboard: false,
 			riseOnHover: true,
 		});
-		marker.bindTooltip(pinTooltipText(pin), { ...PIN_TOOLTIP_OPTIONS, permanent: this.showLabels });
+		marker.bindTooltip(pinTooltipText(pin), { ...PIN_TOOLTIP_OPTIONS, permanent: this.labels.pins });
 		// Con el mapa en la pantalla de jugadores, lo que ellos no ven sale semitransparente.
 		if (this.isOnPlayerScreen() && !isPlayerVisible(this.mapData!, "pins", pin)) marker.on("add", () => marker.getElement()?.addClass("strakes-not-player"));
 		marker.on("click", (e: L.LeafletMouseEvent) => this.onPinClick(pin, e.originalEvent));
@@ -633,8 +672,8 @@ export class MapView extends TextFileView {
 		g.routes.addLayer(line);
 		this.routeLines.set(route.id, line);
 
-		// Etiquetas de distancia en el centro de cada tramo.
-		if (data.showDistances) {
+		// Etiquetas de tramo («número · ruta») en el centro de cada tramo.
+		if (this.labels.routes) {
 			for (let i = 0; i < route.nodeIds.length - 1; i++) {
 				// Etiqueta «número · ruta» (el número es el del diálogo de la ruta). Si la ruta muestra
 				// sus puntos de curva, la etiqueta sube un poco para no tapar el punto del centro.
@@ -797,6 +836,42 @@ export class MapView extends TextFileView {
 				};
 			}
 		}
+		// Láser, lápiz y borrador (los dibujos no se guardan).
+		tool(
+			"laser",
+			"crosshair",
+			T("Láser: señala con el cursor y arrastra para dibujar trazos que se desvanecen", "Laser: point with the cursor and drag to draw strokes that fade"),
+		);
+		tool(
+			"pen",
+			"pen",
+			T("Lápiz: los dibujos no se guardan, se borran al cerrar Obsidian", "Pen: drawings aren't saved, they're cleared when Obsidian closes"),
+		);
+		if (this.mode === "pen") {
+			const color = tb.createEl("input", { type: "color", cls: "strakes-pen-color" });
+			color.value = this.penColor();
+			setTooltip(color, T("Color del lápiz", "Pen color"));
+			color.addEventListener("input", () => (this.plugin.penColor = color.value));
+		}
+		const eraser = this.toolButton(
+			tb,
+			"eraser",
+			T("Borrador: borra trazos del lápiz · clic derecho: borrar todos los dibujos", "Eraser: erases pen strokes · right-click: clear all drawings"),
+			() => this.setMode(this.mode === "eraser" ? "navigate" : "eraser"),
+		);
+		eraser.toggleClass("is-active", this.mode === "eraser");
+		eraser.oncontextmenu = (evt) => {
+			evt.preventDefault();
+			const m = new Menu();
+			m.addItem((i) =>
+				i
+					.setTitle(T("Borrar todos los dibujos", "Clear all drawings"))
+					.setIcon("trash-2")
+					.setWarning(true)
+					.onClick(() => this.clearDrawings()),
+			);
+			m.showAtMouseEvent(evt);
+		};
 		if (this.mode === "route") {
 			const done = this.toolButton(tb, "check", T("Terminar ruta (Enter)", "Finish route (Enter)"), () => this.finishRoute());
 			done.addClass("mod-cta");
@@ -809,16 +884,7 @@ export class MapView extends TextFileView {
 			this.editing = !this.editing;
 			this.renderAll();
 		}).toggleClass("is-active", this.editing);
-		this.toolButton(tb, "tag", T("Mostrar nombres de los marcadores", "Show marker names"), () => {
-			this.showLabels = !this.showLabels;
-			this.renderAll();
-		}).toggleClass("is-active", this.showLabels);
-		this.toolButton(tb, "milestone", T("Mostrar etiquetas de los tramos (número y ruta)", "Show segment labels (number and route)"), () => {
-			if (!this.mapData) return;
-			this.mapData.showDistances = !this.mapData.showDistances;
-			this.persist();
-			this.renderAll();
-		}).toggleClass("is-active", !!this.mapData?.showDistances);
+		this.renderLabelTools(tb);
 		this.toolButton(tb, "maximize", T("Encuadrar todo el mapa", "Fit the whole map"), () => this.exactZoom(() => this.map?.flyToBounds(this.bounds(), { duration: 0.5 })));
 		tb.createDiv("strakes-toolbar-sep");
 		// Pantalla de jugadores: enviar lo que hay dentro del marco, o seguir tu vista en tiempo real.
@@ -845,6 +911,236 @@ export class MapView extends TextFileView {
 			this.renderPanel();
 			window.setTimeout(() => this.afterResize(), 50);
 		}).toggleClass("is-active", this.panelOpen);
+	}
+
+	// ---------- Láser, lápiz y borrador ----------
+
+	/** ¿Está activa una herramienta de dibujo? (clic izquierdo: dibujar o borrar; derecho y arrastrar: mover el mapa) */
+	private isDrawMode(): boolean {
+		return this.mode === "laser" || this.mode === "pen" || this.mode === "eraser";
+	}
+
+	/** Color del lápiz en esta sesión: el elegido en la barra o, si no, el del láser. */
+	private penColor(): string {
+		return this.plugin.penColor ?? this.plugin.settings.laserColor;
+	}
+
+	/**
+	 * Avisa de cambios del láser o del lápiz (como mucho una vez por fotograma mientras se mueve
+	 * el ratón). Lo escuchan este editor y la pantalla de jugadores.
+	 */
+	private scheduleDrawEmit(kind: "laser" | "pen"): void {
+		this.drawDirty[kind] = true;
+		if (this.drawFrame) return;
+		this.drawFrame = this.mapEl.win.requestAnimationFrame(() => {
+			this.drawFrame = 0;
+			const path = this.file?.path;
+			const dirty = this.drawDirty;
+			this.drawDirty = { laser: false, pen: false };
+			if (!path) return;
+			if (dirty.laser) this.plugin.events.trigger("map-laser", path);
+			if (dirty.pen) this.plugin.events.trigger("map-pen", path);
+		});
+	}
+
+	private eventPt(e: MouseEvent): Pt | null {
+		return this.map ? this.pt(this.map.mouseEventToLatLng(e)) : null;
+	}
+
+	/** Instala la capa y los manejadores de las herramientas de dibujo (una vez, al crear el mapa). */
+	private setupDrawing(map: L.Map): void {
+		const el = this.mapEl;
+		this.drawLayer = new DrawingLayer(
+			map,
+			() => this.plugin.settings.laserFadeSeconds * 1000,
+			() => this.plugin.settings.drawWidth,
+		);
+		const onControl = (e: Event) => {
+			const t = e.target as Node | null;
+			return !!t && t.instanceOf(HTMLElement) && !!t.closest(".leaflet-control");
+		};
+		// Con una herramienta de dibujo, el clic izquierdo no abre notas ni enseña vistas previas: se
+		// cortan clic, doble clic y paso del ratón antes de que lleguen a marcadores, rutas y nodos.
+		// El clic derecho (menús) sigue funcionando.
+		for (const type of ["click", "dblclick", "mouseover"] as const)
+			this.registerDomEvent(
+				el,
+				type,
+				(e) => {
+					if (this.isDrawMode() && !onControl(e)) e.stopPropagation();
+				},
+				{ capture: true },
+			);
+		this.registerDomEvent(
+			el,
+			"contextmenu",
+			(e) => {
+				if (!this.suppressContext) return;
+				this.suppressContext = false;
+				e.preventDefault();
+				e.stopPropagation();
+			},
+			{ capture: true },
+		);
+		this.registerDomEvent(
+			el,
+			"pointerdown",
+			(e) => {
+				if (!onControl(e)) this.onDrawDown(e);
+			},
+			{ capture: true },
+		);
+		this.registerDomEvent(el, "pointermove", (e) => this.onDrawMove(e));
+		this.registerDomEvent(el, "pointerup", (e) => this.onDrawUp(e));
+		this.registerDomEvent(el, "pointercancel", (e) => this.onDrawUp(e));
+		this.registerDomEvent(el, "pointerleave", () => {
+			if (this.mode === "laser") this.setLaserPointer(null);
+		});
+		this.registerEvent(
+			this.plugin.events.on("map-laser", (path) => {
+				if (this.file && path === this.file.path) this.drawLayer?.setLaser(this.plugin.laserFor(this.file.path));
+			}),
+		);
+		this.registerEvent(
+			this.plugin.events.on("map-pen", (path) => {
+				if (this.file && path === this.file.path) this.drawLayer?.setPen(this.plugin.penFor(this.file.path));
+			}),
+		);
+	}
+
+	/** Punto del láser (null = el cursor salió del mapa o se dejó el láser). */
+	private setLaserPointer(p: Pt | null): void {
+		const path = this.file?.path;
+		if (!path) return;
+		const st = this.plugin.laserFor(path);
+		if (!p && !st.pointer) return;
+		st.pointer = p;
+		st.color = this.plugin.settings.laserColor;
+		this.scheduleDrawEmit("laser");
+	}
+
+	private onDrawDown(e: PointerEvent): void {
+		if (!this.isDrawMode() || !this.map || !this.file) return;
+		if (e.button === 2) {
+			this.startRightPan(e);
+			return;
+		}
+		if (e.button !== 0) return;
+		// Sin esto, el clic llegaría a los marcadores (arrastre) y al arrastre del mapa de Leaflet.
+		e.preventDefault();
+		e.stopPropagation();
+		const p = this.eventPt(e);
+		if (!p) return;
+		this.mapEl.setPointerCapture(e.pointerId);
+		const path = this.file.path;
+		if (this.mode === "eraser") {
+			this.drawing = { kind: "eraser", stroke: null, pointerId: e.pointerId };
+			this.eraseAt(e);
+			return;
+		}
+		const stroke: Stroke = {
+			id: uid(),
+			color: this.mode === "pen" ? this.penColor() : this.plugin.settings.laserColor,
+			width: this.plugin.settings.drawWidth,
+			points: [p],
+		};
+		if (this.mode === "laser") {
+			const st = this.plugin.laserFor(path);
+			const fade = this.plugin.settings.laserFadeSeconds * 1000;
+			st.strokes = st.strokes.filter((s) => !laserStrokeExpired(s, fade));
+			st.strokes.push(stroke);
+			this.drawing = { kind: "laser", stroke, pointerId: e.pointerId };
+			this.scheduleDrawEmit("laser");
+		} else {
+			this.plugin.penFor(path).push(stroke);
+			this.drawing = { kind: "pen", stroke, pointerId: e.pointerId };
+			this.scheduleDrawEmit("pen");
+		}
+	}
+
+	private onDrawMove(e: PointerEvent): void {
+		if (!this.isDrawMode()) return;
+		const p = this.eventPt(e);
+		if (!p) return;
+		if (this.mode === "laser") this.setLaserPointer(p);
+		const d = this.drawing;
+		if (!d || d.pointerId !== e.pointerId) return;
+		if (d.kind === "eraser") {
+			this.eraseAt(e);
+			return;
+		}
+		d.stroke?.points.push(p);
+		this.scheduleDrawEmit(d.kind);
+	}
+
+	private onDrawUp(e: PointerEvent): void {
+		const d = this.drawing;
+		if (!d || d.pointerId !== e.pointerId) return;
+		this.drawing = null;
+		if (this.mapEl.hasPointerCapture(e.pointerId)) this.mapEl.releasePointerCapture(e.pointerId);
+		if (d.kind === "laser" && d.stroke) {
+			// Desde aquí, el trazo del láser se desvanece.
+			d.stroke.releasedAt = Date.now();
+			this.scheduleDrawEmit("laser");
+		} else if (d.kind === "pen") this.scheduleDrawEmit("pen");
+	}
+
+	/** Borrador: quita los trazos del lápiz que pasan a menos de unos píxeles del cursor (trazos enteros). */
+	private eraseAt(e: MouseEvent): void {
+		const map = this.map;
+		const path = this.file?.path;
+		if (!map || !path) return;
+		const c = map.mouseEventToContainerPoint(e);
+		const strokes = this.plugin.penFor(path);
+		const hit = (s: Stroke) => {
+			const pts = s.points.map((p) => map.latLngToContainerPoint(this.ll(p)));
+			if (pts.length === 1) return pts[0].distanceTo(c) <= MapView.ERASER_PX;
+			for (let i = 0; i < pts.length - 1; i++) if (distToSegment(c, pts[i], pts[i + 1]) <= MapView.ERASER_PX) return true;
+			return false;
+		};
+		const keep = strokes.filter((s) => !hit(s));
+		if (keep.length === strokes.length) return;
+		// Mismo array: es el que guarda el plugin.
+		strokes.splice(0, strokes.length, ...keep);
+		this.scheduleDrawEmit("pen");
+	}
+
+	private static readonly ERASER_PX = 10;
+
+	/** «Borrar todos los dibujos» (clic derecho en el borrador): el lápiz y lo que quede del láser. */
+	private clearDrawings(): void {
+		const path = this.file?.path;
+		if (!path) return;
+		this.plugin.penFor(path).length = 0;
+		this.plugin.laserFor(path).strokes = [];
+		this.scheduleDrawEmit("pen");
+		this.scheduleDrawEmit("laser");
+	}
+
+	/**
+	 * Con una herramienta de dibujo, el mapa se mueve arrastrando con el botón derecho. Si se
+	 * llegó a mover, se anula el menú contextual de ese clic; si no, sale el menú de siempre.
+	 */
+	private startRightPan(e: PointerEvent): void {
+		const map = this.map;
+		if (!map) return;
+		const win = this.mapEl.win;
+		const start = { x: e.clientX, y: e.clientY };
+		let last = start;
+		let moved = false;
+		const move = (ev: PointerEvent) => {
+			if (!moved && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 4) return;
+			moved = true;
+			map.panBy([last.x - ev.clientX, last.y - ev.clientY], { animate: false });
+			last = { x: ev.clientX, y: ev.clientY };
+		};
+		const up = () => {
+			win.removeEventListener("pointermove", move);
+			win.removeEventListener("pointerup", up);
+			if (moved) this.suppressContext = true;
+		};
+		win.addEventListener("pointermove", move);
+		win.addEventListener("pointerup", up);
 	}
 
 	// ---------- Pantalla de jugadores ----------
@@ -1036,14 +1332,26 @@ export class MapView extends TextFileView {
 	}
 
 	/**
-	 * Interruptor de visibilidad con icono, como el ojo de los combatientes: ojo = vista del DM,
-	 * pantalla = jugadores. Apagado, el icono sale tachado y en gris. `what` completa el tooltip
-	 * de los interruptores de tipo («todas las rutas»).
+	 * Botón con icono de ojo (vista del DM) o pantalla (jugadores), como el ojo de los
+	 * combatientes: apagado, el icono sale tachado y en gris.
 	 */
-	private visToggle(parent: HTMLElement, kind: "dm" | "players", on: boolean, set: (v: boolean) => void, what?: string): void {
+	private iconToggle(parent: HTMLElement, kind: "dm" | "players", on: boolean, tip: string, onClick: () => void): HTMLElement {
 		const b = parent.createEl("button", { cls: "clickable-icon strakes-vis-toggle" });
 		setIcon(b, kind === "dm" ? (on ? "eye" : "eye-off") : on ? "monitor" : "monitor-off");
 		b.toggleClass("is-off", !on);
+		setTooltip(b, tip);
+		b.onclick = (e) => {
+			e.stopPropagation();
+			onClick();
+		};
+		return b;
+	}
+
+	/**
+	 * Interruptor de visibilidad del panel: ojo = vista del DM, pantalla = jugadores. Cada clic se
+	 * guarda en el mapa. `what` completa el tooltip de los interruptores de tipo («todas las rutas»).
+	 */
+	private visToggle(parent: HTMLElement, kind: "dm" | "players", on: boolean, set: (v: boolean) => void, what?: string): void {
 		const tip =
 			kind === "dm"
 				? on
@@ -1052,13 +1360,75 @@ export class MapView extends TextFileView {
 				: on
 					? T("Visible para los jugadores · clic para ocultar", "Visible to players · click to hide")
 					: T("Oculto a los jugadores · clic para mostrar", "Hidden from players · click to show");
-		setTooltip(b, what ? `${tip} (${what})` : tip);
-		b.onclick = (e) => {
-			e.stopPropagation();
+		this.iconToggle(parent, kind, on, what ? `${tip} (${what})` : tip, () => {
 			set(!on);
 			this.persist();
 			this.renderAll();
+		});
+	}
+
+	/**
+	 * Sección de etiquetas de la barra: 🏷 | ojo (tus etiquetas) y pantalla (las de los jugadores).
+	 * Los generales encienden o apagan todos los tipos a la vez (si alguno está encendido, los apagan).
+	 * Clic derecho en la sección: cuadro con una fila por tipo; se recuerda si estaba desplegado.
+	 * Nada de esto se guarda en el mapa (decisión del desarrollador: es circunstancial).
+	 */
+	private renderLabelTools(tb: HTMLElement): void {
+		const sec = tb.createDiv("strakes-label-tools");
+		const icon = sec.createSpan("strakes-label-icon");
+		setIcon(icon, "tag");
+		setTooltip(icon, T("Etiquetas · clic derecho para elegirlas por tipo", "Labels · right-click to choose them by type"));
+		const dm = this.labels;
+		const path = this.file?.path ?? "";
+		const pl = this.plugin.playerLabels(path);
+		const any = (s: LabelState) => s.pins || s.routes;
+		const setDm = (s: LabelState) => {
+			this.labels = s;
+			this.renderAll();
 		};
+		const setPl = (s: LabelState) => {
+			if (path) this.plugin.setPlayerLabels(path, s);
+		};
+		const tip = (kind: "dm" | "players", on: boolean, what?: string) => {
+			const base =
+				kind === "dm"
+					? on
+						? T("Tus etiquetas visibles · clic para ocultarlas", "Your labels shown · click to hide them")
+						: T("Tus etiquetas ocultas · clic para mostrarlas", "Your labels hidden · click to show them")
+					: on
+						? T("Etiquetas visibles para los jugadores · clic para ocultarlas", "Labels shown to players · click to hide them")
+						: T("Etiquetas ocultas a los jugadores · clic para mostrarlas", "Labels hidden from players · click to show them");
+			return what ? `${base} (${what})` : base;
+		};
+		this.iconToggle(sec, "dm", any(dm), tip("dm", any(dm)), () => {
+			const v = !any(dm);
+			setDm({ pins: v, routes: v });
+		});
+		this.iconToggle(sec, "players", any(pl), tip("players", any(pl)), () => {
+			const v = !any(pl);
+			setPl({ pins: v, routes: v });
+		});
+		sec.oncontextmenu = (e) => {
+			e.preventDefault();
+			this.plugin.settings.labelsMenuOpen = !this.plugin.settings.labelsMenuOpen;
+			void this.plugin.saveSettings();
+			this.renderToolbar();
+		};
+		if (!this.plugin.settings.labelsMenuOpen) return;
+		const menu = sec.createDiv("strakes-label-menu");
+		menu.oncontextmenu = (e) => e.stopPropagation();
+		const row = (key: keyof LabelState, name: string, what: string) => {
+			const r = menu.createDiv("strakes-label-row");
+			r.createSpan({ cls: "strakes-label-name", text: name });
+			this.iconToggle(r, "dm", dm[key], tip("dm", dm[key], what), () => setDm({ ...dm, [key]: !dm[key] }));
+			this.iconToggle(r, "players", pl[key], tip("players", pl[key], what), () => setPl({ ...pl, [key]: !pl[key] }));
+		};
+		row("pins", T("Marcadores", "Markers"), T("nombres de los marcadores", "marker names"));
+		row(
+			"routes",
+			T("Rutas", "Routes"),
+			T("tú: número y ruta de cada tramo; jugadores: nombre de la ruta", "you: number and route of each segment; players: route name"),
+		);
 	}
 
 	private section(parent: HTMLElement, title: string, icon?: string, tip?: string, onClick?: () => void): HTMLElement {
@@ -1161,6 +1531,9 @@ export class MapView extends TextFileView {
 			this.lastMeasure = null;
 		}
 		this.map?.doubleClickZoom[mode === "navigate" ? "enable" : "disable"]();
+		// Con las herramientas de dibujo, el arrastre izquierdo dibuja: el mapa se mueve con el derecho.
+		this.map?.dragging[this.isDrawMode() ? "disable" : "enable"]();
+		if (mode !== "laser") this.setLaserPointer(null);
 		this.renderAll();
 		if (abandoned) this.askNameIfMissing(abandoned);
 	}
@@ -1967,7 +2340,6 @@ export class MapView extends TextFileView {
 				}
 				data.unit = p.unit;
 				data.scale = p.scale;
-				data.showDistances = p.showDistances;
 				this.persist();
 				void this.refresh();
 			},

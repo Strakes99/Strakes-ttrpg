@@ -180,6 +180,12 @@ export type OverlayPosition = "top-left" | "top-right" | "bottom-left" | "bottom
 
 // ---------- Pantalla de jugadores ----------
 
+/** Etiquetas permanentes por tipo de elemento del mapa (marcadores: nombre; rutas: nombre o tramos). */
+export interface LabelState {
+	pins: boolean;
+	routes: boolean;
+}
+
 /** Rectángulo de un mapa en coordenadas de Leaflet (lat = y, lng = x, en píxeles de la imagen). */
 export interface MapRegion {
 	south: number;
@@ -231,6 +237,14 @@ export interface StrakesSettings {
 	mapZoomStep: number;
 	/** Editor de mapas: marco de la vista de jugadores y rectángulo de lo que ven. */
 	showPlayerFrame: boolean;
+	/** Editor de mapas: cuadro de etiquetas por tipo desplegado (clic derecho en la sección de etiquetas). */
+	labelsMenuOpen: boolean;
+	/** Mapas: color del láser (y color inicial del lápiz). */
+	laserColor: string;
+	/** Mapas: segundos que tardan en desvanecerse los trazos del láser. */
+	laserFadeSeconds: number;
+	/** Mapas: grosor (px) de los trazos del láser y el lápiz, y diámetro del punto del láser. */
+	drawWidth: number;
 	/** Paso de viaje para calcular tiempos en los mapas. */
 	travelPace: "slow" | "normal" | "fast";
 	/** Condiciones personalizadas para el tracker de iniciativa. */
@@ -261,6 +275,10 @@ export const DEFAULT_SETTINGS: StrakesSettings = {
 	notPlayerTransparency: 60,
 	mapZoomStep: 0.5,
 	showPlayerFrame: true,
+	labelsMenuOpen: false,
+	laserColor: "#ff2a2a",
+	laserFadeSeconds: 3,
+	drawWidth: 4,
 	collapsedMapSections: [],
 	customConditions: [],
 	conditionOverrides: {},

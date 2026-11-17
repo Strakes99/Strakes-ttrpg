@@ -6,6 +6,7 @@ import { IconLibrary, setIconLibrary } from "./map/icons";
 import { applyAutoNames, AutoNamePin } from "./map/autoName";
 import { linkpathMatchesPath, parseWikilink, wikilinkFor } from "./map/links";
 import { emptyMap, newMapUnit } from "./map/mapData";
+import { LaserState, Stroke } from "./map/drawing";
 import { EmbedContext, MapEmbed } from "./map/MapEmbed";
 import { MapView } from "./map/MapView";
 import { PlayerScreenView } from "./player/PlayerScreenView";
@@ -13,6 +14,7 @@ import { StrakesSettingTab } from "./settings";
 import {
 	DEFAULT_SETTINGS,
 	IMAGE_EXTENSIONS,
+	LabelState,
 	MAP_EXTENSION,
 	MapRegion,
 	PlayerContent,
@@ -269,6 +271,48 @@ export default class StrakesTTRPG extends Plugin {
 			return;
 		}
 		await this.sendToPlayers({ kind: "map", path, region });
+	}
+
+	/**
+	 * Etiquetas que ven los jugadores en cada mapa (por ruta del .smap). Solo en memoria: mostrar
+	 * etiquetas es circunstancial y no se guarda (decisión del desarrollador). Al empezar, ninguna.
+	 */
+	private playerLabelState = new Map<string, LabelState>();
+
+	playerLabels(path: string): LabelState {
+		return this.playerLabelState.get(path) ?? { pins: false, routes: false };
+	}
+
+	setPlayerLabels(path: string, state: LabelState): void {
+		this.playerLabelState.set(path, state);
+		this.events.trigger("player-labels", path);
+	}
+
+	/**
+	 * Láser y lápiz de cada mapa (por ruta del .smap). Solo en memoria: los dibujos no se guardan y
+	 * se borran al cerrar Obsidian (aunque se cierre y reabra el mapa, siguen ahí).
+	 */
+	private laserStates = new Map<string, LaserState>();
+	private penStates = new Map<string, Stroke[]>();
+	/** Color del lápiz elegido en la barra en esta sesión (null = el del láser). */
+	penColor: string | null = null;
+
+	laserFor(path: string): LaserState {
+		let st = this.laserStates.get(path);
+		if (!st) {
+			st = { pointer: null, color: this.settings.laserColor, strokes: [] };
+			this.laserStates.set(path, st);
+		}
+		return st;
+	}
+
+	penFor(path: string): Stroke[] {
+		let st = this.penStates.get(path);
+		if (!st) {
+			st = [];
+			this.penStates.set(path, st);
+		}
+		return st;
 	}
 
 	/** Proporción (ancho / alto) de la pantalla de jugadores, o null si no está abierta. */

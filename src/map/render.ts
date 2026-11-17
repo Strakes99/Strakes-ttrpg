@@ -1,7 +1,7 @@
 import * as L from "leaflet";
 import { getIconIds, setIcon } from "obsidian";
 import { Pt } from "./geometry";
-import { MapData, MapPin, MapRoute, DEFAULT_PIN_COLOR, RouteNode, segmentPath } from "./mapData";
+import { DEFAULT_PIN_COLOR, MapData, MapPin, MapRoute, RouteNode, routePath, segmentPath } from "./mapData";
 import { pointAtFraction } from "./geometry";
 import { customIconName, getIconLibrary } from "./icons";
 
@@ -95,6 +95,24 @@ export function segmentLabel(
 		}),
 		keyboard: false,
 		interactive,
+	});
+}
+
+/**
+ * Nombre de la ruta, una vez, en el centro de su línea. Es la etiqueta de ruta de la pantalla de
+ * jugadores: sin números de tramo ni distancias (decisión del desarrollador).
+ */
+export function routeNameLabel(route: MapRoute, nodes: Map<string, RouteNode>): L.Marker | null {
+	const path = routePath(route, nodes);
+	if (path.length < 2 || !route.name.trim()) return null;
+	return L.marker(toLatLng(pointAtFraction(path, 0.5)), {
+		icon: L.divIcon({
+			className: "strakes-seg-label",
+			html: createSpan({ text: route.name }),
+			iconSize: null as unknown as L.PointExpression,
+		}),
+		keyboard: false,
+		interactive: false,
 	});
 }
 
