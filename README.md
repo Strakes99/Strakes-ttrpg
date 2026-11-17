@@ -2,8 +2,8 @@
 
 A toolkit for game masters who run tabletop RPGs from Obsidian:
 
-- **Maps** — interactive image maps with markers, layers, curved routes with distances and travel times, and portals/stairs.
-- **Player screen** — a separate window for your second monitor or projector that shows notes, sections, selections and images to your players.
+- **Maps** — interactive image maps with markers, layers, curved routes with distances and travel times, shortest and fastest paths, and portals/stairs. Show them to your players, with what they can see under your control, and point or draw on them live.
+- **Player screen** — a separate window for your second monitor or projector that shows notes, sections, selections, images and maps to your players.
 - **Initiative tracker** — turns, rounds, hit points (including temporary HP), conditions with icons, and a portrait "cards" view for the player screen.
 
 > The interface is available in **English** and **Spanish** and follows Obsidian's display language: Spanish when Obsidian is set to Spanish, English for every other language.
@@ -15,14 +15,15 @@ Desktop only (it uses a pop-out window for the player screen). Requires Obsidian
 ## Player screen
 
 - **Open** it with the ribbon icon or the command *Open player screen*. It opens in its own window: drag it to your second monitor or projector.
-- **Send content**: right-click a note or image → *Send to player screen*, or use the commands to send:
-  - the active note or image;
+- **Send content**: right-click a note, image or map → *Send to player screen*, or use the commands to send:
+  - the active note, image or map;
   - the section under the cursor (the heading the cursor is in);
   - the selected text;
   - an image from your vault.
 - **Note titles and live updates**: a whole note is shown with its title, like the inline title in Obsidian. Shown notes and sections update live while you edit them; if the heading of a shown section is renamed or deleted, the screen is cleared and you get a notice.
 - **Clear** the screen with the eraser button (bottom-right, visible on hover) or the command *Clear player screen*.
 - **Images** are scaled to fill the screen without being distorted or cropped.
+- **Maps** fill the screen behind the initiative, showing only what you marked as visible to players (see *Maps on the player screen* below).
 - **Fullscreen**: double-click the screen, or use the button in the bottom-right corner (visible on hover).
 
 ## Initiative tracker
@@ -67,28 +68,42 @@ Opens in the right sidebar.
 
 - **Create** a map: right-click an image → *Create map from this image*, or use the command *Create new map from an image*.
 - **Markers**:
-  - Optional link to a note or heading, stored as a wikilink. Left-click opens it; Ctrl+hover shows a preview with the note title.
-  - **Portal / stairs**: right-click → *Use portal / stairs* moves the camera to another point or another marker (in embedded maps, right-click jumps directly).
+  - Optional link to a note or heading, stored as a wikilink. Left-click opens it; Ctrl+hover shows a preview (with the note title when the link is to a whole note).
+  - **Portal / stairs**: right-click → *Use portal / stairs* moves the camera to another point or another marker (in embedded maps, right-click jumps directly). A portal's point is the center of its circle.
   - **AUTO name** (on by default): the marker takes its name from the link's alias, heading or note (or from a portal's destination) and follows renames.
-  - Icons can be emoji, letters, Lucide icon names, or your own SVG files. SVGs go in the plugin's `icons/` folder, subfolders included; you can filter by folder and name and recolor the icon. Importing SVGs whose names already exist asks whether to replace them, skip them or save them under a new name.
-- **Visibility**: fixed *Markers* / *Routes* toggles, plus your own layers. Each marker or route can be in one layer or none.
+  - **Icons**: emoji, letters, Lucide icons or your own SVG files. The icon picker lists your SVGs and, as one more entry of its folder dropdown, every Lucide icon Obsidian ships. SVGs go in the plugin's `icons/` folder, subfolders included; you can filter by folder and name and recolor the icon. Importing SVGs whose names already exist asks whether to replace them, skip them or save them under a new name.
+  - **Anchored to route nodes**: drop a marker on a route node (or a node on a marker) and they're anchored: they move together, and measuring treats the marker as its node. One marker per node; right-click → *Unanchor from node*. While editing, the anchor button turns automatic anchoring off.
+- **Visibility**: two toggles per marker, route, layer and type (*Markers* / *Routes*) in the side panel: the **eye** for your own view and the **screen** for the players. They're independent, so tidying up your editor never changes what the players see. Everything starts hidden from players.
+- **Search**: one box in the side panel filters layers, routes and markers by name.
+- **Labels**: a toolbar section turns labels on and off for you (eye) and for the players (screen), all at once or by type (right-click). You see marker names and each segment's number and route; players see marker names and each route's name once. Labels aren't saved.
 - **Routes**:
   - Nodes, with curve points that shape a route without adding nodes.
   - Each segment can have a manual distance (for maps not drawn to scale) and a manual travel time, or estimate them from a calibrated scale.
-  - Segment labels show the segment number and route name.
-- **Measure**: shortest path between two nodes along visible routes, with travel time at slow (2 mph, 9 h/day), normal (3 mph, 8 h/day) or fast (4 mph, 7.5 h/day) pace.
+- **Measure**: a panel under the *Measure* button shows the path between two nodes along visible routes, with travel time at slow (2 mph, 9 h/day), normal (3 mph, 8 h/day) or fast (4 mph, 7.5 h/day) pace. When the **shortest** and the **fastest** path differ (manual segment times count first), both are listed and you can highlight either on the map. With a calibrated scale you can also measure a straight line.
+- **Laser, pen and eraser**: the laser is a dot that follows your cursor, and dragging draws strokes that fade; the pen draws strokes that stay until Obsidian closes (with its own color); the eraser removes pen strokes. Players see all of it. With these tools, right-drag moves the map. Color, fade time and thickness are settings.
 - **Distance unit**: one setting shows every map's distances and speeds in kilometers, miles, leagues, meters or feet, or in each map's own unit. New maps are created in that unit (kilometers with *Each map's own*). The conversion is only for display: values you enter stay in the map's own unit, so switching back and forth never changes them.
+- **Zoom step**: a setting for how much each mouse wheel step zooms, in the editor and in embedded maps.
 - **Undo / redo** in the map editor.
 - **Embedding**:
   - `![[map.smap]]` shows an interactive map in a note.
   - `![[map.smap|300]]` sets the height and `![[map.smap|800x300]]` sets the width and height.
   - `![[map.smap#Marker name]]` centers the map on that marker.
+  - The embed's toolbar has layers, labels (click for all, right-click by type), fit, a **lock** (no zoom or dragging, so the wheel scrolls the note) and a button to open the map. A setting locks every embedded map and hides the lock.
 - **Renaming**: renaming or moving a linked note or a map image updates the maps automatically.
+
+### Maps on the player screen
+
+- Send a map from the editor's toolbar (screen-with-arrow button) or right-click a `.smap` → *Send to player screen*.
+- The players see the map full-screen, behind the initiative, with only the markers, routes and layers marked as visible to them. They can't move it: you choose what they see.
+- **Frame**: while the map is on the player screen, a dashed frame in your editor shows what *Send* would send (it follows the shape of the players' window), and a solid rectangle shows what they see now. Press the button again to fly their view to your frame.
+- **Live** (cast button): the players follow your view as you move. Opening side panels or resizing Obsidian never changes what they see.
+- What the players can't see is shown semi-transparent in your editor (the transparency is a setting).
 
 ## Data and files
 
 - **Maps** are plain JSON files with the `.smap` extension, stored in your vault.
 - **Settings, the current combat, custom conditions and remembered portraits** are stored in the plugin's `data.json`.
+- **Not saved**: labels, laser and pen drawings, and the live view only last while Obsidian is open.
 - **Custom SVG icons** live in `<vault>/.obsidian/plugins/strakes-ttrpg/icons/`. Plugin updates don't touch this folder, but uninstalling the plugin deletes it.
 - **SVG sanitizing**: every SVG is cleaned before it is displayed. Scripts, event handlers, HTML elements, link-changing animations, `javascript:` links and external resources (including those referenced from CSS) are removed.
 
