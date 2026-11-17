@@ -105,6 +105,18 @@ export class MapView extends TextFileView {
 	private loadedImage = "";
 	private groups = new Map<string, { pins: L.LayerGroup; routes: L.LayerGroup }>();
 	private routeLines = new Map<string, L.Polyline>();
+	/** Marcadores de Leaflet de cada pin y de cada nodo (uno por ruta que lo usa), para moverlos al arrastrar. */
+	private pinMarkers = new Map<string, L.Marker>();
+	private nodeMarkers = new Map<string, L.Marker[]>();
+	/** Nodo al que se anclaría el marcador que se está arrastrando. */
+	private snapTarget: RouteNode | null = null;
+	/** Marcador al que se anclaría el nodo que se está arrastrando. */
+	private pinSnapTarget: MapPin | null = null;
+	/**
+	 * Anclaje automático (botón del ancla, visible con la edición desbloqueada). Apagado, no se crean
+	 * anclas nuevas; las que ya existen siguen funcionando. No se guarda: al abrir el mapa, encendido.
+	 */
+	private autoAnchor = true;
 	private overlay: L.LayerGroup | null = null; // medición y efectos
 	private draftLayer: L.LayerGroup | null = null; // vista previa al dibujar rutas
 	private pendingBends: Pt[] = [];
@@ -582,6 +594,10 @@ export class MapView extends TextFileView {
 		}
 		this.groups.clear();
 		this.routeLines.clear();
+		this.pinMarkers.clear();
+		this.nodeMarkers.clear();
+		this.snapTarget = null;
+		this.pinSnapTarget = null;
 
 		// Un grupo por capa más uno para «sin capa» (clave ""). Cada grupo se muestra
 		// según el interruptor de su tipo (Pines / Rutas) y la visibilidad de la capa.
@@ -626,15 +642,13 @@ export class MapView extends TextFileView {
 			L.DomEvent.stop(e.originalEvent);
 			this.pinMenu(pin, e.originalEvent);
 		});
-		marker.on("dragend", () => {
-			const p = this.pt(marker.getLatLng());
-			pin.x = p.x;
-			pin.y = p.y;
-			this.persist();
-		});
+		// Anclado a un nodo: se mueven juntos. Suelto: al soltarlo cerca de un nodo, se ancla a él.
+		marker.on("drag", () => this.onPinDrag(pin, marker));
+		marker.on("dragend", () => this.onPinDragEnd(pin, marker));
 		marker.on("mouseover", (e: L.LeafletMouseEvent) =>
 			this.pinHover.show(this.app, pin, e.originalEvent, marker.getElement(), this.file?.path ?? ""),
 		);
+		this.pinMarkers.set(pin.id, marker);
 		g.pins.addLayer(marker);
 	}
 
@@ -712,11 +726,36 @@ export class MapView extends TextFileView {
 				n.x = p.x;
 				n.y = p.y;
 				for (const r of data.routes) if (r.nodeIds.includes(n.id)) this.redrawRouteLine(r, nodes);
+				// Los marcadores anclados a este nodo lo siguen.
+				for (const pin of data.pins)
+					if (pin.nodeId === n.id) {
+						pin.x = p.x;
+						pin.y = p.y;
+						this.pinMarkers.get(pin.id)?.setLatLng(this.ll(pin));
+					}
+				// Cerca de un marcador suelto: se resalta, y al soltar quedan anclados.
+				this.setPinSnapTarget(this.autoAnchor ? this.nearestLoosePin(marker.getLatLng()) : null);
 			});
 			marker.on("dragend", () => {
+				const target = this.pinSnapTarget;
+				this.setPinSnapTarget(null);
+				if (target && !this.nodeTaken(n.id, target)) {
+					// El nodo se pega al marcador.
+					n.x = target.x;
+					n.y = target.y;
+					target.nodeId = n.id;
+					for (const pin of data.pins)
+						if (pin.nodeId === n.id) {
+							pin.x = n.x;
+							pin.y = n.y;
+						}
+				}
 				this.persist();
 				this.renderAll();
 			});
+			const list = this.nodeMarkers.get(n.id) ?? [];
+			list.push(marker);
+			this.nodeMarkers.set(n.id, list);
 			g.routes.addLayer(marker);
 		});
 
@@ -878,6 +917,18 @@ export class MapView extends TextFileView {
 			this.editing = !this.editing;
 			this.renderAll();
 		}).toggleClass("is-active", this.editing);
+		if (this.editing)
+			this.toolButton(
+				tb,
+				"anchor",
+				this.autoAnchor
+					? T("Anclaje automático activado: los marcadores y nodos que sueltes cerca se anclan (clic para desactivarlo)", "Auto-anchoring on: markers and nodes you drop close together get anchored (click to turn it off)")
+					: T("Anclaje automático desactivado: no se crean anclas nuevas (las que hay siguen igual)", "Auto-anchoring off: no new anchors are created (existing ones stay)"),
+				() => {
+					this.autoAnchor = !this.autoAnchor;
+					this.renderToolbar();
+				},
+			).toggleClass("is-active", this.autoAnchor);
 		this.renderLabelTools(tb);
 		this.toolButton(tb, "maximize", T("Encuadrar todo el mapa", "Fit the whole map"), () => this.exactZoom(() => this.map?.flyToBounds(this.bounds(), { duration: 0.5 })));
 		tb.createDiv("strakes-toolbar-sep");
@@ -905,6 +956,135 @@ export class MapView extends TextFileView {
 			this.renderPanel();
 			window.setTimeout(() => this.afterResize(), 50);
 		}).toggleClass("is-active", this.panelOpen);
+	}
+
+	// ---------- Marcadores anclados a nodos ----------
+
+	/** Distancia (px de pantalla) a la que un marcador arrastrado se ancla a un nodo. */
+	private static readonly SNAP_PX = 15;
+
+	/** Nodo de una ruta visible más cercano a un punto, a menos de SNAP_PX en pantalla. */
+	private nearestNode(ll: L.LatLng): RouteNode | null {
+		const map = this.map;
+		const data = this.mapData;
+		if (!map || !data) return null;
+		const visible = new Set(this.visibleRoutes().flatMap((r) => r.nodeIds));
+		const c = map.latLngToContainerPoint(ll);
+		let best: RouteNode | null = null;
+		let bestD = MapView.SNAP_PX;
+		for (const n of data.nodes) {
+			if (!visible.has(n.id)) continue;
+			const d = map.latLngToContainerPoint(this.ll(n)).distanceTo(c);
+			if (d <= bestD) {
+				bestD = d;
+				best = n;
+			}
+		}
+		return best;
+	}
+
+	/** Resalta el nodo al que se anclaría el marcador que se está arrastrando. */
+	private setSnapTarget(node: RouteNode | null): void {
+		if (this.snapTarget?.id === node?.id) return;
+		for (const m of this.nodeMarkers.get(this.snapTarget?.id ?? "") ?? []) m.getElement()?.removeClass("is-snap-target");
+		this.snapTarget = node;
+		for (const m of this.nodeMarkers.get(node?.id ?? "") ?? []) m.getElement()?.addClass("is-snap-target");
+	}
+
+	/**
+	 * Marcador suelto y visible más cercano a un punto, a menos de SNAP_PX en pantalla (al
+	 * arrastrar un nodo). Los anclados a otro nodo no se roban.
+	 */
+	private nearestLoosePin(ll: L.LatLng): MapPin | null {
+		const map = this.map;
+		const data = this.mapData;
+		if (!map || !data) return null;
+		const c = map.latLngToContainerPoint(ll);
+		let best: MapPin | null = null;
+		let bestD = MapView.SNAP_PX;
+		for (const pin of data.pins) {
+			if (this.anchorNode(pin) || pin.hidden || !isItemVisible(data, "pins", pin.layerId)) continue;
+			const d = map.latLngToContainerPoint(this.ll(pin)).distanceTo(c);
+			if (d <= bestD) {
+				bestD = d;
+				best = pin;
+			}
+		}
+		return best;
+	}
+
+	/** Resalta el marcador al que se anclaría el nodo que se está arrastrando. */
+	private setPinSnapTarget(pin: MapPin | null): void {
+		if (this.pinSnapTarget?.id === pin?.id) return;
+		this.pinMarkers.get(this.pinSnapTarget?.id ?? "")?.getElement()?.removeClass("is-snap-target");
+		this.pinSnapTarget = pin;
+		this.pinMarkers.get(pin?.id ?? "")?.getElement()?.addClass("is-snap-target");
+	}
+
+	/**
+	 * Un nodo solo puede tener un marcador anclado. Si `nodeId` ya tiene uno (distinto de `except`),
+	 * avisa de que hay que desanclarlo primero y devuelve true (no se debe anclar).
+	 */
+	private nodeTaken(nodeId: string, except?: MapPin): boolean {
+		const other = this.mapData?.pins.find((p) => p.nodeId === nodeId && p !== except);
+		if (!other) return false;
+		const name = other.name.trim() || T("otro marcador", "another marker");
+		new Notice(
+			T(
+				`Ese nodo ya tiene anclado «${name}». Desáncalo primero (clic derecho → Desanclar del nodo).`,
+				`That node already has "${name}" anchored. Unanchor it first (right-click → Unanchor from node).`,
+			),
+		);
+		return true;
+	}
+
+	/** Nodo al que está anclado el marcador, si sigue existiendo. */
+	private anchorNode(pin: MapPin): RouteNode | undefined {
+		return pin.nodeId ? this.mapData?.nodes.find((n) => n.id === pin.nodeId) : undefined;
+	}
+
+	/**
+	 * Mientras se arrastra un marcador: si está anclado, su nodo (y las rutas) van con él; si no,
+	 * se resalta el nodo al que se anclaría al soltarlo.
+	 */
+	private onPinDrag(pin: MapPin, marker: L.Marker): void {
+		const data = this.mapData;
+		if (!data) return;
+		const node = this.anchorNode(pin);
+		if (!node) {
+			this.setSnapTarget(this.autoAnchor ? this.nearestNode(marker.getLatLng()) : null);
+			return;
+		}
+		const p = this.pt(marker.getLatLng());
+		node.x = p.x;
+		node.y = p.y;
+		for (const m of this.nodeMarkers.get(node.id) ?? []) m.setLatLng(this.ll(node));
+		const nodes = nodeMap(data);
+		for (const r of data.routes) if (r.nodeIds.includes(node.id)) this.redrawRouteLine(r, nodes);
+	}
+
+	/** Al soltar un marcador: anclado, mueve también el nodo; suelto y cerca de un nodo, se ancla a él. */
+	private onPinDragEnd(pin: MapPin, marker: L.Marker): void {
+		const p = this.pt(marker.getLatLng());
+		const target = this.snapTarget;
+		this.setSnapTarget(null);
+		const node = this.anchorNode(pin);
+		if (node) {
+			node.x = p.x;
+			node.y = p.y;
+			pin.x = p.x;
+			pin.y = p.y;
+		} else if (target && !this.nodeTaken(target.id, pin)) {
+			pin.nodeId = target.id;
+			pin.x = target.x;
+			pin.y = target.y;
+		} else {
+			pin.nodeId = undefined;
+			pin.x = p.x;
+			pin.y = p.y;
+		}
+		this.persist();
+		this.renderAll();
 	}
 
 	// ---------- Láser, lápiz y borrador ----------
@@ -1594,7 +1774,8 @@ export class MapView extends TextFileView {
 
 	// ---------- Pines ----------
 
-	private createPin(p: Pt): void {
+	/** Marcador nuevo en un punto; con `nodeId` (clic sobre un nodo), nace anclado a ese nodo. */
+	private createPin(p: Pt, nodeId?: string): void {
 		const data = this.mapData;
 		if (!data) return;
 		const pin: MapPin = {
@@ -1609,6 +1790,7 @@ export class MapView extends TextFileView {
 			iconColor: DEFAULT_ICON_COLOR,
 			// Los marcadores nuevos toman el nombre automático; escribir uno lo desactiva.
 			autoName: true,
+			nodeId,
 		};
 		this.openPinModal(pin, true);
 	}
@@ -1647,10 +1829,14 @@ export class MapView extends TextFileView {
 
 	private onPinClick(pin: MapPin, evt: MouseEvent): void {
 		switch (this.mode) {
-			case "route":
-				// Añade un nodo justo en la posición del pin.
-				this.addRoutePoint({ x: pin.x, y: pin.y });
+			case "route": {
+				// Anclado: conecta con su nodo. Suelto: añade un nodo justo en la posición del pin.
+				const node = this.anchorNode(pin);
+				if (node) this.appendNode(this.ensureActiveRoute(), node.id);
+				// Suelto: el nodo nuevo se crea en su punto y el marcador queda anclado a él.
+				else this.addRoutePoint({ x: pin.x, y: pin.y }, this.autoAnchor ? pin : undefined);
 				return;
+			}
 			case "pick-target":
 				if (this.pickTargetPin && this.pickTargetPin.id !== pin.id) {
 					const portal = this.pickTargetPin;
@@ -1664,7 +1850,13 @@ export class MapView extends TextFileView {
 					this.askNameIfMissing(portal);
 				}
 				return;
-			case "measure":
+			case "measure": {
+				// Anclado: cuenta como su nodo (se mide por las rutas).
+				const node = this.anchorNode(pin);
+				if (node) this.measurePick(node, node.id);
+				else this.onMapClick({ latlng: this.ll(pin) } as L.LeafletMouseEvent);
+				return;
+			}
 			case "calibrate":
 				this.onMapClick({ latlng: this.ll(pin) } as L.LeafletMouseEvent);
 				return;
@@ -1778,12 +1970,32 @@ export class MapView extends TextFileView {
 				}),
 		);
 		this.addMoveToLayerItem(m, evt, pin);
+		if (this.anchorNode(pin))
+			m.addItem((i) =>
+				i
+					.setTitle(T("Desanclar del nodo", "Unanchor from node"))
+					.setIcon("unlink")
+					.onClick(() => {
+						pin.nodeId = undefined;
+						this.persist();
+						this.renderAll();
+					}),
+			);
 		m.addItem((i) =>
 			i
 				.setTitle(T("Duplicar", "Duplicate"))
 				.setIcon("copy")
 				.onClick(() => {
-					const copy: MapPin = { ...structuredClone(pin), id: uid(), x: pin.x + 20, y: pin.y - 20, name: T(`${pin.name} (copia)`, `${pin.name} (copy)`), autoName: undefined };
+					// La copia, desplazada, nace suelta.
+					const copy: MapPin = {
+						...structuredClone(pin),
+						id: uid(),
+						x: pin.x + 20,
+						y: pin.y - 20,
+						name: T(`${pin.name} (copia)`, `${pin.name} (copy)`),
+						autoName: undefined,
+						nodeId: undefined,
+					};
 					this.mapData!.pins.push(copy);
 					this.persist();
 					this.renderAll();
@@ -1839,10 +2051,12 @@ export class MapView extends TextFileView {
 		return route;
 	}
 
-	private addRoutePoint(p: Pt): void {
+	/** Nodo nuevo en un punto, añadido a la ruta activa; con `anchorPin`, ese marcador queda anclado a él. */
+	private addRoutePoint(p: Pt, anchorPin?: MapPin): void {
 		const data = this.mapData!;
 		const node: RouteNode = { id: uid(), x: p.x, y: p.y };
 		data.nodes.push(node);
+		if (anchorPin) anchorPin.nodeId = node.id;
 		this.appendNode(this.ensureActiveRoute(), node.id);
 	}
 
@@ -2081,6 +2295,9 @@ export class MapView extends TextFileView {
 				this.measurePick(node, node.id);
 				return;
 			case "pin":
+				// El marcador nuevo nace anclado al nodo (si el anclaje automático está activado).
+				this.createPin({ x: node.x, y: node.y }, this.autoAnchor && !this.nodeTaken(node.id) ? node.id : undefined);
+				return;
 			case "calibrate":
 			case "pick-target":
 				this.onMapClick(e);

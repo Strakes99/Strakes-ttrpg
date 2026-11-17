@@ -1170,6 +1170,12 @@ input.strakes-portrait-zoom-num {
 .strakes-player-rect { stroke: var(--interactive-accent); }
 .strakes-player-rect-halo { stroke: rgba(0, 0, 0, 0.6); }
 .strakes-setting-number { width: 5em; }
+/* Nodo al que se anclaría el marcador que se está arrastrando, o marcador al que se anclaría
+   el nodo que se está arrastrando. */
+.strakes-node.is-snap-target,
+.strakes-pin-wrap.is-snap-target {
+	filter: drop-shadow(0 0 3px var(--interactive-accent)) drop-shadow(0 0 3px var(--interactive-accent));
+}
 /* Láser y lápiz: su panel va por encima de rutas y marcadores y no recibe el ratón. */
 .leaflet-pane.strakes-drawing-pane {
 	z-index: 640;

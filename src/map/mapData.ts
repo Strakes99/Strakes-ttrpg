@@ -73,6 +73,11 @@ export interface MapPin {
 	hidden?: boolean;
 	/** Visible para los jugadores. Sin definir = oculto a los jugadores. */
 	players?: boolean;
+	/**
+	 * Nodo de ruta al que está anclado: el marcador está en su posición, se mueven juntos y al
+	 * medir cuenta como el nodo. Sin definir = suelto. Si el nodo deja de existir, se quita.
+	 */
+	nodeId?: string;
 }
 
 export interface RouteNode {
@@ -175,6 +180,7 @@ export function normalizeMap(raw: unknown, defaultUnit = "km"): MapData {
 	for (const l of data.layers) l.players = l.players === true ? true : undefined;
 	// Una capa inexistente equivale a «sin capa».
 	const layerIds = new Set(data.layers.map((l) => l.id));
+	const nodeIds = new Set(data.nodes.map((n) => n.id));
 	for (const p of data.pins) {
 		if (typeof p.name !== "string") p.name = "";
 		if (!p.layerId || !layerIds.has(p.layerId)) p.layerId = null;
@@ -186,6 +192,8 @@ export function normalizeMap(raw: unknown, defaultUnit = "km"): MapData {
 		p.autoName = p.autoName === true ? true : undefined;
 		p.hidden = p.hidden === true ? true : undefined;
 		p.players = p.players === true ? true : undefined;
+		// Un ancla a un nodo que no existe se quita.
+		if (typeof p.nodeId !== "string" || !nodeIds.has(p.nodeId)) p.nodeId = undefined;
 	}
 	for (const rt of data.routes) {
 		// Un .smap escrito a mano puede no traer nombre: sin él fallarían las etiquetas.
@@ -613,10 +621,11 @@ export function pathGeometry(data: MapData, res: PathResult): Pt[] {
 
 // ---------- Edición ----------
 
-/** Elimina nodos que ya no pertenecen a ninguna ruta. */
+/** Elimina nodos que ya no pertenecen a ninguna ruta, y las anclas de los marcadores a esos nodos. */
 export function pruneNodes(data: MapData): void {
 	const used = new Set(data.routes.flatMap((r) => r.nodeIds));
 	data.nodes = data.nodes.filter((n) => used.has(n.id));
+	for (const p of data.pins) if (p.nodeId && !used.has(p.nodeId)) p.nodeId = undefined;
 }
 
 /**
