@@ -23,11 +23,15 @@
 /* =========================================================
    Pantalla de jugadores
    ========================================================= */
+/* Sin el relleno de las vistas de Obsidian (.workspace-leaf-content .view-content): mismo
+   selector más la clase propia, para ganarle sin forzar la regla. Igual en el mapa y la iniciativa. */
+.workspace-leaf-content .view-content.strakes-player {
+	padding: 0;
+}
 .strakes-player {
 	--strakes-player-bg: #000;
 	--strakes-player-font: 22px;
 	position: relative;
-	padding: 0 !important;
 	background: var(--strakes-player-bg);
 	overflow: hidden;
 }
@@ -105,7 +109,7 @@
 /* Ventana emergente de jugadores: sin cabecera de vista (la barra de pestañas
    se conserva para poder arrastrar la ventana; la pantalla completa la oculta). */
 body.strakes-player-window .view-header {
-	display: none !important;
+	display: none;
 }
 
 /* Iniciativa en pantalla de jugadores. Por defecto, lista en una esquina (cuando hay una
@@ -306,16 +310,19 @@ body.strakes-player-window .view-header {
 	justify-content: center;
 }
 /*
- * !important: Obsidian limita las imágenes (max-width: 100 %, sobre todo en diálogos) y
- * eso hacía que el encuadre del editor no coincidiera con el de las tarjetas.
+ * Obsidian limita las imágenes: «.workspace-leaf-content img:not([width]) { max-width: 100% }» en
+ * las vistas (tarjetas y panel) y .markdown-rendered img. Con el zoom, la imagen salía más pequeña
+ * y desplazada. El selector con .workspace-leaf-content (tres clases) le gana sin forzar la regla;
+ * el de dos clases cubre lo que no está en una vista.
  */
-.strakes-portrait img {
+.strakes-portrait .strakes-portrait-img,
+.workspace-leaf-content .strakes-portrait .strakes-portrait-img {
 	position: absolute;
-	max-width: none !important;
-	max-height: none !important;
-	min-width: 0 !important;
-	height: auto !important;
-	margin: 0 !important;
+	max-width: none;
+	max-height: none;
+	min-width: 0;
+	height: auto;
+	margin: 0;
 	user-select: none;
 	pointer-events: none;
 }
@@ -363,13 +370,14 @@ button.strakes-init-thumb svg {
 .strakes-portrait-stage.is-dragging {
 	cursor: grabbing;
 }
-.strakes-portrait-stage img {
+.strakes-portrait-stage .strakes-portrait-img,
+.workspace-leaf-content .strakes-portrait-stage .strakes-portrait-img {
 	position: absolute;
-	max-width: none !important;
-	max-height: none !important;
-	min-width: 0 !important;
-	height: auto !important;
-	margin: 0 !important;
+	max-width: none;
+	max-height: none;
+	min-width: 0;
+	height: auto;
+	margin: 0;
 	user-select: none;
 	pointer-events: none;
 }
@@ -457,9 +465,11 @@ input.strakes-portrait-zoom-num {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	padding: 8px !important;
+}
+.workspace-leaf-content .view-content.strakes-init {
+	padding: 8px;
 	/* Solo crece si la barra de estado de Obsidian tapa el panel (ver statusBarGap.ts). */
-	padding-bottom: calc(8px + var(--strakes-statusbar-gap, 0px)) !important;
+	padding-bottom: calc(8px + var(--strakes-statusbar-gap, 0px));
 }
 .strakes-init-top {
 	display: flex;
@@ -985,8 +995,10 @@ input.strakes-portrait-zoom-num {
 .strakes-map-view {
 	display: flex;
 	flex-direction: column;
-	padding: 0 !important;
 	overflow: hidden;
+}
+.workspace-leaf-content .view-content.strakes-map-view {
+	padding: 0;
 }
 .strakes-map-toolbar {
 	display: flex;
@@ -1545,11 +1557,12 @@ input.strakes-portrait-zoom-num {
 .strakes-bend-ghost:hover {
 	opacity: 1;
 }
-.strakes-seg-label {
+/* Con iconSize: null Leaflet no escribe el tamaño en línea: basta con ganar a .leaflet-marker-icon. */
+.leaflet-marker-icon.strakes-seg-label {
 	background: none;
 	border: none;
-	width: 0 !important;
-	height: 0 !important;
+	width: 0;
+	height: 0;
 }
 .strakes-seg-label span {
 	position: absolute;

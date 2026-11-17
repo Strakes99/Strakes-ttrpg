@@ -47,7 +47,7 @@ export function renderPortrait(app: App, el: HTMLElement, c: Combatant): void {
 	const p = c.portrait;
 	const file = p ? app.vault.getAbstractFileByPath(p.path) : null;
 	if (p && file instanceof TFile) {
-		const img = el.createEl("img", { attr: { src: app.vault.getResourcePath(file), draggable: "false", alt: "" } });
+		const img = el.createEl("img", { cls: "strakes-portrait-img", attr: { src: app.vault.getResourcePath(file), draggable: "false", alt: "" } });
 		applyCrop(img, p);
 		return;
 	}
@@ -145,11 +145,11 @@ class PortraitModal extends Modal {
 		this.stage.setCssStyles({ width: `${S}px`, height: `${S}px` });
 		const src = this.srcFor(this.p.path);
 		// Imagen completa, semitransparente (para ver lo que queda fuera del marco).
-		this.ghost = this.stage.createEl("img", { cls: "strakes-portrait-ghost", attr: { src, draggable: "false", alt: "" } });
+		this.ghost = this.stage.createEl("img", { cls: "strakes-portrait-img strakes-portrait-ghost", attr: { src, draggable: "false", alt: "" } });
 		// Marco cuadrado con la misma imagen a opacidad completa.
 		const frame = this.stage.createDiv("strakes-portrait-frame");
 		frame.setCssStyles({ width: `${F}px`, height: `${F}px`, left: `${(S - F) / 2}px`, top: `${(S - F) / 2}px` });
-		this.framed = frame.createEl("img", { attr: { src, draggable: "false", alt: "" } });
+		this.framed = frame.createEl("img", { cls: "strakes-portrait-img", attr: { src, draggable: "false", alt: "" } });
 
 		void loadImageSize(src).then((n) => {
 			this.natural = n;
