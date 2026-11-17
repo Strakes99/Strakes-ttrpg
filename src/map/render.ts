@@ -19,8 +19,9 @@ export function pinIcon(pin: MapPin): L.DivIcon {
 	el.setCssProps({ "--pin-color": pin.color || DEFAULT_PIN_COLOR });
 	const iconEl = el.createDiv("strakes-pin-icon");
 	renderPinIconInto(iconEl, pin.icon ?? "", pin.iconColor, defaultPinIcon(pin));
-	// La punta de la gota está en (16, 36): ver la geometría en styles.css (.strakes-pin).
-	return L.divIcon({ className: "strakes-pin-wrap", html: el, iconSize: [32, 40], iconAnchor: [16, 36] });
+	// El punto del marcador es la punta de la gota, en (16, 36); el de un portal / escalera, el centro
+	// de su círculo, en (16, 16). Ver la geometría en styles.css (.strakes-pin).
+	return L.divIcon({ className: "strakes-pin-wrap", html: el, iconSize: [32, 40], iconAnchor: pin.portal ? [16, 16] : [16, 36] });
 }
 
 export type PinIconKind = "custom" | "lucide" | "emoji" | "text" | "default";
@@ -63,11 +64,10 @@ export function pinTooltipText(pin: MapPin): string {
 	return pin.name;
 }
 
-export const PIN_TOOLTIP_OPTIONS: L.TooltipOptions = {
-	direction: "top",
-	offset: [0, -34],
-	className: "strakes-map-tooltip",
-};
+/** Etiqueta del marcador, justo encima de su figura (la gota o el círculo del portal; ver pinIcon). */
+export function pinTooltipOptions(pin: MapPin): L.TooltipOptions {
+	return { direction: "top", offset: [0, pin.portal ? -14 : -34], className: "strakes-map-tooltip" };
+}
 
 /**
  * Etiqueta del tramo i, a mitad de su recorrido: número de tramo y nombre de la ruta

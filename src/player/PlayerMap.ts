@@ -3,7 +3,7 @@ import { Component, TFile } from "obsidian";
 import type StrakesTTRPG from "../main";
 import { DrawingLayer } from "../map/drawing";
 import { isPlayerVisible, MapData, newMapUnit, nodeMap, normalizeMap, ROUTE_COLORS, routePath } from "../map/mapData";
-import { mapBounds, nodeMarker, PIN_TOOLTIP_OPTIONS, pinIcon, routeNameLabel, toLatLng } from "../map/render";
+import { mapBounds, nodeMarker, pinIcon, pinTooltipOptions, routeNameLabel, toLatLng } from "../map/render";
 import { MapRegion } from "../types";
 import { resizeObserverFor } from "../ui/dom";
 
@@ -157,7 +157,7 @@ export class PlayerMap extends Component {
 		for (const pin of data.pins) {
 			if (!isPlayerVisible(data, "pins", pin)) continue;
 			const marker = L.marker(toLatLng(pin), { icon: pinIcon(pin), interactive: false, keyboard: false });
-			if (labels.pins && pin.name.trim()) marker.bindTooltip(pin.name, { ...PIN_TOOLTIP_OPTIONS, permanent: true });
+			if (labels.pins && pin.name.trim()) marker.bindTooltip(pin.name, { ...pinTooltipOptions(pin), permanent: true });
 			content.addLayer(marker);
 		}
 

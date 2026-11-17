@@ -7,7 +7,8 @@ import { loadImageSize } from "../ui/modals";
 import { PinHoverParent } from "./hover";
 import { linktextOf, resolveWikilink } from "./links";
 import { isItemVisible, ItemType, MapData, MapPin, newMapUnit, nodeMap, normalizeMap, ROUTE_COLORS, routePath } from "./mapData";
-import { mapBounds, nodeMarker, PIN_TOOLTIP_OPTIONS, pinIcon, pinTooltipText, toLatLng } from "./render";
+import { LabelState } from "../types";
+import { mapBounds, nodeMarker, pinIcon, pinTooltipOptions, pinTooltipText, routeNameLabel, toLatLng } from "./render";
 
 /** Lo que Obsidian pasa a quien crea un embed (API interna `app.embedRegistry`). */
 export interface EmbedContext {
@@ -45,6 +46,8 @@ export class MapEmbed extends Component {
 	/** Lo que hay que deshacer al quitar el mapa construido (observador de tamaño, rueda). */
 	private domCleanup: (() => void)[] = [];
 	private pinHover = new PinHoverParent(() => this.plugin.settings.pinPreviewTitle);
+	/** Etiquetas de este mapa (no se guardan: al volver a dibujar la nota, apagadas). */
+	private labels: LabelState = { pins: false, routes: false };
 	/** Candado de este mapa (no se recuerda: al volver a dibujar la nota, abierto). */
 	private locked = false;
 	private toolbarEl: HTMLElement | null = null;
@@ -305,8 +308,21 @@ export class MapEmbed extends Component {
 				evt.stopPropagation();
 				onClick(evt);
 			};
+			return b;
 		};
 		button("layers", T("Capas", "Layers"), (evt) => this.layersMenu(evt));
+		// Etiquetas: clic, todas a la vez; clic derecho, por tipo. Resaltado si hay alguna encendida.
+		const anyLabel = this.labels.pins || this.labels.routes;
+		const tag = button("tag", T("Etiquetas · clic derecho para elegirlas por tipo", "Labels · right-click to choose them by type"), () => {
+			const on = !anyLabel;
+			this.setLabels({ pins: on, routes: on });
+		});
+		tag.toggleClass("is-active", anyLabel);
+		tag.oncontextmenu = (evt) => {
+			evt.preventDefault();
+			evt.stopPropagation();
+			this.labelsMenu(evt);
+		};
 		button("maximize", T("Encuadrar todo", "Fit all"), () => this.fitWhole(true));
 		// Candado: bloquea el zoom y el arrastre. Con el ajuste de bloquear todos, no aparece.
 		if (!this.plugin.settings.lockAllEmbeds)
@@ -342,6 +358,27 @@ export class MapEmbed extends Component {
 	private isVisible(type: ItemType, layerId: string | null): boolean {
 		if (!this.data) return false;
 		return isItemVisible(this.data, type, layerId, { types: this.typeOverride, layers: this.layerOverride });
+	}
+
+	private setLabels(labels: LabelState): void {
+		this.labels = labels;
+		this.render();
+		if (this.wrapper) this.buildToolbar(this.wrapper);
+	}
+
+	private labelsMenu(evt: MouseEvent): void {
+		const m = new Menu();
+		const item = (key: keyof LabelState, title: string, icon: string) =>
+			m.addItem((i) =>
+				i
+					.setTitle(title)
+					.setIcon(icon)
+					.setChecked(this.labels[key])
+					.onClick(() => this.setLabels({ ...this.labels, [key]: !this.labels[key] })),
+			);
+		item("pins", T("Nombres de los marcadores", "Marker names"), "map-pin");
+		item("routes", T("Nombres de las rutas", "Route names"), "route");
+		m.showAtMouseEvent(evt);
 	}
 
 	private layersMenu(evt: MouseEvent): void {
@@ -415,6 +452,11 @@ export class MapEmbed extends Component {
 				{ color: route.color || ROUTE_COLORS[0], weight: 4, opacity: 0.9, interactive: false },
 			);
 			content.addLayer(line);
+			// Como en la pantalla de jugadores: el nombre de la ruta una vez, sin tramos.
+			if (this.labels.routes) {
+				const label = routeNameLabel(route, nodes);
+				if (label) content.addLayer(label);
+			}
 			for (const id of route.nodeIds) {
 				const n = nodes.get(id);
 				if (n) content.addLayer(nodeMarker(n, route.color, { draggable: false, interactive: false }));
@@ -432,7 +474,7 @@ export class MapEmbed extends Component {
 
 	private pinMarker(pin: MapPin): L.Marker {
 		const marker = L.marker(toLatLng(pin), { icon: pinIcon(pin), keyboard: false, riseOnHover: true });
-		marker.bindTooltip(pinTooltipText(pin), PIN_TOOLTIP_OPTIONS);
+		marker.bindTooltip(pinTooltipText(pin), { ...pinTooltipOptions(pin), permanent: this.labels.pins });
 		// Clic principal: abrir la nota enlazada.
 		marker.on("click", (e: L.LeafletMouseEvent) => {
 			if (!pin.link) return;

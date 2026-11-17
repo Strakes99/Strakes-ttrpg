@@ -1681,3 +1681,18 @@ input.strakes-portrait-zoom-num {
 .strakes-map-embed-toolbar .clickable-icon {
 	padding: 4px;
 }
+/* Botón de etiquetas con alguna encendida. */
+.strakes-map-embed-toolbar .clickable-icon.is-active { color: var(--interactive-accent); }
+/* Diálogos de mapas con pie: el contenido se desplaza en su propio hueco y los botones
+   (Eliminar | Cancelar | Guardar) quedan debajo, siempre visibles (accesibilidad). En Obsidian
+   1.15 el que se desplaza es .modal; aquí pasa a ser .modal-content. */
+.modal.strakes-has-footer { overflow: hidden; }
+.modal.strakes-has-footer > .modal-content {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+}
+.strakes-modal-footer {
+	flex-shrink: 0;
+	border-top: 1px solid var(--background-modifier-border);
+}

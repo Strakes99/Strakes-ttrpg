@@ -165,6 +165,20 @@ export interface PinIconActions {
 	reload(): Promise<void>;
 }
 
+/**
+ * Fila de botones de un diálogo (Eliminar | Cancelar | Guardar) en un pie fuera del contenido:
+ * siempre visible aunque el contenido obligue a desplazarse (accesibilidad; pedido del
+ * desarrollador). El contenido se desplaza en su propio hueco (ver .strakes-has-footer en
+ * styles.css). Se vacía y se reutiliza en cada render() del diálogo.
+ */
+function modalFooter(modal: Modal): Setting {
+	modal.modalEl.addClass("strakes-has-footer");
+	let footer = modal.modalEl.querySelector<HTMLElement>(":scope > .strakes-modal-footer");
+	if (footer) footer.empty();
+	else footer = modal.modalEl.createDiv("strakes-modal-footer");
+	return new Setting(footer);
+}
+
 export class PinModal extends Modal {
 	private pin: MapPin;
 	private autoCheck: HTMLInputElement | null = null;
@@ -293,7 +307,7 @@ export class PinModal extends Modal {
 			.setDesc(T("También tienen que estar visibles para los jugadores su tipo y su capa (iconos de pantalla del panel).", "Its type and layer must also be visible to players (screen icons in the panel)."))
 			.addToggle((t) => t.setValue(p.players === true).onChange((on) => (p.players = on || undefined)));
 
-		const buttons = new Setting(el);
+		const buttons = modalFooter(this);
 		if (!this.isNew)
 			buttons.addButton((b) =>
 				b
@@ -547,7 +561,7 @@ export class RouteModal extends Modal {
 			});
 		}
 
-		new Setting(el)
+		modalFooter(this)
 			.addButton((b) =>
 				b
 					.setButtonText(T("Eliminar ruta", "Delete route"))
@@ -638,7 +652,7 @@ export class MapPropsModal extends Modal {
 					this.onCalibrate();
 				}),
 			);
-		new Setting(el)
+		modalFooter(this)
 			.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => this.close()))
 			.addButton((b) =>
 				b

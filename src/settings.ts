@@ -185,8 +185,8 @@ export class StrakesSettingTab extends PluginSettingTab {
 					{
 						name: T("Título en la vista previa de los marcadores", "Title in marker previews"),
 						desc: T(
-							"Muestra el nombre de la nota (y el encabezado, si lo hay) encima de la vista previa al pasar el cursor con Ctrl sobre un marcador.",
-							"Shows the note name (and the heading, if any) above the preview when you Ctrl+hover a marker.",
+							"Muestra el nombre de la nota encima de la vista previa al pasar el cursor con Ctrl sobre un marcador enlazado a una nota completa (no a un encabezado).",
+							"Shows the note name above the preview when you Ctrl+hover a marker linked to a whole note (not to a heading).",
 						),
 						control: { type: "toggle", key: "pinPreviewTitle" },
 					},

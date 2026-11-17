@@ -6,7 +6,7 @@ import { LabelState, MapRegion, uid, VIEW_TYPE_MAP } from "../types";
 import { confirmDialog, loadImageSize, promptText } from "../ui/modals";
 import { DrawingLayer, laserStrokeExpired, Stroke } from "./drawing";
 import { curvePoint, distToSegment, Pt } from "./geometry";
-import { nodeMarker, PIN_TOOLTIP_OPTIONS, pinIcon, pinTooltipText, segmentLabel } from "./render";
+import { nodeMarker, pinIcon, pinTooltipOptions, pinTooltipText, segmentLabel } from "./render";
 import { PinHoverParent } from "./hover";
 import { applyAutoNames } from "./autoName";
 import { linktextOf, parseWikilink, resolveWikilink } from "./links";
@@ -618,7 +618,7 @@ export class MapView extends TextFileView {
 			keyboard: false,
 			riseOnHover: true,
 		});
-		marker.bindTooltip(pinTooltipText(pin), { ...PIN_TOOLTIP_OPTIONS, permanent: this.labels.pins });
+		marker.bindTooltip(pinTooltipText(pin), { ...pinTooltipOptions(pin), permanent: this.labels.pins });
 		// Con el mapa en la pantalla de jugadores, lo que ellos no ven sale semitransparente.
 		if (this.isOnPlayerScreen() && !isPlayerVisible(this.mapData!, "pins", pin)) marker.on("add", () => marker.getElement()?.addClass("strakes-not-player"));
 		marker.on("click", (e: L.LeafletMouseEvent) => this.onPinClick(pin, e.originalEvent));
