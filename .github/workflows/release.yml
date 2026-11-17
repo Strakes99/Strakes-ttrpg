@@ -1,0 +1,76 @@
+# Builds the plugin on GitHub, attests the build and creates a draft release.
+#
+# - Pushing a version tag (e.g. 1.2.0) runs the tests, builds main.js and styles.css,
+#   attests main.js, styles.css and manifest.json (artifact attestations) and creates
+#   a draft GitHub Release with the three files. Review the draft and publish it by hand.
+# - Running it by hand (Actions → Release → Run workflow) only tests and builds, as a
+#   check: no attestation, no release. The built files are kept as a workflow artifact.
+name: Release
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the draft release
+      id-token: write # sign the attestation
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies (exact versions from package-lock.json)
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Show the checksums of the built files
+        run: sha256sum main.js styles.css manifest.json
+
+      - name: Check that the tag matches the version in manifest.json
+        if: github.ref_type == 'tag'
+        run: |
+          version=$(node -p "require('./manifest.json').version")
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::The tag is $GITHUB_REF_NAME but manifest.json says $version."
+            exit 1
+          fi
+
+      - name: Attest the release files
+        if: github.ref_type == 'tag'
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            main.js
+            styles.css
+            manifest.json
+
+      - name: Create a draft release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" main.js manifest.json styles.css --draft --verify-tag --title "$GITHUB_REF_NAME"
+
+      - name: Keep the built files (manual runs)
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: |
+            main.js
+            styles.css
+            manifest.json
