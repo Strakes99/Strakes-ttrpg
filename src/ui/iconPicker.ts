@@ -1,13 +1,30 @@
-import { ColorComponent, setIcon, Setting, setTooltip } from "obsidian";
+import { ColorComponent, getIconIds, setIcon, Setting, setTooltip } from "obsidian";
 import { T } from "../i18n";
 import { CUSTOM_ICON_PREFIX, customIconName, getIconLibrary, iconFolder } from "../map/icons";
 import { iconSupportsColor } from "../map/render";
 
 /**
- * Selector de icono compartido (marcadores y condiciones personalizadas):
- * campo de texto (emoji, letra o Lucide) y cuadrícula de SVG de la carpeta de iconos,
- * con filtro por carpeta, búsqueda por nombre y botón de recargar.
+ * Selector de icono compartido (marcadores y condiciones):
+ * campo de texto (emoji, letra o Lucide) y cuadrícula con los SVG de la carpeta de iconos o los
+ * iconos de Lucide que trae Obsidian (una entrada más del desplegable de carpetas), con
+ * búsqueda por nombre y botón de recargar.
  */
+
+/**
+ * Valor del desplegable de carpetas para los iconos de Lucide. Lleva «:», que no puede aparecer
+ * en el nombre de una carpeta, para no confundirse con una subcarpeta llamada «Lucide».
+ */
+const LUCIDE_FOLDER = ":lucide";
+
+/**
+ * Nombres de los iconos de Lucide que trae Obsidian (sin el prefijo «lucide-»), ordenados.
+ * Sale de `getIconIds()`: solo los que de verdad tiene esta versión de Obsidian.
+ */
+function lucideIconNames(): string[] {
+	const names = new Set<string>();
+	for (const id of getIconIds()) if (id.startsWith("lucide-")) names.add(id.slice("lucide-".length));
+	return [...names].sort();
+}
 export interface IconPickerOptions {
 	icon: string;
 	/** Color con el que se previsualizan los SVG (undefined = colores nativos). */
@@ -38,7 +55,7 @@ export class IconPicker {
 		const custom = customIconName(opts.icon ?? "");
 		new Setting(parent)
 			.setName(T("Icono", "Icon"))
-			.setDesc(T("Un emoji, una letra o un icono de Lucide (ej. castle, skull, tent), o uno de tus SVG de abajo.", "An emoji, a letter or a Lucide icon name (e.g. castle, skull, tent), or one of your SVGs below."))
+			.setDesc(T("Un emoji, una letra o el nombre de un icono de Lucide (ej. castle, skull, tent), o elige uno abajo.", "An emoji, a letter or a Lucide icon name (e.g. castle, skull, tent), or pick one below."))
 			.addText((t) => {
 				this.input = t.inputEl;
 				t.setPlaceholder(custom !== null ? `SVG: ${custom}` : (opts.placeholder ?? "📍"))
@@ -50,6 +67,10 @@ export class IconPicker {
 					});
 			});
 		this.box = parent.createDiv("strakes-icon-picker");
+		// Se abre en Lucide si el icono actual es de Lucide o si no hay ningún SVG propio.
+		const icon = (opts.icon ?? "").trim();
+		const lib = getIconLibrary();
+		if ((icon && custom === null && lucideIconNames().includes(icon)) || (lib && !lib.names().length)) this.folder = LUCIDE_FOLDER;
 		this.buildGrid();
 	}
 
@@ -78,17 +99,19 @@ export class IconPicker {
 		box.empty();
 		if (!lib) return;
 		const filters = box.createDiv("strakes-icon-filters");
+		// Desplegable de carpetas: «Todas» (tus SVG), la principal y las subcarpetas, si las hay, y
+		// Lucide. Lucide está siempre, así que el desplegable se ve aunque no tengas subcarpetas.
 		const folders = lib.folders();
-		if (folders.some((f) => f !== "")) {
-			const select = filters.createEl("select", { cls: "dropdown" });
-			select.createEl("option", { value: "*", text: T("Todas las carpetas", "All folders") });
+		const select = filters.createEl("select", { cls: "dropdown" });
+		select.createEl("option", { value: "*", text: T("Todas las carpetas", "All folders") });
+		if (folders.some((f) => f !== ""))
 			for (const f of folders) select.createEl("option", { value: f, text: f === "" ? T("(Carpeta principal)", "(Main folder)") : f });
-			select.value = folders.includes(this.folder) || this.folder === "*" ? this.folder : "*";
-			select.onchange = () => {
-				this.folder = select.value;
-				this.renderTiles();
-			};
-		}
+		select.createEl("option", { value: LUCIDE_FOLDER, text: "Lucide" });
+		select.value = this.folder === LUCIDE_FOLDER || this.folder === "*" || folders.includes(this.folder) ? this.folder : "*";
+		select.onchange = () => {
+			this.folder = select.value;
+			this.renderTiles();
+		};
 		const search = filters.createEl("input", { type: "search", attr: { placeholder: T("Buscar icono…", "Search icons…") } });
 		search.value = this.query;
 		// Con muchos iconos, filtrar en cada tecla se nota: se espera a que deje de escribir.
@@ -125,8 +148,9 @@ export class IconPicker {
 		this.observer?.disconnect();
 		this.observer = null;
 		grid.empty();
-		const all = lib.names();
-		if (!all.length) {
+		const lucide = this.folder === LUCIDE_FOLDER;
+		const all = lucide ? lucideIconNames() : lib.names();
+		if (!all.length && !lucide) {
 			grid.addClass("is-empty");
 			grid.createDiv({
 				cls: "setting-item-description",
@@ -141,8 +165,10 @@ export class IconPicker {
 		const q = this.query.trim().toLowerCase();
 		const folder = this.folder;
 		const shown = all.filter((name) => {
-			const f = iconFolder(name);
-			if (folder !== "*" && f !== folder && !f.startsWith(`${folder}/`)) return false;
+			if (!lucide) {
+				const f = iconFolder(name);
+				if (folder !== "*" && f !== folder && !f.startsWith(`${folder}/`)) return false;
+			}
 			return !q || name.toLowerCase().includes(q);
 		});
 		if (!shown.length) {
@@ -160,15 +186,23 @@ export class IconPicker {
 					if (!entry.isIntersecting) continue;
 					observer.unobserve(entry.target);
 					const name = names.get(entry.target);
+					if (name === undefined) continue;
+					const el = entry.target as HTMLElement;
+					if (lucide) {
+						// Como en los marcadores: el color del icono, o el del texto si es nativo.
+						if (color) el.setCssStyles({ color });
+						setIcon(el, name);
+					}
 					// Un archivo que no es un SVG válido no se muestra.
-					if (name !== undefined && !lib.render(entry.target as HTMLElement, name, color)) (entry.target as HTMLElement).hide();
+					else if (!lib.render(el, name, color)) el.hide();
 				}
 			},
 			{ root: grid, rootMargin: "200px 0px" },
 		);
 		this.observer = observer;
 		for (const name of shown) {
-			const value = `${CUSTOM_ICON_PREFIX}${name}`;
+			// Un icono de Lucide se guarda por su nombre, igual que si se escribe en el campo.
+			const value = lucide ? name : `${CUSTOM_ICON_PREFIX}${name}`;
 			const tile = grid.createEl("button", { cls: "strakes-icon-tile", attr: { "data-icon": value } });
 			tile.toggleClass("is-selected", this.opts.icon === value);
 			setTooltip(tile, name);
@@ -177,8 +211,9 @@ export class IconPicker {
 			tile.onclick = () => {
 				this.opts.icon = this.opts.icon === value ? "" : value;
 				if (this.input) {
-					this.input.value = "";
-					this.input.placeholder = this.opts.icon ? `SVG: ${name}` : (this.opts.placeholder ?? "📍");
+					// Lucide: el nombre en el campo, como si se hubiera escrito. SVG: en el placeholder.
+					this.input.value = lucide ? this.opts.icon : "";
+					this.input.placeholder = this.opts.icon && !lucide ? `SVG: ${name}` : (this.opts.placeholder ?? "📍");
 				}
 				this.updateSelection();
 				this.opts.onChange(this.opts.icon);

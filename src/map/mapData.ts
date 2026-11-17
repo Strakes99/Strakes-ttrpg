@@ -482,13 +482,61 @@ export interface PathResult {
 }
 
 /**
- * Camino más corto entre dos nodos usando las rutas indicadas (Dijkstra).
+ * Camino más corto entre dos nodos usando las rutas indicadas (Dijkstra por distancia).
  * Primero intenta usar solo tramos con distancia conocida; si no hay camino,
  * repite permitiendo tramos sin distancia, priorizando el que tenga menos.
  */
 export function shortestPath(data: MapData, routes: MapRoute[], from: string, to: string): PathResult | null {
-	if (from === to) return { nodeIds: [from], legs: [], distance: 0, unknown: 0 };
 	const nodes = nodeMap(data);
+	const res = cheapestPath(routes, from, to, (r, i) => segmentDistance(data, r, i, nodes).value);
+	return res && { nodeIds: res.nodeIds, legs: res.legs, distance: res.cost, unknown: res.unknown };
+}
+
+/**
+ * Camino más rápido entre dos nodos (Dijkstra por tiempo de viaje): cada tramo cuesta su
+ * `segmentTime` (el tiempo manual si lo tiene, si no el de su distancia). Como todos los tiempos
+ * se escalan igual con el paso, el camino no depende del paso: solo sus horas. Los tramos sin
+ * tiempo posible cuentan como los tramos sin distancia de `shortestPath`. `distance` y
+ * `unknown` son los del camino (distancia conocida y tramos sin distancia), para mostrarlo igual.
+ */
+export function fastestPath(data: MapData, routes: MapRoute[], from: string, to: string, pace: Pace = "normal"): PathResult | null {
+	const nodes = nodeMap(data);
+	const res = cheapestPath(routes, from, to, (r, i) => segmentTime(data, r, i, pace, nodes).hours);
+	if (!res) return null;
+	return { nodeIds: res.nodeIds, legs: res.legs, ...legsDistance(data, res.legs) };
+}
+
+/** Distancia conocida de unos tramos y cuántos no tienen distancia. */
+export function legsDistance(data: MapData, legs: PathLeg[]): { distance: number; unknown: number } {
+	const nodes = nodeMap(data);
+	let distance = 0;
+	let unknown = 0;
+	for (const leg of legs) {
+		const route = data.routes.find((r) => r.id === leg.routeId);
+		const d = route ? segmentDistance(data, route, leg.seg, nodes).value : null;
+		if (d === null) unknown++;
+		else distance += d;
+	}
+	return { distance, unknown };
+}
+
+/** ¿Recorren los dos caminos los mismos tramos? (el más corto y el más rápido coinciden) */
+export function samePath(a: PathResult, b: PathResult): boolean {
+	return a.legs.length === b.legs.length && a.legs.every((l, i) => l.routeId === b.legs[i].routeId && l.seg === b.legs[i].seg);
+}
+
+/**
+ * Dijkstra sobre las rutas con un coste por tramo (`null` = coste desconocido). Primero solo con
+ * tramos de coste conocido; si no hay camino, permite los desconocidos (cuentan 0), priorizando
+ * el que tenga menos.
+ */
+function cheapestPath(
+	routes: MapRoute[],
+	from: string,
+	to: string,
+	segCost: (route: MapRoute, i: number) => number | null,
+): { nodeIds: string[]; legs: PathLeg[]; cost: number; unknown: number } | null {
+	if (from === to) return { nodeIds: [from], legs: [], cost: 0, unknown: 0 };
 	type Edge = { to: string; d: number | null; leg: PathLeg };
 	const adj = new Map<string, Edge[]>();
 	const link = (a: string, b: string, d: number | null, leg: PathLeg) => {
@@ -497,12 +545,12 @@ export function shortestPath(data: MapData, routes: MapRoute[], from: string, to
 	};
 	for (const r of routes) {
 		for (let i = 0; i < r.nodeIds.length - 1; i++) {
-			const d = segmentDistance(data, r, i, nodes).value;
+			const d = segCost(r, i);
 			link(r.nodeIds[i], r.nodeIds[i + 1], d, { routeId: r.id, seg: i, reversed: false });
 			link(r.nodeIds[i + 1], r.nodeIds[i], d, { routeId: r.id, seg: i, reversed: true });
 		}
 	}
-	const run = (allowUnknown: boolean): PathResult | null => {
+	const run = (allowUnknown: boolean): { nodeIds: string[]; legs: PathLeg[]; cost: number; unknown: number } | null => {
 		const dist = new Map<string, number>([[from, 0]]);
 		const unk = new Map<string, number>([[from, 0]]);
 		const prev = new Map<string, { node: string; leg: PathLeg }>();
@@ -544,7 +592,7 @@ export function shortestPath(data: MapData, routes: MapRoute[], from: string, to
 			legs.unshift(p.leg);
 			path.unshift(p.node);
 		}
-		return { nodeIds: path, legs, distance: dist.get(to)!, unknown: unk.get(to) ?? 0 };
+		return { nodeIds: path, legs, cost: dist.get(to)!, unknown: unk.get(to) ?? 0 };
 	};
 	return run(false) ?? run(true);
 }

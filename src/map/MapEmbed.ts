@@ -45,6 +45,9 @@ export class MapEmbed extends Component {
 	/** Lo que hay que deshacer al quitar el mapa construido (observador de tamaño, rueda). */
 	private domCleanup: (() => void)[] = [];
 	private pinHover = new PinHoverParent(() => this.plugin.settings.pinPreviewTitle);
+	/** Candado de este mapa (no se recuerda: al volver a dibujar la nota, abierto). */
+	private locked = false;
+	private toolbarEl: HTMLElement | null = null;
 
 	constructor(
 		private plugin: StrakesTTRPG,
@@ -61,6 +64,13 @@ export class MapEmbed extends Component {
 
 	onload(): void {
 		this.registerEvent(this.plugin.events.on("icons", () => this.render()));
+		// Ajuste «Bloquear los mapas incrustados»: bloquea y quita (o devuelve) el candado.
+		this.registerEvent(
+			this.plugin.events.on("settings", () => {
+				this.applyLock();
+				if (this.wrapper) this.buildToolbar(this.wrapper);
+			}),
+		);
 		// Si la imagen del mapa aparece después (se crea, se mueve o se renombra a esa ruta),
 		// se carga en ese momento.
 		const imageAppeared = (path: string) => {
@@ -86,6 +96,7 @@ export class MapEmbed extends Component {
 		this.map?.remove();
 		this.map = null;
 		this.wrapper = null;
+		this.toolbarEl = null;
 		this.mapEl = null;
 		this.content = null;
 		this.imageOverlay = null;
@@ -150,6 +161,7 @@ export class MapEmbed extends Component {
 		this.map = map;
 		this.content = L.layerGroup().addTo(map);
 		this.captureWheel(wrapper);
+		this.applyLock();
 		map.on("zoomstart movestart", () => {
 			if (!this.fitting) this.showingWhole = false;
 		});
@@ -244,7 +256,8 @@ export class MapEmbed extends Component {
 
 		const onWheel = (e: WheelEvent) => {
 			const map = this.map;
-			if (!map || !wrapper.isConnected) return;
+			// Bloqueado: la rueda desplaza la nota.
+			if (!map || !wrapper.isConnected || this.isLocked()) return;
 			const under = wrapper.doc.elementFromPoint(e.clientX, e.clientY);
 			if (!under || !wrapper.contains(under)) return;
 			if (under.closest(".strakes-map-embed-toolbar")) return;
@@ -263,8 +276,27 @@ export class MapEmbed extends Component {
 		});
 	}
 
+	/** Bloqueado por su candado o por el ajuste «Bloquear los mapas incrustados». */
+	private isLocked(): boolean {
+		return this.locked || this.plugin.settings.lockAllEmbeds;
+	}
+
+	/** Bloqueado: sin zoom ni arrastre (la rueda la gestiona captureWheel). Los clics siguen funcionando. */
+	private applyLock(): void {
+		const map = this.map;
+		if (!map) return;
+		const on = !this.isLocked();
+		for (const handler of [map.dragging, map.touchZoom, map.doubleClickZoom]) {
+			if (on) handler.enable();
+			else handler.disable();
+		}
+		this.wrapper?.toggleClass("is-locked", !on);
+	}
+
 	private buildToolbar(parent: HTMLElement): void {
+		this.toolbarEl?.remove();
 		const tb = parent.createDiv("strakes-map-embed-toolbar");
+		this.toolbarEl = tb;
 		const button = (icon: string, tip: string, onClick: (evt: MouseEvent) => void) => {
 			const b = tb.createEl("button", { cls: "clickable-icon" });
 			setIcon(b, icon);
@@ -276,6 +308,19 @@ export class MapEmbed extends Component {
 		};
 		button("layers", T("Capas", "Layers"), (evt) => this.layersMenu(evt));
 		button("maximize", T("Encuadrar todo", "Fit all"), () => this.fitWhole(true));
+		// Candado: bloquea el zoom y el arrastre. Con el ajuste de bloquear todos, no aparece.
+		if (!this.plugin.settings.lockAllEmbeds)
+			button(
+				this.locked ? "lock" : "unlock",
+				this.locked
+					? T("Bloqueado: sin zoom ni arrastre (clic para desbloquear)", "Locked: no zoom or dragging (click to unlock)")
+					: T("Bloquear el zoom y el arrastre", "Lock zoom and dragging"),
+				() => {
+					this.locked = !this.locked;
+					this.applyLock();
+					if (this.wrapper) this.buildToolbar(this.wrapper);
+				},
+			);
 		button("external-link", T("Abrir el mapa para editarlo", "Open the map to edit it"), (evt) => {
 			void this.app.workspace.getLeaf(Keymap.isModEvent(evt) ? "split" : "tab").openFile(this.file);
 		});

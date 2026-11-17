@@ -1194,6 +1194,45 @@ input.strakes-portrait-zoom-num {
 	background: none;
 	cursor: pointer;
 }
+/* Medir: panel debajo de su botón con el paso de viaje y el resultado. */
+.strakes-measure-tool {
+	position: relative;
+	display: flex;
+}
+.strakes-measure-panel {
+	position: absolute;
+	top: calc(100% + 4px);
+	left: 0;
+	/* Por encima de las capas de Leaflet (z-index hasta 700). */
+	z-index: 1001;
+	width: 300px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 6px;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-s);
+	font-size: var(--font-ui-small);
+}
+.strakes-measure-hint {
+	color: var(--text-muted);
+	white-space: normal;
+}
+.strakes-measure-row {
+	padding: 4px 6px;
+	border: 1px solid transparent;
+	border-radius: var(--radius-s);
+}
+.strakes-measure-row.is-choice { cursor: pointer; }
+.strakes-measure-row.is-choice:hover { background: var(--background-modifier-hover); }
+.strakes-measure-row.is-selected {
+	border-color: var(--interactive-accent);
+	background: var(--background-modifier-hover);
+}
+.strakes-measure-title { font-weight: 600; }
+.strakes-measure-time { color: var(--text-muted); }
 /* Sección de etiquetas de la barra: 🏷 | ojo (tus etiquetas) y pantalla (las de los jugadores).
    Clic derecho en la sección: cuadro con una fila por tipo, alineado a la derecha bajo los iconos. */
 .strakes-label-tools {
@@ -1442,6 +1481,11 @@ input.strakes-portrait-zoom-num {
 		0 0 0 4px #fff;
 }
 .strakes-icon-tile svg.strakes-custom-icon {
+	width: 100%;
+	height: 100%;
+}
+/* Iconos de Lucide en la cuadrícula: el mismo tamaño que los SVG propios. */
+.strakes-icon-tile svg.svg-icon {
 	width: 100%;
 	height: 100%;
 }

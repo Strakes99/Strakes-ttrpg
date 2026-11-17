@@ -191,6 +191,14 @@ export class StrakesSettingTab extends PluginSettingTab {
 						control: { type: "toggle", key: "pinPreviewTitle" },
 					},
 					{
+						name: T("Bloquear los mapas incrustados", "Lock embedded maps"),
+						desc: T(
+							"Bloquea el zoom y el arrastre de todos los mapas incrustados en notas (la rueda desplaza la nota) y oculta su candado. Los clics en los marcadores siguen funcionando.",
+							"Locks zoom and dragging on every map embedded in a note (the wheel scrolls the note) and hides its lock button. Clicking markers still works.",
+						),
+						control: { type: "toggle", key: "lockAllEmbeds" },
+					},
+					{
 						name: T("Incremento del zoom", "Zoom step"),
 						desc: T(
 							"Cuánto acerca o aleja cada paso de la rueda del ratón en los mapas (editor e incrustados), en niveles de zoom. Un nivel duplica el tamaño.",

@@ -245,6 +245,8 @@ export interface StrakesSettings {
 	laserFadeSeconds: number;
 	/** Mapas: grosor (px) de los trazos del láser y el lápiz, y diámetro del punto del láser. */
 	drawWidth: number;
+	/** Mapas incrustados: bloqueados (sin zoom ni arrastre) y sin el botón del candado. */
+	lockAllEmbeds: boolean;
 	/** Paso de viaje para calcular tiempos en los mapas. */
 	travelPace: "slow" | "normal" | "fast";
 	/** Condiciones personalizadas para el tracker de iniciativa. */
@@ -279,6 +281,7 @@ export const DEFAULT_SETTINGS: StrakesSettings = {
 	laserColor: "#ff2a2a",
 	laserFadeSeconds: 3,
 	drawWidth: 4,
+	lockAllEmbeds: false,
 	collapsedMapSections: [],
 	customConditions: [],
 	conditionOverrides: {},

@@ -18,6 +18,7 @@ import {
 	deleteNode,
 	distanceTime,
 	displayDistance,
+	fastestPath,
 	formatTotal,
 	milesPerUnit,
 	newMapUnit,
@@ -43,6 +44,7 @@ import {
 	routePath,
 	routeTime,
 	routeTotal,
+	samePath,
 	RouteNode,
 	segmentControlPoints,
 	shortestPath,
@@ -122,9 +124,18 @@ export class MapView extends TextFileView {
 	/** true = los nodos nuevos se añaden al principio de la ruta («Extender desde el inicio»). */
 	private extendAtStart = false;
 	private measureFrom: { pt: Pt; nodeId?: string } | null = null;
-	private measureText = "";
-	/** Última medición, para recalcular el tiempo si se cambia el paso. */
-	private lastMeasure: { kind: "path"; res: PathResult } | { kind: "line"; distance: number } | null = null;
+	/** Mensaje de la medición en su panel («Elige el punto de llegada…», «No hay camino…»). */
+	private measureMessage = "";
+	/** Puntos de salida y llegada de la medición, para dibujarlos. */
+	private measurePoints: Pt[] = [];
+	/**
+	 * Última medición, para recalcular los textos si cambia el paso o la unidad. En un camino,
+	 * `fastest` es null si coincide con el más corto; `show` es el que se resalta en el mapa.
+	 */
+	private lastMeasure:
+		| { kind: "path"; shortest: PathResult; fastest: PathResult | null; show: "shortest" | "fastest" }
+		| { kind: "line"; from: Pt; to: Pt; distance: number }
+		| null = null;
 	private calibrateFrom: Pt | null = null;
 	private pickTargetPin: MapPin | null = null;
 	private noteLeaf: WorkspaceLeaf | null = null;
@@ -324,7 +335,8 @@ export class MapView extends TextFileView {
 			this.needsFit = true;
 			this.mode = "navigate";
 			this.activeRouteId = null;
-			this.measureText = "";
+			this.measureMessage = "";
+			this.measurePoints = [];
 		}
 		// Archivo cargado (al abrirlo o porque cambió fuera del editor): historial nuevo.
 		this.undoStack = [];
@@ -448,7 +460,8 @@ export class MapView extends TextFileView {
 		if (this.currentLayerId && !this.mapData.layers.some((l) => l.id === this.currentLayerId)) this.currentLayerId = null;
 		this.measureFrom = null;
 		this.lastMeasure = null;
-		this.measureText = "";
+		this.measureMessage = "";
+		this.measurePoints = [];
 		this.overlay?.clearLayers();
 		this.requestSave();
 		this.updateHistoryButtons();
@@ -555,7 +568,6 @@ export class MapView extends TextFileView {
 	/** Vuelve a pintar los textos de distancia tras cambiar la unidad para mostrar. */
 	refreshUnits(): void {
 		if (!this.mapData) return;
-		if (this.lastMeasure) this.measureText = this.describeMeasure();
 		this.renderAll();
 	}
 
@@ -812,30 +824,12 @@ export class MapView extends TextFileView {
 		tool("navigate", "hand", T("Navegar", "Navigate"));
 		tool("pin", "map-pin", T("Añadir marcador", "Add marker"));
 		tool("route", "route", T("Crear ruta", "Create route"));
-		tool("measure", "ruler", T("Medir distancia y tiempo de viaje", "Measure distance and travel time"));
-		if (this.mode === "measure") {
-			// Paso del viaje: cambia el tiempo calculado (se recuerda entre sesiones).
-			const seg = tb.createDiv("strakes-segmented strakes-pace");
-			for (const pace of Object.keys(PACES) as Pace[]) {
-				const b = seg.createEl("button", { text: PACES[pace].label });
-				b.toggleClass("is-active", this.plugin.settings.travelPace === pace);
-				const perDay = PACES[pace].hoursPerDay.toLocaleString(numberLocale());
-				// Velocidad en la unidad elegida para mostrar (en millas con «Las de cada mapa»).
-				const display = this.plugin.settings.displayUnit;
-				const perUnit = display === "map" ? null : milesPerUnit(display);
-				const speed =
-					perUnit === null || perUnit === 1
-						? T(`${PACES[pace].mph} millas/h`, `${PACES[pace].mph} miles/h`)
-						: `${(PACES[pace].mph / perUnit).toLocaleString(numberLocale(), { maximumFractionDigits: 1 })} ${display}/h`;
-				setTooltip(b, T(`${speed} · ${perDay} h de marcha al día`, `${speed} · ${perDay} h of travel per day`));
-				b.onclick = () => {
-					this.plugin.settings.travelPace = pace;
-					void this.plugin.saveSettings();
-					if (this.lastMeasure) this.measureText = this.describeMeasure();
-					this.renderAll();
-				};
-			}
-		}
+		// Medir: el botón y, con la herramienta activa, su panel debajo (paso de viaje y resultado).
+		const measureWrap = tb.createDiv("strakes-measure-tool");
+		this.toolButton(measureWrap, "ruler", T("Medir distancia y tiempo de viaje", "Measure distance and travel time"), () =>
+			this.setMode(this.mode === "measure" ? "navigate" : "measure"),
+		).toggleClass("is-active", this.mode === "measure");
+		if (this.mode === "measure") this.renderMeasurePanel(measureWrap.createDiv("strakes-measure-panel"));
 		// Láser, lápiz y borrador (los dibujos no se guardan).
 		tool(
 			"laser",
@@ -1509,7 +1503,8 @@ export class MapView extends TextFileView {
 						"Curving: drag the route's ◦ points to create curves; drag ● to move them; double-click ● to remove it.",
 					)
 				: T("Edición: arrastra marcadores y nodos. Haz clic en una ruta para curvarla.", "Editing: drag markers and nodes. Click a route to curve it.");
-		const parts = [this.imageWarning, modeHint(this.mode), editHint, this.measureText].filter(Boolean);
+		// La indicación y el resultado de Medir van en su panel, no aquí.
+		const parts = [this.imageWarning, this.mode === "measure" ? "" : modeHint(this.mode), editHint].filter(Boolean);
 		this.statusEl.setText(parts.join("  ·  "));
 		this.statusEl.toggle(parts.length > 0);
 	}
@@ -1527,8 +1522,9 @@ export class MapView extends TextFileView {
 		this.calibrateFrom = null;
 		if (mode !== "measure") this.overlay?.clearLayers();
 		if (mode !== "measure") {
-			this.measureText = "";
+			this.measureMessage = "";
 			this.lastMeasure = null;
+			this.measurePoints = [];
 		}
 		this.map?.doubleClickZoom[mode === "navigate" ? "enable" : "disable"]();
 		// Con las herramientas de dibujo, el arrastre izquierdo dibuja: el mapa se mueve con el derecho.
@@ -2135,79 +2131,152 @@ export class MapView extends TextFileView {
 		return data.routes.filter((r) => !r.hidden && isItemVisible(data, "routes", r.layerId));
 	}
 
+	/**
+	 * Clic con la herramienta Medir: el primero fija la salida; el segundo calcula. Entre dos
+	 * nodos, el camino más corto y el más rápido por las rutas visibles (si coinciden, solo uno);
+	 * entre dos puntos con escala, la línea recta. El resultado sale en el panel de Medir.
+	 */
 	private measurePick(p: Pt, nodeId?: string): void {
 		const data = this.mapData!;
-		const overlay = this.overlay!;
 		if (!this.measureFrom) {
-			overlay.clearLayers();
 			this.measureFrom = { pt: { x: p.x, y: p.y }, nodeId };
-			this.measureText = T("Elige el punto de llegada…", "Choose the end point…");
-			L.circleMarker(this.ll(p), { radius: 8, className: "strakes-measure-point", interactive: false }).addTo(overlay);
+			this.measurePoints = [{ x: p.x, y: p.y }];
+			this.lastMeasure = null;
+			this.measureMessage = T("Elige el punto de llegada…", "Choose the end point…");
+			this.drawMeasure();
 			this.renderAll();
 			return;
 		}
 		const from = this.measureFrom;
 		this.measureFrom = null;
-		L.circleMarker(this.ll(p), { radius: 8, className: "strakes-measure-point", interactive: false }).addTo(overlay);
-
+		this.measurePoints = [from.pt, { x: p.x, y: p.y }];
 		this.lastMeasure = null;
+		this.measureMessage = "";
 		if (from.nodeId && nodeId) {
-			const res = shortestPath(data, this.visibleRoutes(), from.nodeId, nodeId);
-			if (!res) {
-				this.measureText = T("No hay camino entre esos nodos por las rutas visibles.", "There's no path between those nodes along the visible routes.");
+			const routes = this.visibleRoutes();
+			const shortest = shortestPath(data, routes, from.nodeId, nodeId);
+			if (!shortest) {
+				this.measureMessage = T("No hay camino entre esos nodos por las rutas visibles.", "There's no path between those nodes along the visible routes.");
 			} else {
-				const pts = pathGeometry(data, res).map((n) => this.ll(n));
-				L.polyline(pts, { className: "strakes-measure-line", weight: 8, interactive: false }).addTo(overlay);
-				this.lastMeasure = { kind: "path", res };
+				const fastest = fastestPath(data, routes, from.nodeId, nodeId);
+				this.lastMeasure = { kind: "path", shortest, fastest: fastest && !samePath(shortest, fastest) ? fastest : null, show: "shortest" };
 			}
 		} else if (data.scale) {
-			L.polyline([this.ll(from.pt), this.ll(p)], { className: "strakes-measure-line is-straight", weight: 4, interactive: false }).addTo(overlay);
-			this.lastMeasure = { kind: "line", distance: pixelDistance(from.pt, p) * data.scale };
+			this.lastMeasure = { kind: "line", from: from.pt, to: { x: p.x, y: p.y }, distance: pixelDistance(from.pt, p) * data.scale };
 		} else {
-			this.measureText = T(
+			this.measureMessage = T(
 				"Mapa sin escala: mide entre dos nodos de ruta, o calibra la escala para medir en línea recta.",
 				"Map without scale: measure between two route nodes, or calibrate the scale to measure in a straight line.",
 			);
 		}
-		if (this.lastMeasure) this.measureText = this.describeMeasure();
+		this.drawMeasure();
 		this.renderAll();
 	}
 
-	/**
-	 * Texto del resultado de la medición: distancia y tiempo de viaje al paso elegido.
-	 * Se recalcula al cambiar de paso sin volver a medir.
-	 */
-	private describeMeasure(): string {
+	/** Dibuja en el mapa la medición: los puntos y el camino elegido en el panel (o la línea recta). */
+	private drawMeasure(): void {
+		const overlay = this.overlay;
 		const data = this.mapData;
+		if (!overlay || !data) return;
+		overlay.clearLayers();
 		const m = this.lastMeasure;
-		if (!data || !m) return "";
+		if (m?.kind === "path") {
+			const res = m.show === "fastest" && m.fastest ? m.fastest : m.shortest;
+			L.polyline(
+				pathGeometry(data, res).map((n) => this.ll(n)),
+				{ className: "strakes-measure-line", weight: 8, interactive: false },
+			).addTo(overlay);
+		} else if (m?.kind === "line") {
+			L.polyline([this.ll(m.from), this.ll(m.to)], { className: "strakes-measure-line is-straight", weight: 4, interactive: false }).addTo(overlay);
+		}
+		for (const pt of this.measurePoints) L.circleMarker(this.ll(pt), { radius: 8, className: "strakes-measure-point", interactive: false }).addTo(overlay);
+	}
+
+	/**
+	 * Panel de Medir, debajo de su botón: el paso de viaje y el resultado. Si el camino más corto y
+	 * el más rápido son distintos, dos filas; la elegida (por defecto, la más corta) se resalta en
+	 * el mapa. Los textos se recalculan al cambiar de paso o de unidad, sin volver a medir.
+	 */
+	private renderMeasurePanel(panel: HTMLElement): void {
+		const data = this.mapData;
+		if (!data) return;
 		const pace = this.plugin.settings.travelPace;
-		const paceName = PACES[pace].label.toLowerCase();
-		const paceTxt = T(`paso ${paceName}`, `${paceName} pace`);
-		const segs = (n: number) => {
-			const s = n > 1 ? "s" : "";
-			return T(`${n} tramo${s}`, `${n} segment${s}`);
+		// Paso del viaje: cambia el tiempo calculado (se recuerda entre sesiones).
+		const seg = panel.createDiv("strakes-segmented strakes-pace");
+		for (const p of Object.keys(PACES) as Pace[]) {
+			const b = seg.createEl("button", { text: PACES[p].label });
+			b.toggleClass("is-active", pace === p);
+			const perDay = PACES[p].hoursPerDay.toLocaleString(numberLocale());
+			// Velocidad en la unidad elegida para mostrar (en millas con «Las de cada mapa»).
+			const display = this.plugin.settings.displayUnit;
+			const perUnit = display === "map" ? null : milesPerUnit(display);
+			const speed =
+				perUnit === null || perUnit === 1
+					? T(`${PACES[p].mph} millas/h`, `${PACES[p].mph} miles/h`)
+					: `${(PACES[p].mph / perUnit).toLocaleString(numberLocale(), { maximumFractionDigits: 1 })} ${display}/h`;
+			setTooltip(b, T(`${speed} · ${perDay} h de marcha al día`, `${speed} · ${perDay} h of travel per day`));
+			b.onclick = () => {
+				this.plugin.settings.travelPace = p;
+				void this.plugin.saveSettings();
+				this.renderAll();
+			};
+		}
+
+		const m = this.lastMeasure;
+		if (!m) {
+			panel.createDiv({ cls: "strakes-measure-hint", text: this.measureMessage || modeHint("measure") });
+			return;
+		}
+		const row = (title: string | null, dist: string, time: string, choice?: { selected: boolean; pick: () => void }) => {
+			const r = panel.createDiv("strakes-measure-row");
+			if (title) r.createDiv({ cls: "strakes-measure-title", text: title });
+			r.createDiv({ text: dist });
+			r.createDiv({ cls: "strakes-measure-time", text: time });
+			if (!choice) return;
+			r.addClass("is-choice");
+			r.toggleClass("is-selected", choice.selected);
+			setTooltip(r, T("Clic para verlo en el mapa", "Click to see it on the map"));
+			r.onclick = () => {
+				choice.pick();
+				this.drawMeasure();
+				this.renderToolbar();
+			};
 		};
 
 		if (m.kind === "line") {
 			const t = distanceTime(data, m.distance, pace);
 			const time =
 				t === null
-					? T(`sin tiempo (la unidad «${data.unit}» no es de longitud)`, `no time (the unit "${data.unit}" isn't a length)`)
+					? T(`Sin tiempo (la unidad «${data.unit}» no es de longitud)`, `No time (the unit "${data.unit}" isn't a length)`)
 					: formatTravelTime(t, pace);
-			const straight = displayDistance(m.distance, data.unit, this.plugin.settings.displayUnit);
-			return T(`Línea recta: ${straight} · ${paceTxt}: ${time}`, `Straight line: ${straight} · ${paceTxt}: ${time}`);
+			row(T("Línea recta", "Straight line"), displayDistance(m.distance, data.unit, this.plugin.settings.displayUnit), time);
+			return;
 		}
-		const res = m.res;
+		const shortest = this.pathTexts(m.shortest, pace);
+		if (!m.fastest) {
+			row(null, shortest.dist, shortest.time);
+			return;
+		}
+		const fastest = this.pathTexts(m.fastest, pace);
+		row(T("Más corta", "Shortest"), shortest.dist, shortest.time, { selected: m.show === "shortest", pick: () => (m.show = "shortest") });
+		row(T("Más rápida", "Fastest"), fastest.dist, fastest.time, { selected: m.show === "fastest", pick: () => (m.show = "fastest") });
+	}
+
+	/** Distancia (con los tramos sin distancia) y tiempo de viaje de un camino, al paso indicado. */
+	private pathTexts(res: PathResult, pace: Pace): { dist: string; time: string } {
+		const data = this.mapData!;
+		const segs = (n: number) => {
+			const s = n > 1 ? "s" : "";
+			return T(`${n} tramo${s}`, `${n} segment${s}`);
+		};
 		const extra = res.unknown ? T(` (+ ${segs(res.unknown)} sin distancia)`, ` (+ ${segs(res.unknown)} without distance)`) : "";
-		const byRoute = displayDistance(res.distance, data.unit, this.plugin.settings.displayUnit);
-		const dist = T(`Por ruta: ${byRoute}${extra} · ${segs(res.legs.length)}`, `By route: ${byRoute}${extra} · ${segs(res.legs.length)}`);
+		const dist = `${displayDistance(res.distance, data.unit, this.plugin.settings.displayUnit)}${extra} · ${segs(res.legs.length)}`;
 		const t = legsTime(data, res.legs, pace);
-		let time: string;
-		if (t.unknown === res.legs.length)
-			time = T("sin tiempo (añade tiempos a los tramos o usa una unidad de longitud)", "no time (add times to the segments or use a length unit)");
-		else time = formatTravelTime(t.hours, pace) + (t.unknown ? T(` + ${segs(t.unknown)} sin tiempo`, ` + ${segs(t.unknown)} without time`) : "");
-		return `${dist} · ${paceTxt}: ${time}`;
+		const time =
+			t.unknown === res.legs.length
+				? T("Sin tiempo (añade tiempos a los tramos o usa una unidad de longitud)", "No time (add times to the segments or use a length unit)")
+				: formatTravelTime(t.hours, pace) + (t.unknown ? T(` + ${segs(t.unknown)} sin tiempo`, ` + ${segs(t.unknown)} without time`) : "");
+		return { dist, time };
 	}
 
 	private async calibratePick(p: Pt): Promise<void> {
