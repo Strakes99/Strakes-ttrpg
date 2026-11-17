@@ -180,10 +180,20 @@ export type OverlayPosition = "top-left" | "top-right" | "bottom-left" | "bottom
 
 // ---------- Pantalla de jugadores ----------
 
+/** Rectángulo de un mapa en coordenadas de Leaflet (lat = y, lng = x, en píxeles de la imagen). */
+export interface MapRegion {
+	south: number;
+	west: number;
+	north: number;
+	east: number;
+}
+
 export type PlayerContent =
 	| { kind: "note"; path: string; subpath?: string }
 	| { kind: "image"; path: string }
 	| { kind: "text"; markdown: string; sourcePath: string }
+	/** Mapa (.smap): `region` es lo que deben ver los jugadores (null = el mapa entero). */
+	| { kind: "map"; path: string; region: MapRegion | null }
 	| null;
 
 // ---------- Ajustes ----------
@@ -215,6 +225,12 @@ export interface StrakesSettings {
 	mapFolder: string;
 	/** Mostrar el título de la nota encima de la vista previa de un pin. */
 	pinPreviewTitle: boolean;
+	/** Editor de mapas: transparencia (%) de lo que no ven los jugadores, con el mapa en su pantalla. */
+	notPlayerTransparency: number;
+	/** Mapas: niveles de zoom por paso de la rueda (editor e incrustados). */
+	mapZoomStep: number;
+	/** Editor de mapas: marco de la vista de jugadores y rectángulo de lo que ven. */
+	showPlayerFrame: boolean;
 	/** Paso de viaje para calcular tiempos en los mapas. */
 	travelPace: "slow" | "normal" | "fast";
 	/** Condiciones personalizadas para el tracker de iniciativa. */
@@ -242,6 +258,9 @@ export const DEFAULT_SETTINGS: StrakesSettings = {
 	displayUnit: "map",
 	mapFolder: "",
 	pinPreviewTitle: true,
+	notPlayerTransparency: 60,
+	mapZoomStep: 0.5,
+	showPlayerFrame: true,
 	collapsedMapSections: [],
 	customConditions: [],
 	conditionOverrides: {},

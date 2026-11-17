@@ -5,6 +5,7 @@ import { renderConditionChips } from "../initiative/conditionUi";
 import { defeatingIds, isDefeatedEnemy } from "../initiative/conditions";
 import { renderPortrait } from "../initiative/portrait";
 import { resizeObserverFor } from "../ui/dom";
+import { PlayerMap } from "./PlayerMap";
 import { Combatant, VIEW_TYPE_PLAYER } from "../types";
 
 /**
@@ -76,7 +77,11 @@ export class PlayerScreenView extends ItemView {
 		);
 
 		// Recalcula la escala al redimensionar la ventana o entrar en pantalla completa.
-		const ro = resizeObserverFor(root, () => this.layoutInitiative());
+		const ro = resizeObserverFor(root, () => {
+			this.layoutInitiative();
+			// El editor del mapa ajusta su marco a la proporción de esta ventana.
+			this.plugin.events.trigger("player-resize");
+		});
 		ro.observe(root);
 		this.register(() => ro.disconnect());
 
@@ -101,6 +106,12 @@ export class PlayerScreenView extends ItemView {
 		}
 	}
 
+	/** Proporción (ancho / alto) de la zona de contenido, o null si aún no tiene tamaño. */
+	contentAspect(): number | null {
+		const el = this.contentHost;
+		return el?.clientWidth && el.clientHeight ? el.clientWidth / el.clientHeight : null;
+	}
+
 	private applySettings(): void {
 		const s = this.plugin.settings;
 		this.contentEl.setCssProps({ "--strakes-player-bg": s.playerBackground, "--strakes-player-font": `${s.playerFontSize}px` });
@@ -116,6 +127,8 @@ export class PlayerScreenView extends ItemView {
 		const comp = new Component();
 		comp.load();
 		const target = createDiv();
+		/** Mapa a montar cuando `target` ya esté en la ventana (Leaflet necesita su tamaño). */
+		let mapFile: TFile | null = null;
 
 		if (!content) {
 			target.addClass("strakes-player-empty");
@@ -126,6 +139,14 @@ export class PlayerScreenView extends ItemView {
 				target.createEl("img", { cls: "strakes-player-image", attr: { src: this.app.vault.getResourcePath(file) } });
 			} else {
 				target.setText(T(`Imagen no encontrada: ${content.path}`, `Image not found: ${content.path}`));
+			}
+		} else if (content.kind === "map") {
+			const file = this.app.vault.getAbstractFileByPath(content.path);
+			if (file instanceof TFile) {
+				target.addClass("strakes-player-map");
+				mapFile = file;
+			} else {
+				target.setText(T(`Mapa no encontrado: ${content.path}`, `Map not found: ${content.path}`));
 			}
 		} else {
 			let markdown = "";
@@ -177,6 +198,8 @@ export class PlayerScreenView extends ItemView {
 		host.empty();
 		host.appendChild(target);
 		host.scrollTop = 0;
+		// Detrás de la iniciativa, que se dibuja encima (Lista o Tarjetas).
+		if (mapFile) comp.addChild(new PlayerMap(this.plugin, target, mapFile));
 		// Al vaciar/llenar la pantalla, la iniciativa pasa de ampliada a overlay y viceversa.
 		this.layoutInitiative();
 	}

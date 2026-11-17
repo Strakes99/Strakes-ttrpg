@@ -288,6 +288,10 @@ export class PinModal extends Modal {
 		});
 
 		layerDropdown(this.app, new Setting(el).setName(T("Capa", "Layer")), this.data, this.newLayers, p.layerId, (id) => (p.layerId = id), () => this.render());
+		new Setting(el)
+			.setName(T("Visible para los jugadores", "Visible to players"))
+			.setDesc(T("También tienen que estar visibles para los jugadores su tipo y su capa (iconos de pantalla del panel).", "Its type and layer must also be visible to players (screen icons in the panel)."))
+			.addToggle((t) => t.setValue(p.players === true).onChange((on) => (p.players = on || undefined)));
 
 		const buttons = new Setting(el);
 		if (!this.isNew)
@@ -486,6 +490,10 @@ export class RouteModal extends Modal {
 		new Setting(el).setName(T("Nombre", "Name")).addText((t) => t.setValue(r.name).onChange((v) => (r.name = v)));
 		new Setting(el).setName(T("Color", "Color")).addColorPicker((c) => c.setValue(r.color).onChange((v) => (r.color = v)));
 		layerDropdown(this.app, new Setting(el).setName(T("Capa", "Layer")), this.data, this.newLayers, r.layerId, (id) => (r.layerId = id), () => this.render());
+		new Setting(el)
+			.setName(T("Visible para los jugadores", "Visible to players"))
+			.setDesc(T("También tienen que estar visibles para los jugadores su tipo y su capa (iconos de pantalla del panel).", "Its type and layer must also be visible to players (screen icons in the panel)."))
+			.addToggle((t) => t.setValue(r.players === true).onChange((on) => (r.players = on || undefined)));
 		new Setting(el)
 			.setName(T("Curvas suaves", "Smooth curves"))
 			.setDesc(T("La línea pasa por los puntos de curva con una curva suave. Desactívalo para usar líneas quebradas.", "The line passes through the curve points with a smooth curve. Turn it off to use straight segments."))

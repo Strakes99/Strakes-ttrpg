@@ -14,6 +14,7 @@ import {
 	DEFAULT_SETTINGS,
 	IMAGE_EXTENSIONS,
 	MAP_EXTENSION,
+	MapRegion,
 	PlayerContent,
 	StrakesSettings,
 	VIEW_TYPE_INITIATIVE,
@@ -229,6 +230,7 @@ export default class StrakesTTRPG extends Plugin {
 	private contentForFile(file: TFile): PlayerContent {
 		if (file.extension === "md") return { kind: "note", path: file.path };
 		if (isImageFile(file)) return { kind: "image", path: file.path };
+		if (file.extension === MAP_EXTENSION) return { kind: "map", path: file.path, region: null };
 		return null;
 	}
 
@@ -253,6 +255,26 @@ export default class StrakesTTRPG extends Plugin {
 		this.playerContent = content;
 		if (content) await this.openPlayerScreen(false);
 		this.events.trigger("player-content");
+	}
+
+	/**
+	 * Pone un mapa en la pantalla de jugadores con la región indicada. Si ese mapa ya se está
+	 * mostrando, solo cambia la región (sin volver a crear el mapa), con animación si se pide.
+	 */
+	async sendMapToPlayers(path: string, region: MapRegion | null, animate: boolean): Promise<void> {
+		const pc = this.playerContent;
+		if (pc && pc.kind === "map" && pc.path === path) {
+			pc.region = region;
+			this.events.trigger("player-map-view", animate);
+			return;
+		}
+		await this.sendToPlayers({ kind: "map", path, region });
+	}
+
+	/** Proporción (ancho / alto) de la pantalla de jugadores, o null si no está abierta. */
+	playerAspect(): number | null {
+		const view = this.app.workspace.getLeavesOfType(VIEW_TYPE_PLAYER)[0]?.view;
+		return view instanceof PlayerScreenView ? view.contentAspect() : null;
 	}
 
 	// ---------- Iniciativa ----------

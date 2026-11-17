@@ -230,11 +230,12 @@ export class MapEmbed extends Component {
 			timer = 0;
 			const map = this.map;
 			if (!map || !delta || !around) return;
-			// Misma curva de aceleración que usa Leaflet para la rueda.
-			const snap = map.options.zoomSnap || 0;
-			const d2 = delta / ((map.options.wheelPxPerZoomLevel ?? 60) * 4);
+			// Misma curva de aceleración que usa Leaflet para la rueda, redondeada hacia arriba al
+			// incremento del zoom de los ajustes: cada paso de la rueda da un incremento.
+			const step = this.plugin.settings.mapZoomStep > 0 ? this.plugin.settings.mapZoomStep : 0.5;
+			const d2 = delta / ((100 / step) * 4);
 			const d3 = (4 * Math.log(2 / (1 + Math.exp(-Math.abs(d2))))) / Math.LN2;
-			const d4 = snap ? Math.ceil(d3 / snap) * snap : d3;
+			const d4 = Math.ceil(d3 / step) * step;
 			const zoom = map.getZoom();
 			const target = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), zoom + (delta > 0 ? d4 : -d4)));
 			delta = 0;
@@ -363,7 +364,7 @@ export class MapEmbed extends Component {
 		content.clearLayers();
 		const nodes = nodeMap(data);
 		for (const route of data.routes) {
-			if (!this.isVisible("routes", route.layerId)) continue;
+			if (route.hidden || !this.isVisible("routes", route.layerId)) continue;
 			const line = L.polyline(
 				routePath(route, nodes).map((p) => toLatLng(p)),
 				{ color: route.color || ROUTE_COLORS[0], weight: 4, opacity: 0.9, interactive: false },
@@ -379,7 +380,7 @@ export class MapEmbed extends Component {
 				if (n) content.addLayer(nodeMarker(n, route.color, { draggable: false, interactive: false }));
 			}
 		}
-		for (const pin of data.pins) if (this.isVisible("pins", pin.layerId)) content.addLayer(this.pinMarker(pin));
+		for (const pin of data.pins) if (!pin.hidden && this.isVisible("pins", pin.layerId)) content.addLayer(this.pinMarker(pin));
 
 		// Primero el tamaño según la proporción, luego el encuadre.
 		this.applyAutoSize();

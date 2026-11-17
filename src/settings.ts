@@ -191,6 +191,30 @@ export class StrakesSettingTab extends PluginSettingTab {
 						control: { type: "toggle", key: "pinPreviewTitle" },
 					},
 					{
+						name: T("Incremento del zoom", "Zoom step"),
+						desc: T(
+							"Cuánto acerca o aleja cada paso de la rueda del ratón en los mapas (editor e incrustados), en niveles de zoom. Un nivel duplica el tamaño.",
+							"How much each mouse wheel step zooms in or out on maps (editor and embedded), in zoom levels. One level doubles the size.",
+						),
+						render: (setting) => this.sliderWithNumber(setting, "mapZoomStep", 0.1, 2, 0.05),
+					},
+					{
+						name: T("Marco de la vista de jugadores", "Player view frame"),
+						desc: T(
+							"Con un mapa en la pantalla de jugadores, el editor muestra el marco de lo que se enviaría (discontinuo) y el rectángulo de lo que ven ahora (continuo).",
+							"With a map on the player screen, the editor shows the frame of what would be sent (dashed) and the rectangle of what they see now (solid).",
+						),
+						control: { type: "toggle", key: "showPlayerFrame" },
+					},
+					{
+						name: T("Transparencia de lo que no ven los jugadores", "Transparency of what players can't see"),
+						desc: T(
+							"Con un mapa en la pantalla de jugadores, los marcadores y rutas que ellos no ven se muestran así de transparentes en el editor (%).",
+							"With a map on the player screen, the markers and routes they can't see are shown this transparent in the editor (%).",
+						),
+						render: (setting) => this.sliderWithNumber(setting, "notPlayerTransparency", 0, 95, 1),
+					},
+					{
 						name: T("Iconos SVG para marcadores", "SVG icons for markers"),
 						desc: this.iconsDescription(),
 						render: (setting) => {
@@ -214,6 +238,34 @@ export class StrakesSettingTab extends PluginSettingTab {
 				],
 			},
 		];
+	}
+
+	/**
+	 * Deslizador y campo numérico sincronizados, como en el editor de retratos: un `input range`
+	 * nativo (sin el valor que Obsidian añade a sus deslizadores) y el número a la derecha.
+	 * Mientras se arrastra se aplica en directo; se guarda al soltar. Obsidian reutiliza la fila al
+	 * llamar a `update()`: se vacían los controles antes de volver a crearlos.
+	 */
+	private sliderWithNumber(setting: Setting, key: "mapZoomStep" | "notPlayerTransparency", min: number, max: number, step: number): void {
+		const el = setting.controlEl;
+		el.empty();
+		const value = this.plugin.settings[key];
+		const slider = el.createEl("input", { type: "range", cls: "slider", attr: { min: String(min), max: String(max), step: String(step) } });
+		slider.value = String(value);
+		const num = el.createEl("input", { type: "number", cls: "strakes-setting-number", attr: { min: String(min), max: String(max), step: String(step) } });
+		num.value = String(value);
+		slider.addEventListener("input", () => {
+			num.value = slider.value;
+			this.plugin.settings[key] = parseFloat(slider.value);
+			this.plugin.events.trigger("settings");
+		});
+		slider.addEventListener("change", () => void this.setControlValue(key, parseFloat(slider.value)));
+		num.addEventListener("input", () => {
+			const n = parseFloat(num.value.replace(",", "."));
+			if (!isFinite(n) || n < min || n > max) return;
+			slider.value = String(n);
+			void this.setControlValue(key, n);
+		});
 	}
 
 	private iconsDescription(): string {

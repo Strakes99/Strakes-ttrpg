@@ -2,7 +2,7 @@ import * as L from "leaflet";
 import { Keymap, Menu, Notice, Scope, setIcon, setTooltip, TextFileView, TFile, WorkspaceLeaf } from "obsidian";
 import { numberLocale, T } from "../i18n";
 import type StrakesTTRPG from "../main";
-import { uid, VIEW_TYPE_MAP } from "../types";
+import { MapRegion, uid, VIEW_TYPE_MAP } from "../types";
 import { confirmDialog, loadImageSize, promptText } from "../ui/modals";
 import { curvePoint, Pt } from "./geometry";
 import { nodeMarker, PIN_TOOLTIP_OPTIONS, pinIcon, pinTooltipText, segmentLabel } from "./render";
@@ -12,6 +12,7 @@ import { linktextOf, parseWikilink, resolveWikilink } from "./links";
 import {
 	bendsOf,
 	isItemVisible,
+	isPlayerVisible,
 	legsTime,
 	deleteNode,
 	distanceTime,
@@ -47,6 +48,7 @@ import {
 	splitSegment,
 } from "./mapData";
 import { editSegmentDialog, MapPropsModal, PinModal, RouteModal } from "./mapModals";
+import { regionBounds } from "../player/PlayerMap";
 
 type Mode = "navigate" | "pin" | "route" | "measure" | "calibrate" | "pick-target";
 
@@ -95,7 +97,8 @@ export class MapView extends TextFileView {
 	/** Capa activa: si es una capa del usuario, los pines y rutas nuevos van ahí. */
 	private currentLayerId: string | null = null;
 	private selectedRouteId: string | null = null;
-	private pinFilter = "";
+	/** Texto del buscador del panel (capas, rutas y marcadores). */
+	private filter = "";
 
 	private activeRouteId: string | null = null;
 	private activeRouteIsNew = false;
@@ -110,10 +113,20 @@ export class MapView extends TextFileView {
 	private noteLeaf: WorkspaceLeaf | null = null;
 	private pinHover = new PinHoverParent(() => this.plugin.settings.pinPreviewTitle);
 	private needsFit = true;
+	/** Tiempo real: mientras está activo, los jugadores siguen esta vista. */
+	private livePlayers = false;
+	private liveFrame = 0;
+	/** Marco de la vista de jugadores (div fijo sobre el mapa) y rectángulo de lo que ven ahora. */
+	private frameEl: HTMLElement | null = null;
+	private playerRect: L.LayerGroup | null = null;
+	/** true mientras se adapta tu vista a un cambio de tamaño: esos movimientos no se envían. */
+	private adapting = false;
 
 	private toolbarEl!: HTMLElement;
 	private mapEl!: HTMLElement;
 	private panelEl!: HTMLElement;
+	/** Parte del panel que se redibuja (el buscador queda fuera para no perder el foco). */
+	private panelBodyEl!: HTMLElement;
 	private statusEl!: HTMLElement;
 	private errorEl!: HTMLElement;
 	private panelOpen = true;
@@ -158,10 +171,31 @@ export class MapView extends TextFileView {
 		root.addClass("strakes-map-view");
 		// Iconos SVG importados o recargados: redibujar los pines.
 		this.registerEvent(this.plugin.events.on("icons", () => this.renderAll()));
+		// Pantalla de jugadores: qué muestra, qué región y de qué tamaño es su ventana.
+		this.registerEvent(this.plugin.events.on("player-content", () => this.renderAll()));
+		this.registerEvent(this.plugin.events.on("player-map-view", () => this.updatePlayerFrame()));
+		this.registerEvent(this.plugin.events.on("player-resize", () => this.updatePlayerFrame()));
+		this.registerEvent(
+			this.plugin.events.on("settings", () => {
+				this.applyMapSettings();
+				this.renderAll();
+			}),
+		);
 		this.toolbarEl = root.createDiv("strakes-map-toolbar");
 		const body = root.createDiv("strakes-map-body");
 		this.mapEl = body.createDiv("strakes-map-canvas");
 		this.panelEl = body.createDiv("strakes-map-panel");
+		// Buscador común a capas, rutas y marcadores, fijo arriba del panel.
+		const filterEl = this.panelEl.createEl("input", {
+			type: "search",
+			cls: "strakes-panel-filter",
+			attr: { placeholder: T("Buscar…", "Search…") },
+		});
+		filterEl.oninput = () => {
+			this.filter = filterEl.value;
+			this.renderPanel();
+		};
+		this.panelBodyEl = this.panelEl.createDiv("strakes-panel-content");
 		this.errorEl = body.createDiv("strakes-map-error");
 		this.errorEl.hide();
 		this.statusEl = root.createDiv("strakes-map-status");
@@ -170,12 +204,66 @@ export class MapView extends TextFileView {
 	}
 
 	async onClose(): Promise<void> {
+		if (this.liveFrame) window.cancelAnimationFrame(this.liveFrame);
 		this.map?.remove();
 		this.map = null;
 	}
 
 	onResize(): void {
-		this.map?.invalidateSize();
+		this.afterResize();
+	}
+
+	/**
+	 * Tras cambiar el tamaño del editor. En tiempo real, se adapta tu vista (el zoom) para
+	 * seguir mostrando la región de los jugadores: lo que ven ellos no cambia sin querer.
+	 */
+	private afterResize(): void {
+		const map = this.map;
+		if (!map) return;
+		const pc = this.plugin.playerContent;
+		const keep = this.livePlayers && this.isOnPlayerScreen() && pc?.kind === "map" ? pc.region : null;
+		this.adapting = true;
+		try {
+			map.invalidateSize();
+			// Zoom exacto (sin redondear al incremento): la región tiene que quedar igual.
+			if (keep) this.exactZoom(() => map.fitBounds(regionBounds(keep), { animate: false }));
+		} finally {
+			this.adapting = false;
+		}
+		this.updatePlayerFrame();
+	}
+
+	/**
+	 * Ejecuta un encuadre sin redondear el zoom al incremento (`zoomSnap`), para que lo
+	 * encuadrado quepa exacto. Con flyToBounds basta: el zoom de destino se calcula al llamarlo.
+	 */
+	private exactZoom(fit: () => void): void {
+		const map = this.map;
+		if (!map) return;
+		const snap = map.options.zoomSnap;
+		map.options.zoomSnap = 0;
+		try {
+			fit();
+		} finally {
+			map.options.zoomSnap = snap;
+		}
+	}
+
+	/**
+	 * Ajustes del plugin que afectan al mapa: el incremento del zoom (rueda y botones) y la
+	 * transparencia de lo que no ven los jugadores.
+	 */
+	private applyMapSettings(): void {
+		const s = this.plugin.settings;
+		const map = this.map;
+		if (map) {
+			const step = s.mapZoomStep > 0 ? s.mapZoomStep : 0.5;
+			map.options.zoomSnap = step;
+			map.options.zoomDelta = step;
+			// Así cada paso de la rueda da exactamente un incremento (Leaflet redondea hacia arriba a zoomSnap).
+			map.options.wheelPxPerZoomLevel = 100 / step;
+		}
+		this.mapEl.setCssProps({ "--strakes-not-player-opacity": String(1 - s.notPlayerTransparency / 100) });
 	}
 
 	getViewData(): string {
@@ -281,6 +369,12 @@ export class MapView extends TextFileView {
 		this.lastSnapshot = now;
 		this.requestSave();
 		this.updateHistoryButtons();
+		this.announceData();
+	}
+
+	/** Avisa del estado actual del mapa (la pantalla de jugadores lo redibuja sin esperar al guardado). */
+	private announceData(): void {
+		if (this.file && this.mapData) this.plugin.events.trigger("map-data", this.file.path, this.mapData);
 	}
 
 	// ---------- Deshacer / rehacer ----------
@@ -324,6 +418,7 @@ export class MapView extends TextFileView {
 		this.overlay?.clearLayers();
 		this.requestSave();
 		this.updateHistoryButtons();
+		this.announceData();
 		void this.refresh();
 	}
 
@@ -352,10 +447,12 @@ export class MapView extends TextFileView {
 			boxZoom: false,
 		});
 		map.on("click", (e: L.LeafletMouseEvent) => this.onMapClick(e));
+		map.on("move", () => this.followLive());
 		map.on("contextmenu", (e: L.LeafletMouseEvent) => this.onMapContextMenu(e));
 		this.overlay = L.layerGroup().addTo(map);
 		this.draftLayer = L.layerGroup().addTo(map);
 		this.map = map;
+		this.applyMapSettings();
 		// El contenedor puede tener tamaño 0 al abrir la pestaña.
 		window.setTimeout(() => map.invalidateSize(), 50);
 		return map;
@@ -400,7 +497,7 @@ export class MapView extends TextFileView {
 		if (this.needsFit && data.width && data.height) {
 			this.needsFit = false;
 			map.invalidateSize();
-			map.fitBounds(this.bounds());
+			this.exactZoom(() => map.fitBounds(this.bounds()));
 		}
 		this.renderAll();
 	}
@@ -458,11 +555,12 @@ export class MapView extends TextFileView {
 		this.renderStatus();
 		this.mapEl.toggleClass("is-editing", this.editing);
 		this.mapEl.dataset.mode = this.mode;
+		this.updatePlayerFrame();
 	}
 
 	private renderPin(pin: MapPin): void {
 		const g = this.groups.get(pin.layerId ?? "");
-		if (!g) return;
+		if (!g || pin.hidden) return;
 		const marker = L.marker(this.ll(pin), {
 			icon: pinIcon(pin),
 			draggable: this.editing,
@@ -470,6 +568,8 @@ export class MapView extends TextFileView {
 			riseOnHover: true,
 		});
 		marker.bindTooltip(pinTooltipText(pin), { ...PIN_TOOLTIP_OPTIONS, permanent: this.showLabels });
+		// Con el mapa en la pantalla de jugadores, lo que ellos no ven sale semitransparente.
+		if (this.isOnPlayerScreen() && !isPlayerVisible(this.mapData!, "pins", pin)) marker.on("add", () => marker.getElement()?.addClass("strakes-not-player"));
 		marker.on("click", (e: L.LeafletMouseEvent) => this.onPinClick(pin, e.originalEvent));
 		marker.on("contextmenu", (e: L.LeafletMouseEvent) => {
 			L.DomEvent.stop(e.originalEvent);
@@ -490,7 +590,8 @@ export class MapView extends TextFileView {
 	private renderRoute(route: MapRoute, nodes: Map<string, RouteNode>): void {
 		const data = this.mapData!;
 		const g = this.groups.get(route.layerId ?? "");
-		if (!g) return;
+		// Oculta con el ojo: no se dibuja, salvo la que se está trazando o extendiendo.
+		if (!g || (route.hidden && this.activeRouteId !== route.id)) return;
 		const latlngs = routePath(route, nodes).map((p) => this.ll(p));
 		const selected = this.selectedRouteId === route.id || this.activeRouteId === route.id;
 		const line = L.polyline(latlngs, {
@@ -498,7 +599,7 @@ export class MapView extends TextFileView {
 			weight: selected ? 6 : 4,
 			opacity: 0.9,
 			bubblingMouseEvents: false,
-			className: "strakes-route-line",
+			className: this.isOnPlayerScreen() && !isPlayerVisible(data, "routes", route) ? "strakes-route-line strakes-not-player" : "strakes-route-line",
 		});
 		const total = routeTotal(data, route, nodes);
 		// Tooltip: nombre, distancia total y tiempo al paso elegido en la herramienta Medir.
@@ -718,13 +819,116 @@ export class MapView extends TextFileView {
 			this.persist();
 			this.renderAll();
 		}).toggleClass("is-active", !!this.mapData?.showDistances);
-		this.toolButton(tb, "maximize", T("Encuadrar todo el mapa", "Fit the whole map"), () => this.map?.flyToBounds(this.bounds(), { duration: 0.5 }));
+		this.toolButton(tb, "maximize", T("Encuadrar todo el mapa", "Fit the whole map"), () => this.exactZoom(() => this.map?.flyToBounds(this.bounds(), { duration: 0.5 })));
+		tb.createDiv("strakes-toolbar-sep");
+		// Pantalla de jugadores: enviar lo que hay dentro del marco, o seguir tu vista en tiempo real.
+		const onScreen = this.isOnPlayerScreen();
+		this.toolButton(
+			tb,
+			"monitor-up",
+			onScreen
+				? T("Enviar esta vista a los jugadores (lo que hay dentro del marco)", "Send this view to the players (what's inside the frame)")
+				: T("Enviar el mapa a la pantalla de jugadores, con esta vista", "Send the map to the player screen, with this view"),
+			() => this.sendViewToPlayers(),
+		);
+		this.toolButton(
+			tb,
+			"cast",
+			this.livePlayers
+				? T("Tiempo real activado: los jugadores siguen tu vista (clic para desactivarlo)", "Live view on: the players follow your view (click to turn it off)")
+				: T("Tiempo real: que los jugadores sigan tu vista", "Live view: make the players follow your view"),
+			() => this.toggleLivePlayers(),
+		).toggleClass("is-active", this.livePlayers);
 		tb.createDiv("strakes-toolbar-spacer");
 		this.toolButton(tb, "panel-right", T("Mostrar/ocultar panel", "Show/hide panel"), () => {
 			this.panelOpen = !this.panelOpen;
 			this.renderPanel();
-			window.setTimeout(() => this.map?.invalidateSize(), 50);
+			window.setTimeout(() => this.afterResize(), 50);
 		}).toggleClass("is-active", this.panelOpen);
+	}
+
+	// ---------- Pantalla de jugadores ----------
+
+	/** ¿Se está mostrando este mapa en la pantalla de jugadores? */
+	private isOnPlayerScreen(): boolean {
+		const pc = this.plugin.playerContent;
+		return !!this.file && pc?.kind === "map" && pc.path === this.file.path;
+	}
+
+	/**
+	 * Marco de la vista de jugadores, en píxeles del contenedor del mapa: el mayor rectángulo
+	 * con la proporción de su ventana (no su resolución) que cabe en tu vista, centrado.
+	 * Sin pantalla de jugadores abierta, 16:9.
+	 */
+	private frameRect(): { x: number; y: number; w: number; h: number } | null {
+		const W = this.mapEl.clientWidth;
+		const H = this.mapEl.clientHeight;
+		if (!W || !H) return null;
+		const aspect = this.plugin.playerAspect() ?? 16 / 9;
+		const w = W / H > aspect ? H * aspect : W;
+		const h = w / aspect;
+		return { x: (W - w) / 2, y: (H - h) / 2, w, h };
+	}
+
+	/** Región del mapa que hay dentro del marco. */
+	private frameRegion(): MapRegion | null {
+		const map = this.map;
+		const f = this.frameRect();
+		if (!map || !f) return null;
+		const a = map.containerPointToLatLng([f.x, f.y]);
+		const b = map.containerPointToLatLng([f.x + f.w, f.y + f.h]);
+		return { south: Math.min(a.lat, b.lat), north: Math.max(a.lat, b.lat), west: Math.min(a.lng, b.lng), east: Math.max(a.lng, b.lng) };
+	}
+
+	/** Envía el mapa con lo que hay dentro del marco. Si ya está en la pantalla, la vista vuela allí. */
+	private sendViewToPlayers(): void {
+		if (!this.file || !this.map) return;
+		void this.plugin.sendMapToPlayers(this.file.path, this.frameRegion(), this.isOnPlayerScreen());
+	}
+
+	private toggleLivePlayers(): void {
+		this.livePlayers = !this.livePlayers;
+		if (this.livePlayers) this.sendViewToPlayers();
+		this.renderAll();
+	}
+
+	/** En tiempo real, cada movimiento de tu vista se envía (como mucho uno por fotograma). */
+	private followLive(): void {
+		if (!this.livePlayers || this.adapting || this.liveFrame || !this.isOnPlayerScreen()) return;
+		this.liveFrame = window.requestAnimationFrame(() => {
+			this.liveFrame = 0;
+			const region = this.frameRegion();
+			if (region && this.file && this.isOnPlayerScreen()) void this.plugin.sendMapToPlayers(this.file.path, region, false);
+		});
+	}
+
+	/**
+	 * Con el mapa en la pantalla de jugadores: el marco (lo que se enviaría; en tiempo real, lo
+	 * que ven) y, si no es en tiempo real, el rectángulo de lo que ven ahora.
+	 */
+	private updatePlayerFrame(): void {
+		const on = this.isOnPlayerScreen();
+		if (!on) this.livePlayers = false;
+		const show = on && this.plugin.settings.showPlayerFrame;
+		const f = show ? this.frameRect() : null;
+		if (f) {
+			this.frameEl ??= this.mapEl.createDiv("strakes-player-frame");
+			this.frameEl.setCssStyles({ left: `${f.x}px`, top: `${f.y}px`, width: `${f.w}px`, height: `${f.h}px` });
+		} else {
+			this.frameEl?.remove();
+			this.frameEl = null;
+		}
+		this.playerRect?.remove();
+		this.playerRect = null;
+		const pc = this.plugin.playerContent;
+		if (show && !this.livePlayers && this.map && pc?.kind === "map") {
+			const bounds = pc.region ? regionBounds(pc.region) : this.bounds();
+			// Línea del color de acento sobre un halo oscuro: se ve sobre cualquier fondo.
+			this.playerRect = L.layerGroup([
+				L.rectangle(bounds, { className: "strakes-player-rect-halo", interactive: false, fill: false, weight: 7 }),
+				L.rectangle(bounds, { className: "strakes-player-rect", interactive: false, fill: false, weight: 3 }),
+			]).addTo(this.map);
+		}
 	}
 
 	private toolButton(parent: HTMLElement, icon: string, label: string, onClick: () => void): HTMLElement {
@@ -737,33 +941,15 @@ export class MapView extends TextFileView {
 	}
 
 	private renderPanel(): void {
-		const panel = this.panelEl;
+		const panel = this.panelBodyEl;
 		const data = this.mapData;
+		// Al redibujar se conserva el desplazamiento (si no, volvería arriba con cada clic).
+		const scroll = this.panelEl.scrollTop;
 		panel.empty();
-		panel.toggle(this.panelOpen);
+		this.panelEl.toggle(this.panelOpen);
 		if (!data || !this.panelOpen) return;
-
-		// Mostrar: interruptores fijos por tipo, independientes de las capas.
-		const showSec = this.section(panel, T("Mostrar", "Show"));
-		const typeRow = (type: "pins" | "routes", icon: string, label: string, count: number) => {
-			const row = showSec.createDiv("strakes-panel-row strakes-type-row");
-			const cb = row.createEl("input", { type: "checkbox" });
-			cb.checked = type === "pins" ? data.showPins : data.showRoutes;
-			cb.onchange = () => {
-				if (type === "pins") data.showPins = cb.checked;
-				else data.showRoutes = cb.checked;
-				this.persist();
-				this.renderAll();
-			};
-			setIcon(row.createSpan("strakes-layer-kind"), icon);
-			row.createDiv({ cls: "strakes-panel-name", text: label });
-			row.createDiv({ cls: "strakes-panel-meta", text: String(count) });
-			row.onclick = (e) => {
-				if (e.target !== cb) cb.click();
-			};
-		};
-		typeRow("pins", "map-pin", T("Marcadores", "Markers"), data.pins.length);
-		typeRow("routes", "route", T("Rutas", "Routes"), data.routes.length);
+		const q = this.filter.trim().toLowerCase();
+		const match = (name: string) => !q || name.toLowerCase().includes(q);
 
 		// Capas del usuario: cada pin o ruta puede estar en una o en ninguna.
 		const layersSec = this.collapsibleSection(panel, "layers", T("Capas", "Layers"), data.layers.length, {
@@ -773,16 +959,12 @@ export class MapView extends TextFileView {
 		});
 		if (!data.layers.length)
 			layersSec.createDiv({ cls: "strakes-panel-meta strakes-panel-empty", text: T("Sin capas. Crea una con + para agrupar marcadores y rutas.", "No layers. Create one with + to group markers and routes.") });
-		for (const layer of data.layers) {
+		for (const layer of data.layers.filter((l) => match(l.name))) {
 			const row = layersSec.createDiv("strakes-panel-row strakes-layer-row");
 			row.toggleClass("is-current", layer.id === this.currentLayerId);
-			const cb = row.createEl("input", { type: "checkbox" });
-			cb.checked = layer.visible;
-			cb.onchange = () => {
-				layer.visible = cb.checked;
-				this.persist();
-				this.renderAll();
-			};
+			row.toggleClass("is-hidden", !layer.visible);
+			this.visToggle(row, "dm", layer.visible, (v) => (layer.visible = v));
+			this.visToggle(row, "players", layer.players === true, (v) => (layer.players = v || undefined));
 			const nPins = data.pins.filter((p) => p.layerId === layer.id).length;
 			const nRoutes = data.routes.filter((r) => r.layerId === layer.id).length;
 			const name = row.createDiv({ cls: "strakes-panel-name", text: layer.name });
@@ -797,51 +979,49 @@ export class MapView extends TextFileView {
 			more.onclick = (evt) => this.layerMenu(layer.id, evt);
 		}
 
-		// Rutas
-		if (data.routes.length) {
-			const routesSec = this.collapsibleSection(panel, "routes", T("Rutas", "Routes"), data.routes.length);
-			const nodes = nodeMap(data);
-			for (const r of data.routes) {
-				const row = routesSec.createDiv("strakes-panel-row");
-				row.toggleClass("is-current", r.id === this.selectedRouteId);
-				const sw = row.createDiv("strakes-swatch");
-				sw.setCssStyles({ background: r.color });
-				row.createDiv({ cls: "strakes-panel-name", text: r.name });
-				row.createDiv({ cls: "strakes-panel-meta", text: formatTotal(routeTotal(data, r, nodes), data.unit, this.plugin.settings.displayUnit) });
-				row.onclick = () => {
-					this.selectedRouteId = r.id;
-					const line = this.routeLines.get(r.id);
-					if (line && line.getLatLngs().length) this.map?.flyToBounds(line.getBounds().pad(0.3), { duration: 0.5 });
-					this.renderAll();
-				};
-				row.oncontextmenu = (evt) => this.routeMenu(r, evt);
-			}
+		// Rutas. En la cabecera, los interruptores del tipo (todas las rutas).
+		const routesSec = this.collapsibleSection(panel, "routes", T("Rutas", "Routes"), data.routes.length, undefined, (tools) => {
+			this.visToggle(tools, "dm", data.showRoutes, (v) => (data.showRoutes = v), T("todas las rutas", "all routes"));
+			this.visToggle(tools, "players", data.playerRoutes, (v) => (data.playerRoutes = v), T("todas las rutas", "all routes"));
+		});
+		if (!data.routes.length) routesSec.createDiv({ cls: "strakes-panel-meta strakes-panel-empty", text: T("Sin rutas.", "No routes.") });
+		const nodes = nodeMap(data);
+		for (const r of data.routes.filter((x) => match(x.name))) {
+			const row = routesSec.createDiv("strakes-panel-row");
+			row.toggleClass("is-current", r.id === this.selectedRouteId);
+			row.toggleClass("is-hidden", r.hidden === true);
+			this.visToggle(row, "dm", !r.hidden, (v) => (r.hidden = v ? undefined : true));
+			this.visToggle(row, "players", r.players === true, (v) => (r.players = v || undefined));
+			const sw = row.createDiv("strakes-swatch");
+			sw.setCssStyles({ background: r.color });
+			row.createDiv({ cls: "strakes-panel-name", text: r.name });
+			row.createDiv({ cls: "strakes-panel-meta", text: formatTotal(routeTotal(data, r, nodes), data.unit, this.plugin.settings.displayUnit) });
+			row.onclick = () => {
+				this.selectedRouteId = r.id;
+				const line = this.routeLines.get(r.id);
+				if (line && line.getLatLngs().length) this.map?.flyToBounds(line.getBounds().pad(0.3), { duration: 0.5 });
+				this.renderAll();
+			};
+			row.oncontextmenu = (evt) => this.routeMenu(r, evt);
 		}
 
-		// Pines
-		if (data.pins.length) {
-			const pinsSec = this.collapsibleSection(panel, "pins", T("Marcadores", "Markers"), data.pins.length);
-			const filter = pinsSec.createEl("input", { type: "search", cls: "strakes-panel-filter", attr: { placeholder: T("Filtrar…", "Filter…") } });
-			filter.value = this.pinFilter;
-			const list = pinsSec.createDiv();
-			const renderList = () => {
-				list.empty();
-				const q = this.pinFilter.toLowerCase();
-				for (const p of data.pins.filter((x) => x.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name))) {
-					const row = list.createDiv("strakes-panel-row");
-					const sw = row.createDiv("strakes-swatch is-round");
-					sw.setCssStyles({ background: p.color });
-					row.createDiv({ cls: "strakes-panel-name", text: p.name });
-					row.createDiv({ cls: "strakes-panel-meta", text: data.layers.find((l) => l.id === p.layerId)?.name ?? "" });
-					row.onclick = () => this.map?.flyTo(this.ll(p), Math.max(this.map.getZoom(), 0), { duration: 0.6 });
-					row.oncontextmenu = (evt) => this.pinMenu(p, evt);
-				}
-			};
-			filter.oninput = () => {
-				this.pinFilter = filter.value;
-				renderList();
-			};
-			renderList();
+		// Marcadores. En la cabecera, los interruptores del tipo (todos los marcadores).
+		const pinsSec = this.collapsibleSection(panel, "pins", T("Marcadores", "Markers"), data.pins.length, undefined, (tools) => {
+			this.visToggle(tools, "dm", data.showPins, (v) => (data.showPins = v), T("todos los marcadores", "all markers"));
+			this.visToggle(tools, "players", data.playerPins, (v) => (data.playerPins = v), T("todos los marcadores", "all markers"));
+		});
+		if (!data.pins.length) pinsSec.createDiv({ cls: "strakes-panel-meta strakes-panel-empty", text: T("Sin marcadores.", "No markers.") });
+		for (const p of data.pins.filter((x) => match(x.name)).sort((a, b) => a.name.localeCompare(b.name))) {
+			const row = pinsSec.createDiv("strakes-panel-row");
+			row.toggleClass("is-hidden", p.hidden === true);
+			this.visToggle(row, "dm", !p.hidden, (v) => (p.hidden = v ? undefined : true));
+			this.visToggle(row, "players", p.players === true, (v) => (p.players = v || undefined));
+			const sw = row.createDiv("strakes-swatch is-round");
+			sw.setCssStyles({ background: p.color });
+			row.createDiv({ cls: "strakes-panel-name", text: p.name });
+			row.createDiv({ cls: "strakes-panel-meta", text: data.layers.find((l) => l.id === p.layerId)?.name ?? "" });
+			row.onclick = () => this.map?.flyTo(this.ll(p), Math.max(this.map.getZoom(), 0), { duration: 0.6 });
+			row.oncontextmenu = (evt) => this.pinMenu(p, evt);
 		}
 
 		// Escala
@@ -852,6 +1032,33 @@ export class MapView extends TextFileView {
 				? `100 px = ${displayDistance(data.scale * 100, data.unit, this.plugin.settings.displayUnit)}`
 				: T("Sin escala: escribe la distancia de cada tramo (clic en su etiqueta).", "No scale: enter the distance of each segment (click its label)."),
 		});
+		this.panelEl.scrollTop = scroll;
+	}
+
+	/**
+	 * Interruptor de visibilidad con icono, como el ojo de los combatientes: ojo = vista del DM,
+	 * pantalla = jugadores. Apagado, el icono sale tachado y en gris. `what` completa el tooltip
+	 * de los interruptores de tipo («todas las rutas»).
+	 */
+	private visToggle(parent: HTMLElement, kind: "dm" | "players", on: boolean, set: (v: boolean) => void, what?: string): void {
+		const b = parent.createEl("button", { cls: "clickable-icon strakes-vis-toggle" });
+		setIcon(b, kind === "dm" ? (on ? "eye" : "eye-off") : on ? "monitor" : "monitor-off");
+		b.toggleClass("is-off", !on);
+		const tip =
+			kind === "dm"
+				? on
+					? T("Visible en tu vista · clic para ocultar", "Visible in your view · click to hide")
+					: T("Oculto en tu vista · clic para mostrar", "Hidden in your view · click to show")
+				: on
+					? T("Visible para los jugadores · clic para ocultar", "Visible to players · click to hide")
+					: T("Oculto a los jugadores · clic para mostrar", "Hidden from players · click to show");
+		setTooltip(b, what ? `${tip} (${what})` : tip);
+		b.onclick = (e) => {
+			e.stopPropagation();
+			set(!on);
+			this.persist();
+			this.renderAll();
+		};
 	}
 
 	private section(parent: HTMLElement, title: string, icon?: string, tip?: string, onClick?: () => void): HTMLElement {
@@ -878,12 +1085,15 @@ export class MapView extends TextFileView {
 		title: string,
 		count: number,
 		action?: { icon: string; tip: string; onClick: () => void },
+		/** Botones extra de la cabecera (p. ej. los interruptores de visibilidad del tipo). */
+		tools?: (el: HTMLElement) => void,
 	): HTMLElement {
 		const collapsed = this.plugin.settings.collapsedMapSections;
 		const sec = parent.createDiv("strakes-panel-section is-collapsible");
 		const head = sec.createDiv("strakes-panel-head");
+		// Los interruptores del tipo, a la izquierda: en la misma columna que los de cada fila.
+		if (tools) tools(head.createDiv("strakes-panel-tools"));
 		const toggle = head.createDiv("strakes-panel-toggle");
-		const chevron = toggle.createSpan("strakes-panel-chevron");
 		toggle.createSpan({ text: title });
 		toggle.createSpan({ cls: "strakes-panel-count", text: String(count) });
 		if (action) {
@@ -895,20 +1105,26 @@ export class MapView extends TextFileView {
 				action.onClick();
 			};
 		}
+		// La flecha de plegar, al otro extremo.
+		const chevron = head.createDiv("strakes-panel-chevron clickable-icon");
 		const body = sec.createDiv("strakes-panel-body");
 		const apply = () => {
 			const isCollapsed = collapsed.includes(key);
 			sec.toggleClass("is-collapsed", isCollapsed);
-			setIcon(chevron, isCollapsed ? "chevron-right" : "chevron-down");
-			setTooltip(toggle, isCollapsed ? T("Desplegar", "Expand") : T("Plegar", "Collapse"));
+			setIcon(chevron, isCollapsed ? "chevron-left" : "chevron-down");
+			const tip = isCollapsed ? T("Desplegar", "Expand") : T("Plegar", "Collapse");
+			setTooltip(toggle, tip);
+			setTooltip(chevron, tip);
 		};
-		toggle.onclick = () => {
+		const flip = () => {
 			const i = collapsed.indexOf(key);
 			if (i >= 0) collapsed.splice(i, 1);
 			else collapsed.push(key);
 			void this.plugin.saveSettings();
 			apply();
 		};
+		toggle.onclick = flip;
+		chevron.onclick = flip;
 		apply();
 		return body;
 	}
@@ -1182,6 +1398,16 @@ export class MapView extends TextFileView {
 			);
 		}
 		m.addItem((i) => i.setTitle(T("Editar…", "Edit…")).setIcon("pencil").onClick(() => this.openPinModal(pin, false)));
+		m.addItem((i) =>
+			i
+				.setTitle(pin.players ? T("Ocultar a los jugadores", "Hide from players") : T("Mostrar a los jugadores", "Show to players"))
+				.setIcon(pin.players ? "monitor-off" : "monitor")
+				.onClick(() => {
+					pin.players = pin.players ? undefined : true;
+					this.persist();
+					this.renderAll();
+				}),
+		);
 		this.addMoveToLayerItem(m, evt, pin);
 		m.addItem((i) =>
 			i
@@ -1386,6 +1612,16 @@ export class MapView extends TextFileView {
 		const data = this.mapData!;
 		const m = new Menu();
 		m.addItem((i) => i.setTitle(T("Editar ruta y distancias…", "Edit route and distances…")).setIcon("pencil").onClick(() => this.openRouteModal(route)));
+		m.addItem((i) =>
+			i
+				.setTitle(route.players ? T("Ocultar a los jugadores", "Hide from players") : T("Mostrar a los jugadores", "Show to players"))
+				.setIcon(route.players ? "monitor-off" : "monitor")
+				.onClick(() => {
+					route.players = route.players ? undefined : true;
+					this.persist();
+					this.renderAll();
+				}),
+		);
 		this.addMoveToLayerItem(m, evt, route);
 		const extend = (atStart: boolean) => {
 			this.startRouteMode();
@@ -1523,7 +1759,7 @@ export class MapView extends TextFileView {
 
 	private visibleRoutes(): MapRoute[] {
 		const data = this.mapData!;
-		return data.routes.filter((r) => isItemVisible(data, "routes", r.layerId));
+		return data.routes.filter((r) => !r.hidden && isItemVisible(data, "routes", r.layerId));
 	}
 
 	private measurePick(p: Pt, nodeId?: string): void {

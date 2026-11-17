@@ -6,15 +6,21 @@ import { nearestOnPolyline, polylineLength, Pt, smoothPath } from "./geometry";
 // (lo que espera Leaflet con CRS.Simple; la imagen ocupa [0..height] × [0..width]).
 
 /**
- * Visibilidad en el mapa:
- *  - Dos interruptores fijos por tipo: Pines (showPins) y Rutas (showRoutes).
+ * Visibilidad en el mapa. Hay dos vistas independientes, la del DM y la de los jugadores:
+ *  - Dos interruptores fijos por tipo: Pines (showPins / playerPins) y Rutas (showRoutes / playerRoutes).
  *  - Capas creadas por el usuario; cada pin o ruta está en una capa o en ninguna (layerId null).
- *  Un elemento se ve si su tipo está activo Y (no tiene capa o su capa está visible).
+ *  - Cada pin o ruta: `hidden` (oculto en la vista del DM) y `players` (visible para jugadores).
+ *  DM: un elemento se ve si no está oculto, su tipo está activo y (no tiene capa o su capa está visible).
+ *  Jugadores: solo si el elemento, su tipo y su capa (si tiene) están marcados para jugadores.
+ *  Lo que no tiene el campo de jugadores cuenta como oculto a los jugadores.
  */
 export interface MapLayer {
 	id: string;
 	name: string;
+	/** Visible en la vista del DM. */
 	visible: boolean;
+	/** Visible para los jugadores. Sin definir = oculta a los jugadores. */
+	players?: boolean;
 }
 
 export type ItemType = "pins" | "routes";
@@ -29,6 +35,14 @@ export function isItemVisible(
 	if (!typeOn) return false;
 	if (!layerId) return true;
 	return overrides?.layers?.get(layerId) ?? data.layers.find((l) => l.id === layerId)?.visible ?? true;
+}
+
+/** ¿Lo ven los jugadores? Tienen que estar marcados el elemento, su tipo y su capa (si tiene). */
+export function isPlayerVisible(data: MapData, type: ItemType, item: { layerId: string | null; players?: boolean }): boolean {
+	if (item.players !== true) return false;
+	if (!(type === "pins" ? data.playerPins : data.playerRoutes)) return false;
+	if (!item.layerId) return true;
+	return data.layers.find((l) => l.id === item.layerId)?.players === true;
 }
 
 export interface MapPin {
@@ -55,6 +69,10 @@ export interface MapPin {
 	 * portal sin nota, del marcador destino. Ver map/autoName.ts. Sin definir = nombre a mano.
 	 */
 	autoName?: boolean;
+	/** Oculto en la vista del DM (ojo del panel). Sin definir = visible. */
+	hidden?: boolean;
+	/** Visible para los jugadores. Sin definir = oculto a los jugadores. */
+	players?: boolean;
 }
 
 export interface RouteNode {
@@ -81,6 +99,10 @@ export interface MapRoute {
 	bends?: Pt[][];
 	/** Si es true, la línea pasa por los puntos de curva con una curva suave. */
 	smooth?: boolean;
+	/** Oculta en la vista del DM (ojo del panel). Sin definir = visible. */
+	hidden?: boolean;
+	/** Visible para los jugadores. Sin definir = oculta a los jugadores. */
+	players?: boolean;
 }
 
 export interface MapData {
@@ -92,9 +114,12 @@ export interface MapData {
 	/** Unidades por píxel. null = mapa sin escala (solo distancias manuales). */
 	scale: number | null;
 	showDistances: boolean;
-	/** Interruptores por tipo, independientes de las capas. */
+	/** Interruptores por tipo, independientes de las capas (vista del DM). */
 	showPins: boolean;
 	showRoutes: boolean;
+	/** Interruptores por tipo para los jugadores. */
+	playerPins: boolean;
+	playerRoutes: boolean;
 	layers: MapLayer[];
 	pins: MapPin[];
 	nodes: RouteNode[];
@@ -118,6 +143,8 @@ export function emptyMap(image: string, width: number, height: number, unit: str
 		showDistances: true,
 		showPins: true,
 		showRoutes: true,
+		playerPins: false,
+		playerRoutes: false,
 		layers: [],
 		pins: [],
 		nodes: [],
@@ -141,11 +168,14 @@ export function normalizeMap(raw: unknown, defaultUnit = "km"): MapData {
 		showDistances: r.showDistances !== false,
 		showPins: r.showPins !== false,
 		showRoutes: r.showRoutes !== false,
+		playerPins: r.playerPins === true,
+		playerRoutes: r.playerRoutes === true,
 		layers: Array.isArray(r.layers) ? r.layers : [],
 		pins: Array.isArray(r.pins) ? r.pins : [],
 		nodes: Array.isArray(r.nodes) ? r.nodes : [],
 		routes: Array.isArray(r.routes) ? r.routes : [],
 	};
+	for (const l of data.layers) l.players = l.players === true ? true : undefined;
 	// Una capa inexistente equivale a «sin capa».
 	const layerIds = new Set(data.layers.map((l) => l.id));
 	for (const p of data.pins) {
@@ -157,6 +187,8 @@ export function normalizeMap(raw: unknown, defaultUnit = "km"): MapData {
 		p.icon ??= "";
 		if (typeof p.iconColor !== "string" || !p.iconColor) p.iconColor = undefined;
 		p.autoName = p.autoName === true ? true : undefined;
+		p.hidden = p.hidden === true ? true : undefined;
+		p.players = p.players === true ? true : undefined;
 	}
 	for (const rt of data.routes) {
 		// Un .smap escrito a mano puede no traer nombre: sin él fallarían las etiquetas.
@@ -176,6 +208,8 @@ export function normalizeMap(raw: unknown, defaultUnit = "km"): MapData {
 		while (rt.times.length < n) rt.times.push(null);
 		rt.times.length = n;
 		rt.color ??= ROUTE_COLORS[0];
+		rt.hidden = rt.hidden === true ? true : undefined;
+		rt.players = rt.players === true ? true : undefined;
 	}
 	return data;
 }

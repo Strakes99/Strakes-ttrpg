@@ -36,6 +36,14 @@
 	inset: 0;
 	overflow: auto;
 }
+/* Mapa en la pantalla de jugadores: ocupa toda la pantalla, detrás de la iniciativa. */
+.strakes-player-map {
+	position: absolute;
+	inset: 0;
+	/* Contexto de apilamiento propio: las capas de Leaflet (z-index 400–700) no tapan la iniciativa. */
+	z-index: 0;
+}
+.strakes-player-map.leaflet-container { background: var(--strakes-player-bg); }
 .strakes-player-image-wrap {
 	width: 100%;
 	height: 100%;
@@ -1078,6 +1086,8 @@ input.strakes-portrait-zoom-num {
 }
 .strakes-panel-chevron {
 	display: flex;
+	padding: 2px;
+	cursor: pointer;
 }
 .strakes-panel-chevron svg {
 	width: 12px;
@@ -1102,6 +1112,7 @@ input.strakes-portrait-zoom-num {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
+	gap: 6px;
 	font-weight: 600;
 	text-transform: uppercase;
 	font-size: var(--font-ui-smaller);
@@ -1123,17 +1134,6 @@ input.strakes-portrait-zoom-num {
 	background: var(--background-modifier-active-hover);
 }
 .strakes-layer-row.is-current .strakes-panel-name { font-weight: 700; }
-.strakes-layer-kind {
-	display: flex;
-	color: var(--text-muted);
-}
-.strakes-layer-kind svg {
-	width: 13px;
-	height: 13px;
-}
-.strakes-type-row {
-	cursor: pointer;
-}
 .strakes-panel-empty {
 	white-space: normal;
 	padding: 2px 4px;
@@ -1151,9 +1151,43 @@ input.strakes-portrait-zoom-num {
 	white-space: nowrap;
 }
 .strakes-panel-row .clickable-icon { padding: 2px; }
+/* Editor con el mapa en la pantalla de jugadores: lo que ellos no ven, semitransparente
+   (filter y no opacity: Leaflet escribe la opacidad de los marcadores en línea). */
+.strakes-map-canvas .strakes-not-player { filter: opacity(var(--strakes-not-player-opacity, 0.4)); }
+/* Marco: lo que verían los jugadores al enviar (proporción de su ventana). */
+.strakes-player-frame {
+	position: absolute;
+	z-index: 650;
+	pointer-events: none;
+	box-sizing: border-box;
+	/* Color de acento con halo oscuro por fuera y por dentro: se distingue sobre cualquier fondo. */
+	border: 3px dashed var(--interactive-accent);
+	box-shadow:
+		0 0 0 2px rgba(0, 0, 0, 0.6),
+		inset 0 0 0 2px rgba(0, 0, 0, 0.6);
+}
+/* Rectángulo de lo que ven ahora los jugadores: línea continua de acento sobre un halo oscuro. */
+.strakes-player-rect { stroke: var(--interactive-accent); }
+.strakes-player-rect-halo { stroke: rgba(0, 0, 0, 0.6); }
+.strakes-setting-number { width: 5em; }
+/* Interruptores de visibilidad (ojo = DM, pantalla = jugadores): apagados, tachados y en gris. */
+.strakes-vis-toggle.is-off { color: var(--text-faint); }
+.strakes-panel-row.is-hidden .strakes-panel-name { color: var(--text-faint); }
+/* Interruptores del tipo en la cabecera: misma columna que los de las filas (padding y gap de .strakes-panel-row). */
+.strakes-panel-tools {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding-left: 4px;
+}
+.strakes-panel-tools .clickable-icon { padding: 2px; }
+/* Buscador del panel: fijo arriba al desplazarse. */
 .strakes-panel-filter {
+	position: sticky;
+	top: -6px;
+	z-index: 1;
 	width: 100%;
-	margin-bottom: 4px;
+	margin-bottom: 6px;
 }
 .strakes-swatch {
 	width: 12px;
