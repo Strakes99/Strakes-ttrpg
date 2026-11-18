@@ -733,15 +733,28 @@ export class RouteModal extends Modal {
 	private route: MapRoute;
 	/** Capas creadas en este diálogo; se añaden al mapa solo al guardar. */
 	private newLayers: MapLayer[] = [];
+	/** Nombre con AUTO y nota enlazada (1.3), como en las zonas. */
+	private fields: NameLinkFields;
 
 	constructor(
 		app: App,
 		private data: MapData,
 		route: MapRoute,
+		sourcePath: string,
 		private onDone: (r: MapRoute | null, deleted: boolean) => void,
 	) {
 		super(app);
 		this.route = structuredClone(route);
+		this.fields = new NameLinkFields(app, this.route, sourcePath, {
+			autoTip: T(
+				"Nombre automático: el de la nota enlazada (o su encabezado o alias). Escribir un nombre la desmarca.",
+				"Automatic name: the linked note's (or its heading or alias). Typing a name unticks it.",
+			),
+			linkDesc: T(
+				"Opcional. Se guarda como wikilink, ej. [[Nota]] o [[Nota#Encabezado]]. Con la edición bloqueada, clic en la ruta abre la nota (Ctrl/Cmd+clic: en pestaña nueva).",
+				"Optional. Saved as a wikilink, e.g. [[Note]] or [[Note#Heading]]. With editing locked, clicking the route opens the note (Ctrl/Cmd+click: in a new tab).",
+			),
+		});
 	}
 
 	onOpen(): void {
@@ -753,7 +766,7 @@ export class RouteModal extends Modal {
 		const el = this.contentEl;
 		el.empty();
 		const r = this.route;
-		new Setting(el).setName(T("Nombre", "Name")).addText((t) => t.setValue(r.name).onChange((v) => (r.name = v)));
+		this.fields.render(el, false);
 		new Setting(el).setName(T("Color", "Color")).addColorPicker((c) => c.setValue(r.color).onChange((v) => (r.color = v)));
 		layerDropdown(this.app, new Setting(el).setName(T("Capa", "Layer")), this.data, this.newLayers, r.layerId, (id) => (r.layerId = id), () => this.render());
 		new Setting(el)

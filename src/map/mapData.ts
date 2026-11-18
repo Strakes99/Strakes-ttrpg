@@ -101,6 +101,10 @@ export interface MapRoute {
 	name: string;
 	/** Capa del usuario, o null = sin capa. */
 	layerId: string | null;
+	/** Wikilink a una nota (opcional, 1.3), como en los marcadores y las zonas. */
+	link?: string;
+	/** Casilla AUTO: el nombre sale de la nota enlazada. Sin definir = a mano (las rutas nuevas, «Ruta N»). */
+	autoName?: boolean;
 	color: string;
 	nodeIds: string[];
 	/** Distancia manual de cada tramo (segments[i] une nodeIds[i] y nodeIds[i+1]). null = sin definir. */
@@ -260,6 +264,8 @@ export function normalizeMap(raw: unknown, defaultUnit = "km"): MapData {
 		while (rt.times.length < n) rt.times.push(null);
 		rt.times.length = n;
 		rt.color ??= ROUTE_COLORS[0];
+		if (typeof rt.link !== "string" || !rt.link.trim()) rt.link = undefined;
+		rt.autoName = rt.autoName === true ? true : undefined;
 		rt.hidden = rt.hidden === true ? true : undefined;
 		rt.players = rt.players === true ? true : undefined;
 	}

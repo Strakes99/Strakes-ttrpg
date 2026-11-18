@@ -468,9 +468,10 @@ export default class StrakesTTRPG extends Plugin {
 			if (!needles.some((n) => text.includes(n.path) || lower.includes(n.base))) continue;
 			await this.app.vault.process(f, (current) => {
 				try {
-					const d = JSON.parse(current) as { image?: unknown; pins?: unknown; zones?: unknown };
+					const d = JSON.parse(current) as { image?: unknown; pins?: unknown; routes?: unknown; zones?: unknown };
 					const pins = Array.isArray(d.pins) ? (d.pins as { link?: unknown }[]) : [];
-					// Las zonas también enlazan notas (1.3).
+					// Las rutas y las zonas también enlazan notas (1.3).
+					const routes = Array.isArray(d.routes) ? (d.routes as { link?: unknown }[]) : [];
 					const zones = Array.isArray(d.zones) ? (d.zones as { link?: unknown }[]) : [];
 					let changed = false;
 					// En orden: si un archivo se renombró dos veces seguidas, se aplican las dos.
@@ -479,7 +480,7 @@ export default class StrakesTTRPG extends Plugin {
 							d.image = file.path;
 							changed = true;
 						}
-						for (const p of [...pins, ...zones]) {
+						for (const p of [...pins, ...routes, ...zones]) {
 							if (typeof p.link !== "string") continue;
 							const w = parseWikilink(p.link);
 							if (!linkpathMatchesPath(w.linkpath, oldPath)) continue;
@@ -494,9 +495,9 @@ export default class StrakesTTRPG extends Plugin {
 						}
 					}
 					// Marcadores con AUTO: el nombre sigue a la nota renombrada (y los portales a ellos).
-					// Zonas con AUTO: igual, desde su enlace.
+					// Rutas y zonas con AUTO: igual, desde su enlace.
 					if (changed)
-						for (const list of [pins, zones]) applyAutoNames(list.filter((p): p is AutoNamePin => typeof (p as { id?: unknown }).id === "string"));
+						for (const list of [pins, routes, zones]) applyAutoNames(list.filter((p): p is AutoNamePin => typeof (p as { id?: unknown }).id === "string"));
 					return changed ? JSON.stringify(d, null, "\t") : current;
 				} catch {
 					return current;

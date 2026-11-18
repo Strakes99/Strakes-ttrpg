@@ -455,10 +455,18 @@ export class MapEmbed extends Component {
 		const nodes = nodeMap(data);
 		for (const route of data.routes) {
 			if (route.hidden || !this.isVisible("routes", route.layerId)) continue;
+			// La línea muestra su nombre al pasar el cursor (salvo con las etiquetas de ruta, que ya lo
+			// muestran) y, con nota enlazada, clic para abrirla y Ctrl+cursor para la vista previa.
 			const line = L.polyline(
 				routePath(route, nodes).map((p) => toLatLng(p)),
-				{ color: route.color || ROUTE_COLORS[0], weight: 4, opacity: 0.9, interactive: false },
+				{ color: route.color || ROUTE_COLORS[0], weight: 4, opacity: 0.9, bubblingMouseEvents: false },
 			);
+			if (!this.labels.routes && route.name.trim()) line.bindTooltip(route.name, { sticky: true, className: "strakes-map-tooltip" });
+			if (route.link) {
+				const link = route.link;
+				line.on("click", (e: L.LeafletMouseEvent) => this.openNote(link, e.originalEvent));
+				line.on("mouseover", (e: L.LeafletMouseEvent) => this.pinHover.show(this.app, route, e.originalEvent, undefined, this.file.path));
+			}
 			content.addLayer(line);
 			// Como en la pantalla de jugadores: el nombre de la ruta una vez, sin tramos.
 			if (this.labels.routes) {
@@ -491,17 +499,21 @@ export class MapEmbed extends Component {
 			if (label) content.addLayer(label);
 		} else if (zone.name.trim()) poly.bindTooltip(zone.name, { sticky: true, className: "strakes-map-tooltip" });
 		poly.on("click", (e: L.LeafletMouseEvent) => {
-			if (!zone.link) return;
-			if (!resolveWikilink(this.app, zone.link, this.file.path)) {
-				new Notice(T(`No se encuentra la nota ${zone.link}`, `Note not found: ${zone.link}`));
-				return;
-			}
-			void this.app.workspace.openLinkText(linktextOf(zone.link), this.file.path, Keymap.isModEvent(e.originalEvent));
+			if (zone.link) this.openNote(zone.link, e.originalEvent);
 		});
 		poly.on("mouseover", (e: L.LeafletMouseEvent) => {
 			if (zone.link) this.pinHover.show(this.app, zone, e.originalEvent, undefined, this.file.path);
 		});
 		content.addLayer(poly);
+	}
+
+	/** Abre la nota enlazada de una zona o una ruta (Ctrl/Cmd+clic: en pestaña nueva). */
+	private openNote(link: string, evt: MouseEvent): void {
+		if (!resolveWikilink(this.app, link, this.file.path)) {
+			new Notice(T(`No se encuentra la nota ${link}`, `Note not found: ${link}`));
+			return;
+		}
+		void this.app.workspace.openLinkText(linktextOf(link), this.file.path, Keymap.isModEvent(evt));
 	}
 
 	private pinMarker(pin: MapPin): L.Marker {

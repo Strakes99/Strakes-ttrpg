@@ -719,8 +719,16 @@ export class MapView extends TextFileView {
 				return;
 			}
 			if (this.mode === "route") return;
+			// Con la edición bloqueada y una nota enlazada, el clic la abre; si no, selecciona la ruta (para curvarla).
+			if (!this.editing && route.link) {
+				void this.openPinLink(route, Keymap.isModEvent(e.originalEvent));
+				return;
+			}
 			this.selectedRouteId = this.selectedRouteId === route.id ? null : route.id;
 			this.renderAll();
+		});
+		line.on("mouseover", (e: L.LeafletMouseEvent) => {
+			if (route.link) this.pinHover.show(this.app, route, e.originalEvent, undefined, this.file?.path ?? "");
 		});
 		line.on("contextmenu", (e: L.LeafletMouseEvent) => {
 			L.DomEvent.stop(e.originalEvent);
@@ -2328,7 +2336,7 @@ export class MapView extends TextFileView {
 		window.setTimeout(() => ring.remove(), 2200);
 	}
 
-	/** Abre la nota enlazada de un marcador o una zona. */
+	/** Abre la nota enlazada de un marcador, una ruta o una zona. */
 	private async openPinLink(pin: { link?: string }, newTab: boolean | string): Promise<void> {
 		if (!pin.link) return;
 		const source = this.file?.path ?? "";
@@ -2351,7 +2359,7 @@ export class MapView extends TextFileView {
 		await this.noteLeaf.openFile(file, { eState: subpath ? { subpath } : undefined });
 	}
 
-	/** Envía a la pantalla de jugadores la nota enlazada de un marcador o una zona. */
+	/** Envía a la pantalla de jugadores la nota enlazada de un marcador, una ruta o una zona. */
 	private sendPinToPlayers(pin: { link?: string }): void {
 		if (!pin.link) return;
 		const file = resolveWikilink(this.app, pin.link, this.file?.path ?? "");
@@ -2599,7 +2607,7 @@ export class MapView extends TextFileView {
 
 	private openRouteModal(route: MapRoute): void {
 		const data = this.mapData!;
-		new RouteModal(this.app, data, route, (edited, deleted) => {
+		new RouteModal(this.app, data, route, this.file?.path ?? "", (edited, deleted) => {
 			if (deleted) {
 				data.routes = data.routes.filter((r) => r.id !== route.id);
 				pruneNodes(data);
@@ -2649,6 +2657,15 @@ export class MapView extends TextFileView {
 	private routeMenu(route: MapRoute, evt: MouseEvent, at?: Pt): void {
 		const data = this.mapData!;
 		const m = new Menu();
+		if (route.link) {
+			m.addItem((i) => i.setTitle(T("Abrir nota", "Open note")).setIcon("file-text").onClick(() => void this.openPinLink(route, false)));
+			m.addItem((i) =>
+				i
+					.setTitle(T("Enviar nota a la pantalla de jugadores", "Send note to player screen"))
+					.setIcon("monitor")
+					.onClick(() => this.sendPinToPlayers(route)),
+			);
+		}
 		m.addItem((i) => i.setTitle(T("Editar ruta y distancias…", "Edit route and distances…")).setIcon("pencil").onClick(() => this.openRouteModal(route)));
 		m.addItem((i) =>
 			i
