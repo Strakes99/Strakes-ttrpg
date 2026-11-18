@@ -230,8 +230,8 @@ export class StrakesSettingTab extends PluginSettingTab {
 					{
 						name: T("Mostrar lo que está bajo la niebla", "Show what's under the fog"),
 						desc: T(
-							"La pantalla de jugadores muestra los marcadores y las rutas visibles para ellos aunque estén bajo la niebla de guerra.",
-							"The player screen shows the markers and routes visible to players even when they're under the fog of war.",
+							"La pantalla de jugadores muestra los marcadores, las rutas y las zonas visibles para ellos aunque estén bajo la niebla de guerra.",
+							"The player screen shows the markers, routes and zones visible to players even when they're under the fog of war.",
 						),
 						control: { type: "toggle", key: "fogShowUnder" },
 					},

@@ -10,6 +10,7 @@ import { isItemVisible, ItemType, MapData, MapPin, MapZone, newMapUnit, nodeMap,
 import { LabelState } from "../types";
 import { ensureZonePane, mapBounds, nodeMarker, pinIcon, pinTooltipOptions, pinTooltipText, routeNameLabel, toLatLng, zoneNameLabel, zoneStyle } from "./render";
 import { FogLayer } from "./fogLayer";
+import { pointInPolygon } from "./geometry";
 
 /** Lo que Obsidian pasa a quien crea un embed (API interna `app.embedRegistry`). */
 export interface EmbedContext {
@@ -521,8 +522,17 @@ export class MapEmbed extends Component {
 			const label = zoneNameLabel(zone);
 			if (label) content.addLayer(label);
 		} else if (zone.name.trim()) poly.bindTooltip(zone.name, { sticky: true, className: "strakes-map-tooltip" });
+		// Con zonas solapadas en el punto, un menú para elegir cuál abrir (como en el editor).
 		poly.on("click", (e: L.LeafletMouseEvent) => {
-			if (zone.link) this.openNote(zone.link, e.originalEvent);
+			const p = { x: e.latlng.lng, y: e.latlng.lat };
+			const zones = (this.data?.zones ?? []).filter((z) => !z.hidden && this.isVisible("zones", z.layerId) && pointInPolygon(p, z.points)).reverse();
+			const open = (z: MapZone) => {
+				if (z.link) this.openNote(z.link, e.originalEvent);
+			};
+			if (zones.length <= 1) return open(zones[0] ?? zone);
+			const m = new Menu();
+			for (const z of zones) m.addItem((i) => i.setTitle(z.name.trim() || T("(zona sin nombre)", "(unnamed zone)")).setIcon("pentagon").onClick(() => open(z)));
+			m.showAtMouseEvent(e.originalEvent);
 		});
 		poly.on("mouseover", (e: L.LeafletMouseEvent) => {
 			if (zone.link) this.pinHover.show(this.app, zone, e.originalEvent, undefined, this.file.path);

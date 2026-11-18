@@ -488,7 +488,7 @@ interface Linkable {
 
 /**
  * Campos «Nombre» (con casilla AUTO) y «Nota» (con su encabezado) de un elemento enlazable a una
- * nota: las zonas y, más adelante, las rutas. Funcionan como en el diálogo del marcador (que
+ * nota: las zonas y las rutas. Funcionan como en el diálogo del marcador (que
  * tiene los suyos porque también maneja el destino de los portales): con AUTO, el nombre sale del
  * enlace (alias, encabezado o nota) y escribir un nombre la desmarca.
  */

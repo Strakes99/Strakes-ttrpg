@@ -478,6 +478,12 @@ export class MapView extends TextFileView {
 	private redoBtn: HTMLElement | null = null;
 
 	private undo(): void {
+		// Dibujando una zona, deshacer quita el último vértice puesto (sin vértices, deshace como siempre).
+		if (this.mode === "zone" && this.draftZone.length) {
+			this.draftZone.pop();
+			this.renderAll();
+			return;
+		}
 		const prev = this.undoStack.pop();
 		if (prev === undefined || this.lastSnapshot === null) return;
 		this.redoStack.push(this.lastSnapshot);
@@ -492,6 +498,7 @@ export class MapView extends TextFileView {
 	}
 
 	private restoreSnapshot(snapshot: string): void {
+		this.draftZone = [];
 		this.mapData = normalizeMap(JSON.parse(snapshot));
 		this.lastSnapshot = snapshot;
 		// Lo que se estaba haciendo puede haber dejado de existir.
@@ -519,7 +526,7 @@ export class MapView extends TextFileView {
 			b.toggleClass("is-disabled", !on);
 			(b as HTMLButtonElement).disabled = !on;
 		};
-		set(this.undoBtn, this.undoStack.length > 0);
+		set(this.undoBtn, this.undoStack.length > 0 || (this.mode === "zone" && this.draftZone.length > 0));
 		set(this.redoBtn, this.redoStack.length > 0);
 	}
 
@@ -1241,7 +1248,7 @@ export class MapView extends TextFileView {
 		}
 		const radius = this.fogBrushSize() / 2;
 		if (this.brushCursor) this.brushCursor.setLatLng(this.ll(p)).setRadius(radius);
-		else this.brushCursor = L.circle(this.ll(p), { radius, className: "strakes-fog-brush", interactive: false, fill: false, weight: 2 }).addTo(this.map);
+		else this.brushCursor = L.circle(this.ll(p), { radius, className: "strakes-fog-brush", interactive: false, fill: false, weight: 2, pane: "markerPane" }).addTo(this.map);
 	}
 
 	/**
@@ -1267,7 +1274,7 @@ export class MapView extends TextFileView {
 		}
 		if (!this.map) return;
 		if (this.snapIndicator) this.snapIndicator.setLatLng(this.ll(p));
-		else this.snapIndicator = L.circleMarker(this.ll(p), { radius: 9, className: "strakes-snap-indicator", interactive: false, fill: false, weight: 3 }).addTo(this.map);
+		else this.snapIndicator = L.circleMarker(this.ll(p), { radius: 9, className: "strakes-snap-indicator", interactive: false, fill: false, weight: 3, pane: "markerPane" }).addTo(this.map);
 	}
 
 	/** Clic en modo Zona: añade un vértice (pegado a un nodo o a otro vértice cercano) o, en el primero, cierra la zona. */
@@ -1820,15 +1827,21 @@ export class MapView extends TextFileView {
 			// Un clic (sin arrastrar) sobre una zona alterna su casilla «Niebla». Al marcarla, la zona queda
 			// cubierta y protegida del pincel. Al desmarcarla, se descubre entera también por debajo (un trazo
 			// con su forma), y luego el pincel puede volver a cubrir partes. El punto no se pinta.
+			// Cuentan todas las zonas del punto, también las ocultas con el ojo (la niebla no depende de tu
+			// vista); con varias, un menú para elegir cuál.
 			const st = d.fogStroke;
-			const zone = st && st.points.length === 1 ? this.zonesAt(st.points[0])[0] : undefined;
 			const fog = this.mapData?.fog;
-			if (zone && st && fog) {
+			const p0 = st && st.points.length === 1 ? st.points[0] : null;
+			const zones = p0 ? (this.mapData?.zones ?? []).filter((z) => pointInPolygon(p0, z.points)).reverse() : [];
+			if (zones.length && st && fog) {
 				fog.strokes = fog.strokes.filter((x) => x !== st);
-				if (zone.fog) fog.strokes.push({ mode: "reveal", width: 0, points: zone.points.map((q) => ({ ...q })), polygon: true });
-				zone.fog = zone.fog ? undefined : true;
-				this.persist();
 				this.renderAll();
+				this.pickZone(zones, e, (zone) => {
+					if (zone.fog) fog.strokes.push({ mode: "reveal", width: 0, points: zone.points.map((q) => ({ ...q })), polygon: true });
+					zone.fog = zone.fog ? undefined : true;
+					this.persist();
+					this.renderAll();
+				});
 				return;
 			}
 			// Se guarda (y entra en deshacer) al soltar; la pantalla de jugadores se actualiza entonces.
@@ -2022,7 +2035,7 @@ export class MapView extends TextFileView {
 			const nRoutes = data.routes.filter((r) => r.layerId === layer.id).length;
 			const nZones = data.zones.filter((z) => z.layerId === layer.id).length;
 			const name = row.createDiv({ cls: "strakes-panel-name", text: layer.name });
-			setTooltip(name, T("Clic para activarla: los marcadores y rutas nuevos se crearán en esta capa", "Click to make it active: new markers and routes will be created on this layer"));
+			setTooltip(name, T("Clic para activarla: los marcadores, rutas y zonas nuevos se crearán en esta capa", "Click to make it active: new markers, routes and zones will be created on this layer"));
 			name.onclick = () => {
 				this.currentLayerId = this.currentLayerId === layer.id ? null : layer.id;
 				this.renderPanel();
@@ -3290,7 +3303,8 @@ export class MapView extends TextFileView {
 				// Niebla: al activarla por primera vez, el mapa entero empieza cubierto (sin trazos); al
 				// activarla (desde apagada), todas las zonas quedan con su casilla «Niebla» marcada.
 				if (p.fogEnabled && !data.fog?.enabled) this.enableFog();
-				if (data.fog) data.fog = { enabled: p.fogEnabled, color: p.fogColor, strokes: data.fog.strokes };
+				// El color se guarda aunque la niebla esté apagada (también en un mapa que nunca la tuvo).
+				if (data.fog || p.fogColor !== DEFAULT_FOG_COLOR) data.fog = { enabled: p.fogEnabled, color: p.fogColor, strokes: data.fog?.strokes ?? [] };
 				this.persist();
 				void this.refresh();
 			},

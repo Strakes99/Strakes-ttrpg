@@ -28,7 +28,7 @@ export class PinHoverParent implements HoverParent {
 		p.hoverEl.prepend(createDiv({ cls: "strakes-hover-title", text: this.title }));
 	}
 
-	/** Lanza la vista previa de la nota enlazada de un marcador o una zona (respeta el ajuste de Ctrl de Obsidian). */
+	/** Lanza la vista previa de la nota enlazada de un marcador, una ruta o una zona (respeta el ajuste de Ctrl de Obsidian). */
 	show(app: App, pin: { link?: string }, event: MouseEvent, targetEl: HTMLElement | undefined, sourcePath: string): void {
 		if (!pin.link) return;
 		const file = resolveWikilink(app, pin.link, sourcePath);

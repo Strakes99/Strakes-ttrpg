@@ -163,7 +163,10 @@ export class PlayerMap extends Component {
 		// Zonas visibles para los jugadores, por debajo de rutas y marcadores.
 		for (const zone of data.zones) {
 			if (!isPlayerVisible(data, "zones", zone)) continue;
-			content.addLayer(L.polygon(zone.points.map((p) => toLatLng(p)), { ...zoneStyle(zone, this.plugin.settings.zoneFillTransparency), interactive: false }));
+			// Con «Mostrar lo que está bajo la niebla», las zonas van por encima de la niebla (y, al añadirse
+			// antes que las rutas, por debajo de ellas).
+			const style = zoneStyle(zone, this.plugin.settings.zoneFillTransparency);
+			content.addLayer(L.polygon(zone.points.map((p) => toLatLng(p)), { ...style, interactive: false, pane: showUnder ? ABOVE_FOG_PANE : style.pane }));
 			if (labels.zones) {
 				const label = zoneNameLabel(zone);
 				if (label && !hidden(fromLatLng(label.getLatLng()))) content.addLayer(label);
