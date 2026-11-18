@@ -7,6 +7,7 @@ import { autoPinName, nameFromLink } from "./autoName";
 import { makeWikilink, parseWikilink, resolveWikilink, wikilinkFor } from "./links";
 import { DEFAULT_ICON_COLOR, formatDistance, formatHours, MapData, MapLayer, parseHoursInput, segmentTime, MapPin, MapRoute, MapZone, nodeMap, segmentDistance, unitOptions } from "./mapData";
 import { displayArea, zoneArea } from "./zones";
+import { DEFAULT_FOG_COLOR } from "./fogData";
 
 // ---------- Tramo (clic en la etiqueta) ----------
 
@@ -862,6 +863,9 @@ export interface MapProps {
 	image: string;
 	unit: string;
 	scale: number | null;
+	/** Niebla de guerra (1.3): activada y su color. */
+	fogEnabled: boolean;
+	fogColor: string;
 }
 
 export class MapPropsModal extends Modal {
@@ -874,7 +878,7 @@ export class MapPropsModal extends Modal {
 		private onCalibrate: () => void,
 	) {
 		super(app);
-		this.props = { image: data.image, unit: data.unit, scale: data.scale };
+		this.props = { image: data.image, unit: data.unit, scale: data.scale, fogEnabled: data.fog?.enabled === true, fogColor: data.fog?.color ?? DEFAULT_FOG_COLOR };
 	}
 
 	onOpen(): void {
@@ -917,6 +921,16 @@ export class MapPropsModal extends Modal {
 					this.onCalibrate();
 				}),
 			);
+		new Setting(el)
+			.setName(T("Niebla de guerra", "Fog of war"))
+			.setDesc(
+				T(
+					"Al activarla por primera vez, el mapa entero empieza cubierto; se descubre con el pincel de niebla de la barra. Para ti se ve semitransparente; para los jugadores, opaca. Desactivarla no borra lo descubierto.",
+					"When first turned on, the whole map starts covered; reveal it with the fog brush in the toolbar. You see it semi-transparent; the players see it opaque. Turning it off doesn't erase what was revealed.",
+				),
+			)
+			.addColorPicker((c) => c.setValue(p.fogColor).onChange((v) => (p.fogColor = v)))
+			.addToggle((t) => t.setValue(p.fogEnabled).onChange((v) => (p.fogEnabled = v)));
 		modalFooter(this)
 			.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => this.close()))
 			.addButton((b) =>

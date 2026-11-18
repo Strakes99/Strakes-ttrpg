@@ -6,6 +6,13 @@ import { isPlayerVisible, MapData, newMapUnit, nodeMap, normalizeMap, ROUTE_COLO
 import { ensureZonePane, mapBounds, nodeMarker, pinIcon, pinTooltipOptions, routeNameLabel, toLatLng, zoneNameLabel, zoneStyle } from "../map/render";
 import { MapRegion } from "../types";
 import { resizeObserverFor } from "../ui/dom";
+import { FogLayer } from "../map/fogLayer";
+import { fogCovers } from "../map/fogData";
+import { Pt } from "../map/geometry";
+
+/** Panel para las rutas por encima de la niebla (ajuste «Mostrar lo que está bajo la niebla»). */
+const ABOVE_FOG_PANE = "strakes-above-fog";
+const fromLatLng = (ll: L.LatLng): Pt => ({ x: ll.lng, y: ll.lat });
 
 /** Límites de Leaflet de una región guardada. */
 export function regionBounds(r: MapRegion): L.LatLngBounds {
@@ -29,6 +36,7 @@ export class PlayerMap extends Component {
 	private imageOverlay: L.ImageOverlay | null = null;
 	private imageKey = "";
 	private fitted = false;
+	private fogLayer: FogLayer | null = null;
 
 	constructor(
 		private plugin: StrakesTTRPG,
@@ -57,6 +65,10 @@ export class PlayerMap extends Component {
 		this.map = map;
 		this.content = L.layerGroup().addTo(map);
 		ensureZonePane(map);
+		// Niebla opaca y, por encima de ella, las rutas si se muestra lo que está debajo (ajuste).
+		this.fogLayer = new FogLayer(map, 1);
+		this.register(() => this.fogLayer?.remove());
+		if (!map.getPane(ABOVE_FOG_PANE)) map.createPane(ABOVE_FOG_PANE).addClass("strakes-above-fog-pane");
 		// Láser y lápiz del DM, en el mismo punto del mapa que en su editor.
 		const drawing = new DrawingLayer(
 			map,
@@ -142,6 +154,11 @@ export class PlayerMap extends Component {
 		}
 
 		content.clearLayers();
+		this.fogLayer?.set(data.fog, mapBounds(data));
+		// Lo que está bajo la niebla no lo ven los jugadores (salvo con el ajuste «Mostrar lo que está
+		// bajo la niebla»). Las líneas de las rutas y las zonas quedan tapadas por la propia niebla.
+		const showUnder = this.plugin.settings.fogShowUnder;
+		const hidden = (p: Pt) => !showUnder && fogCovers(data.fog, p);
 		const labels = this.plugin.playerLabels(this.file.path);
 		// Zonas visibles para los jugadores, por debajo de rutas y marcadores.
 		for (const zone of data.zones) {
@@ -149,7 +166,7 @@ export class PlayerMap extends Component {
 			content.addLayer(L.polygon(zone.points.map((p) => toLatLng(p)), { ...zoneStyle(zone, this.plugin.settings.zoneFillTransparency), interactive: false }));
 			if (labels.zones) {
 				const label = zoneNameLabel(zone);
-				if (label) content.addLayer(label);
+				if (label && !hidden(fromLatLng(label.getLatLng()))) content.addLayer(label);
 			}
 		}
 		const nodes = nodeMap(data);
@@ -157,20 +174,20 @@ export class PlayerMap extends Component {
 			if (!isPlayerVisible(data, "routes", route)) continue;
 			const line = L.polyline(
 				routePath(route, nodes).map((p) => toLatLng(p)),
-				{ color: route.color || ROUTE_COLORS[0], weight: 4, opacity: 0.9, interactive: false },
+				{ color: route.color || ROUTE_COLORS[0], weight: 4, opacity: 0.9, interactive: false, pane: showUnder ? ABOVE_FOG_PANE : "overlayPane" },
 			);
 			content.addLayer(line);
 			for (const id of route.nodeIds) {
 				const n = nodes.get(id);
-				if (n) content.addLayer(nodeMarker(n, route.color, { draggable: false, interactive: false }));
+				if (n && !hidden(n)) content.addLayer(nodeMarker(n, route.color, { draggable: false, interactive: false }));
 			}
 			if (labels.routes) {
 				const label = routeNameLabel(route, nodes);
-				if (label) content.addLayer(label);
+				if (label && !hidden(fromLatLng(label.getLatLng()))) content.addLayer(label);
 			}
 		}
 		for (const pin of data.pins) {
-			if (!isPlayerVisible(data, "pins", pin)) continue;
+			if (!isPlayerVisible(data, "pins", pin) || hidden(pin)) continue;
 			const marker = L.marker(toLatLng(pin), { icon: pinIcon(pin), interactive: false, keyboard: false });
 			if (labels.pins && pin.name.trim()) marker.bindTooltip(pin.name, pinTooltipOptions(pin, true));
 			content.addLayer(marker);

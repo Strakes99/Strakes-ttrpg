@@ -9,6 +9,7 @@ import { linktextOf, resolveWikilink } from "./links";
 import { isItemVisible, ItemType, MapData, MapPin, MapZone, newMapUnit, nodeMap, normalizeMap, ROUTE_COLORS, routePath } from "./mapData";
 import { LabelState } from "../types";
 import { ensureZonePane, mapBounds, nodeMarker, pinIcon, pinTooltipOptions, pinTooltipText, routeNameLabel, toLatLng, zoneNameLabel, zoneStyle } from "./render";
+import { FogLayer } from "./fogLayer";
 
 /** Lo que Obsidian pasa a quien crea un embed (API interna `app.embedRegistry`). */
 export interface EmbedContext {
@@ -48,6 +49,9 @@ export class MapEmbed extends Component {
 	private pinHover = new PinHoverParent(() => this.plugin.settings.pinPreviewTitle);
 	/** Etiquetas de este mapa (no se guardan: al volver a dibujar la nota, apagadas). */
 	private labels: LabelState = { pins: false, routes: false, zones: false };
+	/** Niebla de guerra, semitransparente (vista del DM), y si está oculta (botón de la nube; no se recuerda). */
+	private fogLayer: FogLayer | null = null;
+	private fogHidden = false;
 	/** Candado de este mapa (no se recuerda: al volver a dibujar la nota, abierto). */
 	private locked = false;
 	private toolbarEl: HTMLElement | null = null;
@@ -121,6 +125,8 @@ export class MapEmbed extends Component {
 			return;
 		}
 		this.buildDom();
+		// La barra depende del archivo (p. ej. el botón de la niebla): se rehace al cambiar.
+		if (this.wrapper) this.buildToolbar(this.wrapper);
 		this.render();
 	}
 
@@ -166,6 +172,11 @@ export class MapEmbed extends Component {
 		this.map = map;
 		this.content = L.layerGroup().addTo(map);
 		ensureZonePane(map);
+		this.fogLayer = new FogLayer(map, 0.5);
+		this.domCleanup.push(() => {
+			this.fogLayer?.remove();
+			this.fogLayer = null;
+		});
 		this.captureWheel(wrapper);
 		this.applyLock();
 		map.on("zoomstart movestart", () => {
@@ -327,6 +338,17 @@ export class MapEmbed extends Component {
 			this.labelsMenu(evt);
 		};
 		button("maximize", T("Encuadrar todo", "Fit all"), () => this.fitWhole(true));
+		// Ocultar la niebla (solo si el mapa la tiene activada): no la borra.
+		if (this.data?.fog?.enabled)
+			button(
+				this.fogHidden ? "cloud-off" : "cloud",
+				this.fogHidden ? T("Niebla oculta (clic para mostrarla)", "Fog hidden (click to show it)") : T("Ocultar la niebla", "Hide the fog"),
+				() => {
+					this.fogHidden = !this.fogHidden;
+					this.render();
+					if (this.wrapper) this.buildToolbar(this.wrapper);
+				},
+			).toggleClass("is-active", this.fogHidden);
 		// Candado: bloquea el zoom y el arrastre. Con el ajuste de bloquear todos, no aparece.
 		if (!this.plugin.settings.lockAllEmbeds)
 			button(
@@ -450,6 +472,7 @@ export class MapEmbed extends Component {
 		}
 
 		content.clearLayers();
+		this.fogLayer?.set(this.fogHidden ? undefined : data.fog, mapBounds(data));
 		// Zonas (vista del DM), por debajo de rutas y marcadores.
 		for (const zone of data.zones) if (!zone.hidden && this.isVisible("zones", zone.layerId)) this.addZone(zone, content);
 		const nodes = nodeMap(data);

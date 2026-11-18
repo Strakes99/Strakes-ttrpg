@@ -251,6 +251,14 @@ export interface StrakesSettings {
 	lockAllEmbeds: boolean;
 	/** Mapas: transparencia (%) del relleno de todas las zonas (1.3). */
 	zoneFillTransparency: number;
+	/** Pantalla de jugadores: mostrar marcadores y rutas aunque estén bajo la niebla (1.3). */
+	fogShowUnder: boolean;
+	/**
+	 * Pincel de niebla: tamaño en píxeles de la imagen (control de la barra; abarca lo mismo del mapa
+	 * con cualquier zoom) y si descubre o cubre.
+	 */
+	fogBrushSize: number;
+	fogBrushMode: "reveal" | "cover";
 	/** Paso de viaje para calcular tiempos en los mapas. */
 	travelPace: "slow" | "normal" | "fast";
 	/** Condiciones personalizadas para el tracker de iniciativa. */
@@ -287,6 +295,9 @@ export const DEFAULT_SETTINGS: StrakesSettings = {
 	drawWidth: 4,
 	lockAllEmbeds: false,
 	zoneFillTransparency: 50,
+	fogShowUnder: false,
+	fogBrushSize: 60,
+	fogBrushMode: "reveal",
 	collapsedMapSections: [],
 	customConditions: [],
 	conditionOverrides: {},

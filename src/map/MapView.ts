@@ -55,8 +55,10 @@ import {
 } from "./mapData";
 import { editSegmentDialog, MapPropsModal, PinModal, RouteModal, ZoneModal } from "./mapModals";
 import { regionBounds } from "../player/PlayerMap";
+import { FogLayer } from "./fogLayer";
+import { DEFAULT_FOG_COLOR, FogStroke } from "./fogData";
 
-type Mode = "navigate" | "pin" | "route" | "zone" | "measure" | "laser" | "pen" | "eraser" | "calibrate" | "pick-target";
+type Mode = "navigate" | "pin" | "route" | "zone" | "measure" | "laser" | "pen" | "eraser" | "fog" | "calibrate" | "pick-target";
 
 function modeHint(mode: Mode): string {
 	switch (mode) {
@@ -93,6 +95,11 @@ function modeHint(mode: Mode): string {
 			return T(
 				"Borrador: haz clic o arrastra sobre un trazo para borrarlo. Clic derecho en el botón del borrador: borrar todos. Clic derecho y arrastrar: mover el mapa. Esc para salir.",
 				"Eraser: click or drag over a stroke to erase it. Right-click the eraser button: clear all. Right-click and drag: move the map. Esc to exit.",
+			);
+		case "fog":
+			return T(
+				"Niebla: mantén el clic y arrastra para descubrir o cubrir (elígelo en la barra, con el tamaño del pincel). Clic derecho y arrastrar: mover el mapa. Esc para salir.",
+				"Fog: hold the click and drag to reveal or cover (choose it in the toolbar, with the brush size). Right-click and drag: move the map. Esc to exit.",
 			);
 		case "calibrate":
 			return T("Clic en dos puntos cuya distancia real conozcas.", "Click two points whose real distance you know.");
@@ -175,7 +182,12 @@ export class MapView extends TextFileView {
 	private playerRect: L.LayerGroup | null = null;
 	/** Capa del láser y el lápiz; trazo o borrado en curso; avisos pendientes. */
 	private drawLayer: DrawingLayer | null = null;
-	private drawing: { kind: "laser" | "pen" | "eraser"; stroke: Stroke | null; pointerId: number } | null = null;
+	private drawing: { kind: "laser" | "pen" | "eraser" | "fog"; stroke: Stroke | null; fogStroke?: FogStroke; pointerId: number } | null = null;
+	/** Niebla de guerra (semitransparente: vista del DM) y círculo del pincel que sigue al cursor. */
+	private fogLayer: FogLayer | null = null;
+	private brushCursor: L.Circle | null = null;
+	/** Niebla oculta en tu vista (botón de la nube): no se borra; los jugadores la siguen viendo. No se guarda. */
+	private fogHidden = false;
 	private drawFrame = 0;
 	private drawDirty = { laser: false, pen: false };
 	/** true tras mover el mapa con el botón derecho: se anula el menú contextual de ese clic. */
@@ -277,6 +289,7 @@ export class MapView extends TextFileView {
 	async onClose(): Promise<void> {
 		if (this.liveFrame) window.cancelAnimationFrame(this.liveFrame);
 		if (this.drawFrame) this.mapEl.win.cancelAnimationFrame(this.drawFrame);
+		this.fogLayer?.remove();
 		if (this.mode === "laser") this.setLaserPointer(null);
 		this.drawLayer?.remove();
 		this.map?.remove();
@@ -535,6 +548,7 @@ export class MapView extends TextFileView {
 		this.draftLayer = L.layerGroup().addTo(map);
 		this.map = map;
 		ensureZonePane(map);
+		this.fogLayer = new FogLayer(map, 0.5);
 		this.applyMapSettings();
 		this.setupDrawing(map);
 		// El contenedor puede tener tamaño 0 al abrir la pestaña.
@@ -649,6 +663,7 @@ export class MapView extends TextFileView {
 		this.renderStatus();
 		this.mapEl.toggleClass("is-editing", this.editing);
 		this.mapEl.dataset.mode = this.mode;
+		this.fogLayer?.set(this.fogHidden ? undefined : data.fog, this.bounds());
 		if (this.file) {
 			this.drawLayer?.setPen(this.plugin.penFor(this.file.path));
 			this.drawLayer?.setLaser(this.plugin.laserFor(this.file.path));
@@ -921,6 +936,73 @@ export class MapView extends TextFileView {
 			this.setMode(this.mode === "measure" ? "navigate" : "measure"),
 		).toggleClass("is-active", this.mode === "measure");
 		if (this.mode === "measure") this.renderMeasurePanel(measureWrap.createDiv("strakes-measure-panel"));
+		// Niebla de guerra: pincel para descubrir o cubrir (solo si el mapa tiene la niebla activada).
+		const fogBtn = this.toolButton(tb, "cloud-fog", T("Niebla de guerra: pincel para descubrir o cubrir", "Fog of war: brush to reveal or cover"), () => {
+			if (this.mode === "fog") return this.setMode("navigate");
+			const data = this.mapData;
+			if (!data) return;
+			// Con la niebla apagada, el pincel la activa (como en las propiedades del mapa: la primera vez,
+			// el mapa entero cubierto; si ya tenía trazos, se conservan). Se puede deshacer.
+			if (!data.fog?.enabled) {
+				data.fog = { enabled: true, color: data.fog?.color ?? DEFAULT_FOG_COLOR, strokes: data.fog?.strokes ?? [] };
+				this.persist();
+			}
+			// Para pintar hay que verla.
+			this.fogHidden = false;
+			this.setMode("fog");
+		});
+		fogBtn.toggleClass("is-active", this.mode === "fog");
+		// Ocultar la niebla en tu vista para editar el mapa con comodidad (no la borra; los jugadores la siguen viendo).
+		if (this.mapData?.fog?.enabled)
+			this.toolButton(
+				tb,
+				this.fogHidden ? "cloud-off" : "cloud",
+				this.fogHidden
+					? T("Niebla oculta en tu vista (clic para mostrarla). Los jugadores la siguen viendo.", "Fog hidden in your view (click to show it). Players still see it.")
+					: T("Ocultar la niebla en tu vista, para editar con comodidad (no se borra; los jugadores la siguen viendo)", "Hide the fog in your view to edit comfortably (it isn't erased; players still see it)"),
+				() => {
+					this.fogHidden = !this.fogHidden;
+					if (this.fogHidden && this.mode === "fog") this.setMode("navigate");
+					else this.renderAll();
+				},
+			).toggleClass("is-active", this.fogHidden);
+		if (this.mode === "fog") {
+			const s = this.plugin.settings;
+			const seg = tb.createDiv("strakes-segmented strakes-fog-mode");
+			for (const [mode, label, tip] of [
+				["reveal", T("Descubrir", "Reveal"), T("Pincel para descubrir · clic derecho: descubrir todo el mapa (se puede deshacer)", "Brush to reveal · right-click: reveal the whole map (can be undone)")],
+				["cover", T("Cubrir", "Cover"), T("Pincel para cubrir · clic derecho: cubrir todo el mapa (se puede deshacer)", "Brush to cover · right-click: cover the whole map (can be undone)")],
+			] as const) {
+				const b = seg.createEl("button", { text: label });
+				b.toggleClass("is-active", s.fogBrushMode === mode);
+				setTooltip(b, tip);
+				b.onclick = () => {
+					s.fogBrushMode = mode;
+					void this.plugin.saveSettings();
+					this.renderToolbar();
+				};
+				b.oncontextmenu = (evt) => {
+					evt.preventDefault();
+					this.fogAll(mode);
+				};
+			}
+			// Tamaño del pincel en píxeles de la imagen (con escala, también en unidades del mapa).
+			const { min, max } = this.fogBrushRange();
+			const size = tb.createEl("input", { type: "range", cls: "slider strakes-fog-size", attr: { min: String(min), max: String(max), step: "1" } });
+			size.value = String(this.fogBrushSize());
+			const sizeTip = () => {
+				const px = this.fogBrushSize();
+				const data = this.mapData;
+				const units = data?.scale ? ` ≈ ${displayDistance(px * data.scale, data.unit, s.displayUnit)}` : "";
+				setTooltip(size, T(`Tamaño del pincel: ${px} px de la imagen${units}`, `Brush size: ${px} image px${units}`));
+			};
+			sizeTip();
+			size.addEventListener("input", () => (s.fogBrushSize = parseInt(size.value, 10)));
+			size.addEventListener("change", () => {
+				void this.plugin.saveSettings();
+				sizeTip();
+			});
+		}
 		// Láser, lápiz y borrador (los dibujos no se guardan).
 		tool(
 			"laser",
@@ -1135,6 +1217,45 @@ export class MapView extends TextFileView {
 			});
 		}
 		return out;
+	}
+
+	/** Tamaño del pincel de niebla, en píxeles de la imagen, dentro de los límites del deslizador. */
+	private fogBrushSize(): number {
+		const { min, max } = this.fogBrushRange();
+		return Math.min(max, Math.max(min, this.plugin.settings.fogBrushSize));
+	}
+
+	/** Límites del tamaño del pincel: según el tamaño de la imagen (hasta una quinta parte de su lado mayor). */
+	private fogBrushRange(): { min: number; max: number } {
+		const d = this.mapData;
+		const longest = d ? Math.max(d.width, d.height) : 0;
+		return { min: 2, max: Math.max(200, Math.round(longest / 5)) };
+	}
+
+	/** Círculo del tamaño del pincel de niebla que sigue al cursor (null: se quita). En unidades del mapa: crece con el zoom. */
+	private showBrush(p: Pt | null): void {
+		if (!p || this.mode !== "fog" || !this.map) {
+			this.brushCursor?.remove();
+			this.brushCursor = null;
+			return;
+		}
+		const radius = this.fogBrushSize() / 2;
+		if (this.brushCursor) this.brushCursor.setLatLng(this.ll(p)).setRadius(radius);
+		else this.brushCursor = L.circle(this.ll(p), { radius, className: "strakes-fog-brush", interactive: false, fill: false, weight: 2 }).addTo(this.map);
+	}
+
+	/**
+	 * Clic derecho en «Descubrir» o «Cubrir»: todo el mapa de una vez. Cubrir todo quita los trazos;
+	 * descubrir todo deja un único trazo que abarca la imagen entera. Se puede deshacer.
+	 */
+	private fogAll(mode: "reveal" | "cover"): void {
+		const data = this.mapData;
+		const fog = data?.fog;
+		if (!data || !fog) return;
+		const diagonal = Math.hypot(data.width, data.height) || 1;
+		fog.strokes = mode === "cover" ? [] : [{ mode: "reveal", width: diagonal * 2 + 10, points: [{ x: data.width / 2, y: data.height / 2 }] }];
+		this.persist();
+		this.renderAll();
 	}
 
 	/** Muestra (o quita, con null) el círculo de dónde se pegará el vértice. */
@@ -1491,7 +1612,7 @@ export class MapView extends TextFileView {
 
 	/** ¿Está activa una herramienta de dibujo? (clic izquierdo: dibujar o borrar; derecho y arrastrar: mover el mapa) */
 	private isDrawMode(): boolean {
-		return this.mode === "laser" || this.mode === "pen" || this.mode === "eraser";
+		return this.mode === "laser" || this.mode === "pen" || this.mode === "eraser" || this.mode === "fog";
 	}
 
 	/** Color del lápiz en esta sesión: el elegido en la barra o, si no, el del láser. */
@@ -1569,6 +1690,7 @@ export class MapView extends TextFileView {
 		this.registerDomEvent(el, "pointercancel", (e) => this.onDrawUp(e));
 		this.registerDomEvent(el, "pointerleave", () => {
 			if (this.mode === "laser") this.setLaserPointer(null);
+			this.showBrush(null);
 		});
 		this.registerEvent(
 			this.plugin.events.on("map-laser", (path) => {
@@ -1612,6 +1734,17 @@ export class MapView extends TextFileView {
 			this.eraseAt(e);
 			return;
 		}
+		if (this.mode === "fog") {
+			// Trazo de niebla: el tamaño del pincel está en píxeles de la imagen (abarca lo mismo con cualquier zoom).
+			const fog = this.mapData?.fog;
+			if (!fog?.enabled) return;
+			const s = this.plugin.settings;
+			const fogStroke: FogStroke = { mode: s.fogBrushMode, width: this.fogBrushSize(), points: [p] };
+			fog.strokes.push(fogStroke);
+			this.fogLayer?.appendStroke(fogStroke);
+			this.drawing = { kind: "fog", stroke: null, fogStroke, pointerId: e.pointerId };
+			return;
+		}
 		const stroke: Stroke = {
 			id: uid(),
 			color: this.mode === "pen" ? this.penColor() : this.plugin.settings.laserColor,
@@ -1637,10 +1770,23 @@ export class MapView extends TextFileView {
 		const p = this.eventPt(e);
 		if (!p) return;
 		if (this.mode === "laser") this.setLaserPointer(p);
+		if (this.mode === "fog") this.showBrush(p);
 		const d = this.drawing;
 		if (!d || d.pointerId !== e.pointerId) return;
 		if (d.kind === "eraser") {
 			this.eraseAt(e);
+			return;
+		}
+		if (d.kind === "fog") {
+			// Un punto nuevo solo si el cursor se movió algo (los trazos ocupan menos en el archivo).
+			const st = d.fogStroke;
+			const map = this.map;
+			if (!st || !map) return;
+			const last = st.points[st.points.length - 1];
+			// Un punto nuevo cada octavo de pincel, como mínimo (en píxeles de la imagen).
+			if (Math.hypot(p.x - last.x, p.y - last.y) < this.fogBrushSize() / 8) return;
+			st.points.push(p);
+			this.fogLayer?.updateLastStroke();
 			return;
 		}
 		d.stroke?.points.push(p);
@@ -1652,6 +1798,11 @@ export class MapView extends TextFileView {
 		if (!d || d.pointerId !== e.pointerId) return;
 		this.drawing = null;
 		if (this.mapEl.hasPointerCapture(e.pointerId)) this.mapEl.releasePointerCapture(e.pointerId);
+		if (d.kind === "fog") {
+			// Se guarda (y entra en deshacer) al soltar; la pantalla de jugadores se actualiza entonces.
+			this.persist();
+			return;
+		}
 		if (d.kind === "laser" && d.stroke) {
 			// Desde aquí, el trazo del láser se desvanece.
 			d.stroke.releasedAt = Date.now();
@@ -2140,6 +2291,7 @@ export class MapView extends TextFileView {
 		// Con las herramientas de dibujo, el arrastre izquierdo dibuja: el mapa se mueve con el derecho.
 		this.map?.dragging[this.isDrawMode() ? "disable" : "enable"]();
 		if (mode !== "laser") this.setLaserPointer(null);
+		if (mode !== "fog") this.showBrush(null);
 		this.renderAll();
 		if (abandoned) this.askNameIfMissing(abandoned);
 	}
@@ -3103,6 +3255,8 @@ export class MapView extends TextFileView {
 				}
 				data.unit = p.unit;
 				data.scale = p.scale;
+				// Niebla: al activarla por primera vez, el mapa entero empieza cubierto (sin trazos).
+				if (p.fogEnabled || data.fog) data.fog = { enabled: p.fogEnabled, color: p.fogColor, strokes: data.fog?.strokes ?? [] };
 				this.persist();
 				void this.refresh();
 			},

@@ -1190,6 +1190,24 @@ input.strakes-portrait-zoom-num {
 }
 /* Dónde se pegará el vértice de zona (un nodo o un vértice de otra zona). */
 .strakes-snap-indicator { stroke: var(--interactive-accent); }
+/* Niebla de guerra: por encima de imagen, zonas y rutas (400) y por debajo de los marcadores (600).
+   En la pantalla de jugadores, con «Mostrar lo que está bajo la niebla», las rutas van por encima. */
+.leaflet-pane.strakes-fog-pane { z-index: 500; }
+.leaflet-pane.strakes-above-fog-pane { z-index: 550; }
+/* Círculo del pincel de niebla. */
+.strakes-fog-brush { stroke: var(--interactive-accent); stroke-dasharray: 4 4; }
+/* Barra del pincel de niebla: «Descubrir | Cubrir» compactos (sin ocupar todo el ancho) y el tamaño. */
+.strakes-segmented.strakes-fog-mode { flex: none; }
+.strakes-segmented.strakes-fog-mode button {
+	flex: none;
+	padding: 0 8px;
+	height: 24px;
+}
+/* Más específico que input[type=range] de Obsidian (width: 100px); sin encogerse en la barra. */
+input[type="range"].strakes-fog-size {
+	width: 360px;
+	flex: none;
+}
 /* Zonas: su panel va por debajo de rutas y marcadores (el de Leaflet para las rutas es el 400). */
 .leaflet-pane.strakes-zones-pane { z-index: 350; }
 /* Láser y lápiz: su panel va por encima de rutas y marcadores y no recibe el ratón. */

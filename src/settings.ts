@@ -228,6 +228,14 @@ export class StrakesSettingTab extends PluginSettingTab {
 						render: (setting) => this.sliderWithNumber(setting, "zoneFillTransparency", 0, 100, 5),
 					},
 					{
+						name: T("Mostrar lo que está bajo la niebla", "Show what's under the fog"),
+						desc: T(
+							"La pantalla de jugadores muestra los marcadores y las rutas visibles para ellos aunque estén bajo la niebla de guerra.",
+							"The player screen shows the markers and routes visible to players even when they're under the fog of war.",
+						),
+						control: { type: "toggle", key: "fogShowUnder" },
+					},
+					{
 						name: T("Color del láser", "Laser color"),
 						desc: T(
 							"Color del punto y de los trazos del láser. El lápiz empieza con este color; mientras está activo se cambia en la barra del mapa.",

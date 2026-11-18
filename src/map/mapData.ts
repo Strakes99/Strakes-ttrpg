@@ -1,6 +1,7 @@
 import { numberLocale, T } from "../i18n";
 import { uid } from "../types";
 import { nearestOnPolyline, polylineLength, Pt, smoothPath } from "./geometry";
+import { MapFog, normalizeFog } from "./fogData";
 
 // Coordenadas en píxeles de la imagen original: x hacia la derecha, y hacia arriba
 // (lo que espera Leaflet con CRS.Simple; la imagen ocupa [0..height] × [0..width]).
@@ -173,6 +174,8 @@ export interface MapData {
 	nodes: RouteNode[];
 	routes: MapRoute[];
 	zones: MapZone[];
+	/** Niebla de guerra (1.3). Sin definir = el mapa nunca la ha tenido. Ver fogData.ts. */
+	fog?: MapFog;
 }
 
 /** Color de fondo por defecto de los pines nuevos. */
@@ -227,6 +230,7 @@ export function normalizeMap(raw: unknown, defaultUnit = "km"): MapData {
 		nodes: Array.isArray(r.nodes) ? r.nodes : [],
 		routes: Array.isArray(r.routes) ? r.routes : [],
 		zones: Array.isArray(r.zones) ? r.zones : [],
+		fog: normalizeFog(r.fog),
 	};
 	for (const l of data.layers) l.players = l.players === true ? true : undefined;
 	// Una capa inexistente equivale a «sin capa».
