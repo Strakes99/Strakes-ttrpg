@@ -93,3 +93,14 @@ export function distToSegment(p: Pt, a: Pt, b: Pt): number {
 	t = Math.max(0, Math.min(1, t));
 	return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
 }
+
+/** ¿El punto está dentro del polígono? (regla par-impar; el borde puede contar o no). */
+export function pointInPolygon(p: Pt, points: readonly Pt[]): boolean {
+	let inside = false;
+	for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+		const a = points[i];
+		const b = points[j];
+		if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+	}
+	return inside;
+}

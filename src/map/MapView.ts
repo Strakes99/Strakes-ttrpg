@@ -663,7 +663,7 @@ export class MapView extends TextFileView {
 		this.renderStatus();
 		this.mapEl.toggleClass("is-editing", this.editing);
 		this.mapEl.dataset.mode = this.mode;
-		this.fogLayer?.set(this.fogHidden ? undefined : data.fog, this.bounds());
+		this.fogLayer?.set(this.fogHidden ? undefined : data.fog, this.bounds(), data.zones);
 		if (this.file) {
 			this.drawLayer?.setPen(this.plugin.penFor(this.file.path));
 			this.drawLayer?.setLaser(this.plugin.laserFor(this.file.path));
@@ -944,7 +944,7 @@ export class MapView extends TextFileView {
 			// Con la niebla apagada, el pincel la activa (como en las propiedades del mapa: la primera vez,
 			// el mapa entero cubierto; si ya tenía trazos, se conservan). Se puede deshacer.
 			if (!data.fog?.enabled) {
-				data.fog = { enabled: true, color: data.fog?.color ?? DEFAULT_FOG_COLOR, strokes: data.fog?.strokes ?? [] };
+				this.enableFog();
 				this.persist();
 			}
 			// Para pintar hay que verla.
@@ -1313,7 +1313,7 @@ export class MapView extends TextFileView {
 	private openZoneModal(zone: MapZone, isNew: boolean): void {
 		const data = this.mapData!;
 		new ZoneModal(this.app, data, zone, isNew, this.file?.path ?? "", (r) => {
-			if (r.action === "delete") data.zones = data.zones.filter((z) => z.id !== zone.id);
+			if (r.action === "delete") this.deleteZone(zone);
 			else {
 				const i = data.zones.findIndex((z) => z.id === r.zone.id);
 				if (i >= 0) data.zones[i] = r.zone;
@@ -1429,7 +1429,6 @@ export class MapView extends TextFileView {
 	}
 
 	private zoneMenu(zone: MapZone, evt: MouseEvent): void {
-		const data = this.mapData!;
 		const m = new Menu();
 		if (zone.link) {
 			m.addItem((i) => i.setTitle(T("Abrir nota", "Open note")).setIcon("file-text").onClick(() => void this.openPinLink(zone, false)));
@@ -1470,13 +1469,32 @@ export class MapView extends TextFileView {
 				.setIcon("trash-2")
 				.setWarning(true)
 				.onClick(() => {
-					data.zones = data.zones.filter((z) => z.id !== zone.id);
-					if (this.selectedZoneId === zone.id) this.selectedZoneId = null;
+					this.deleteZone(zone);
 					this.persist();
 					this.renderAll();
 				}),
 		);
 		m.showAtMouseEvent(evt);
+	}
+
+	/**
+	 * Borra una zona. Con la casilla «Niebla» marcada, su área sigue cubierta: queda como niebla de
+	 * pincel (un polígono que cubre), que el pincel puede descubrir después.
+	 */
+	private deleteZone(zone: MapZone): void {
+		const data = this.mapData;
+		if (!data) return;
+		if (zone.fog && data.fog) data.fog.strokes.push({ mode: "cover", width: 0, points: zone.points.map((p) => ({ ...p })), polygon: true });
+		data.zones = data.zones.filter((z) => z.id !== zone.id);
+		if (this.selectedZoneId === zone.id) this.selectedZoneId = null;
+	}
+
+	/** Al activar la niebla del mapa (desde apagada), todas las zonas quedan con la casilla «Niebla» marcada. */
+	private enableFog(): void {
+		const data = this.mapData;
+		if (!data || data.fog?.enabled) return;
+		data.fog = { enabled: true, color: data.fog?.color ?? DEFAULT_FOG_COLOR, strokes: data.fog?.strokes ?? [] };
+		for (const z of data.zones) z.fog = true;
 	}
 
 	// ---------- Marcadores anclados a nodos ----------
@@ -1799,6 +1817,20 @@ export class MapView extends TextFileView {
 		this.drawing = null;
 		if (this.mapEl.hasPointerCapture(e.pointerId)) this.mapEl.releasePointerCapture(e.pointerId);
 		if (d.kind === "fog") {
+			// Un clic (sin arrastrar) sobre una zona alterna su casilla «Niebla». Al marcarla, la zona queda
+			// cubierta y protegida del pincel. Al desmarcarla, se descubre entera también por debajo (un trazo
+			// con su forma), y luego el pincel puede volver a cubrir partes. El punto no se pinta.
+			const st = d.fogStroke;
+			const zone = st && st.points.length === 1 ? this.zonesAt(st.points[0])[0] : undefined;
+			const fog = this.mapData?.fog;
+			if (zone && st && fog) {
+				fog.strokes = fog.strokes.filter((x) => x !== st);
+				if (zone.fog) fog.strokes.push({ mode: "reveal", width: 0, points: zone.points.map((q) => ({ ...q })), polygon: true });
+				zone.fog = zone.fog ? undefined : true;
+				this.persist();
+				this.renderAll();
+				return;
+			}
 			// Se guarda (y entra en deshacer) al soltar; la pantalla de jugadores se actualiza entonces.
 			this.persist();
 			return;
@@ -3255,8 +3287,10 @@ export class MapView extends TextFileView {
 				}
 				data.unit = p.unit;
 				data.scale = p.scale;
-				// Niebla: al activarla por primera vez, el mapa entero empieza cubierto (sin trazos).
-				if (p.fogEnabled || data.fog) data.fog = { enabled: p.fogEnabled, color: p.fogColor, strokes: data.fog?.strokes ?? [] };
+				// Niebla: al activarla por primera vez, el mapa entero empieza cubierto (sin trazos); al
+				// activarla (desde apagada), todas las zonas quedan con su casilla «Niebla» marcada.
+				if (p.fogEnabled && !data.fog?.enabled) this.enableFog();
+				if (data.fog) data.fog = { enabled: p.fogEnabled, color: p.fogColor, strokes: data.fog.strokes };
 				this.persist();
 				void this.refresh();
 			},

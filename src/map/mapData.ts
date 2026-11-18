@@ -143,6 +143,11 @@ export interface MapZone {
 	borderColor: string;
 	/** Área escrita a mano, en unidades² del mapa. Sin definir = calculada con la escala. */
 	area?: number;
+	/**
+	 * Casilla «Niebla» (1.3): marcada, la zona entera queda cubierta y el pincel no la descubre;
+	 * sin marcar (sin definir), no cuenta y se ve lo que diga el pincel.
+	 */
+	fog?: true;
 	/** Oculta en la vista del DM (ojo del panel). Sin definir = visible. */
 	hidden?: boolean;
 	/** Visible para los jugadores. Sin definir = oculta a los jugadores. */
@@ -285,6 +290,7 @@ export function normalizeMap(raw: unknown, defaultUnit = "km"): MapData {
 		if (typeof z.color !== "string" || !z.color) z.color = DEFAULT_ZONE_COLOR;
 		if (typeof z.borderColor !== "string" || !z.borderColor) z.borderColor = z.color;
 		z.area = num(z.area) && z.area > 0 ? z.area : undefined;
+		z.fog = z.fog === true ? true : undefined;
 		z.hidden = z.hidden === true ? true : undefined;
 		z.players = z.players === true ? true : undefined;
 	}

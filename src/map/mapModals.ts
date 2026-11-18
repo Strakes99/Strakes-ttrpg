@@ -699,6 +699,17 @@ export class ZoneModal extends Modal {
 			.setName(T("Visible para los jugadores", "Visible to players"))
 			.setDesc(T("También tienen que estar visibles para los jugadores su tipo y su capa (iconos de pantalla del panel).", "Its type and layer must also be visible to players (screen icons in the panel)."))
 			.addToggle((t) => t.setValue(z.players === true).onChange((on) => (z.players = on || undefined)));
+		// Niebla (solo si el mapa la tiene activada).
+		if (this.data.fog?.enabled)
+			new Setting(el)
+				.setName(T("Niebla", "Fog"))
+				.setDesc(
+					T(
+						"Marcada, la zona entera queda cubierta y el pincel no la descubre. Sin marcar, la zona no cuenta: se ve lo que diga el pincel. Un clic de pincel sobre la zona también la marca o la desmarca.",
+						"Ticked, the whole zone is covered and the brush can't reveal it. Unticked, the zone doesn't count: you see what the brush says. A brush click on the zone also ticks or unticks it.",
+					),
+				)
+				.addToggle((t) => t.setValue(z.fog === true).onChange((on) => (z.fog = on || undefined)));
 
 		const buttons = modalFooter(this);
 		if (!this.isNew)

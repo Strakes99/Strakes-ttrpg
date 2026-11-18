@@ -42,3 +42,21 @@ t("activada se conserva", n?.enabled, true);
 t("activada no booleana → desactivada", normalizeFog({ enabled: "sí" })?.enabled, false);
 t("el mapa la lee", normalizeMap({ fog: { enabled: true, color: "#123456", strokes: [] } }).fog, { enabled: true, color: "#123456", strokes: [] });
 t("mapa sin niebla", normalizeMap({}).fog, undefined);
+
+// Zonas (1.3): con la casilla «Niebla» marcada, cubiertas y protegidas del pincel; sin marcar, no cuentan.
+const square = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
+const revealAll = { mode: "reveal" as const, width: 1000, points: [{ x: 5, y: 5 }] };
+const inside = { x: 5, y: 5 };
+t("zona sin marcar: manda el pincel (descubierto)", fogCovers(fog([revealAll]), inside, [{ points: square }]), false);
+t("zona sin marcar: manda el pincel (cubierto)", fogCovers(fog([]), inside, [{ points: square }]), true);
+t("zona marcada: cubierta aunque el pincel descubra", fogCovers(fog([revealAll]), inside, [{ points: square, fog: true }]), true);
+t("fuera de la zona marcada: manda el pincel", fogCovers(fog([revealAll]), { x: 50, y: 50 }, [{ points: square, fog: true }]), false);
+// Trazo de polígono (lo que deja una zona marcada al borrarla)
+const poly = { mode: "cover" as const, width: 0, points: square, polygon: true as const };
+t("polígono que cubre: dentro, cubierto", fogCovers(fog([revealAll, poly]), inside), true);
+t("polígono que cubre: fuera, lo que diga el pincel", fogCovers(fog([revealAll, poly]), { x: 20, y: 5 }), false);
+t("el pincel puede descubrir después el polígono", fogCovers(fog([poly, revealAll]), inside), false);
+t("el polígono se conserva al leer el mapa", normalizeFog({ enabled: true, strokes: [poly] })?.strokes[0], { mode: "cover", width: 0, points: square, polygon: true });
+t("polígono con menos de 3 puntos: se descarta", normalizeFog({ enabled: true, strokes: [{ ...poly, points: square.slice(0, 2) }] })?.strokes.length, 0);
+t("casilla «Niebla» de la zona: se conserva", normalizeMap({ zones: [{ id: "z", points: square, fog: true }] }).zones[0].fog, true);
+t("casilla «Niebla» no booleana → sin marcar", normalizeMap({ zones: [{ id: "z", points: square, fog: "covered" }] }).zones[0].fog, undefined);

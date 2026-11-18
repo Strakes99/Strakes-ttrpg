@@ -472,7 +472,7 @@ export class MapEmbed extends Component {
 		}
 
 		content.clearLayers();
-		this.fogLayer?.set(this.fogHidden ? undefined : data.fog, mapBounds(data));
+		this.fogLayer?.set(this.fogHidden ? undefined : data.fog, mapBounds(data), data.zones);
 		// Zonas (vista del DM), por debajo de rutas y marcadores.
 		for (const zone of data.zones) if (!zone.hidden && this.isVisible("zones", zone.layerId)) this.addZone(zone, content);
 		const nodes = nodeMap(data);

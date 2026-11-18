@@ -1,6 +1,6 @@
 import * as L from "leaflet";
 import { Pt } from "./geometry";
-import { FogStroke, MapFog } from "./fogData";
+import { FogStroke, FogZone, MapFog } from "./fogData";
 
 const toLatLng = (p: Pt): L.LatLng => L.latLng(p.y, p.x);
 
@@ -21,6 +21,8 @@ export class FogLayer {
 	private group = L.layerGroup();
 	private mask: SVGMaskElement | null = null;
 	private strokes: { line: L.Polyline; stroke: FogStroke }[] = [];
+	/** Primer elemento de las zonas en la máscara: los trazos nuevos van antes (manda la zona). */
+	private zonesStart: Element | null = null;
 
 	constructor(
 		private map: L.Map,
@@ -33,8 +35,11 @@ export class FogLayer {
 		map.on("zoomend", this.updateWeights);
 	}
 
-	/** Vuelve a dibujar la niebla (sin niebla o desactivada, nada). `bounds`: los de la imagen. */
-	set(fog: MapFog | undefined, bounds: L.LatLngBounds): void {
+	/**
+	 * Vuelve a dibujar la niebla (sin niebla o desactivada, nada). `bounds`: los de la imagen. Las
+	 * zonas con la casilla «Niebla» marcada van encima de los trazos, cubiertas: el pincel no las descubre.
+	 */
+	set(fog: MapFog | undefined, bounds: L.LatLngBounds, zones: readonly FogZone[] = []): void {
 		this.clear();
 		if (!fog?.enabled) return;
 		const cover = L.rectangle(bounds, { renderer: this.renderer, stroke: false, fillColor: fog.color, fillOpacity: this.opacity, interactive: false });
@@ -55,11 +60,23 @@ export class FogLayer {
 		// Base blanca de la máscara: todo cubierto.
 		this.intoMask(L.rectangle(bounds, { renderer: this.renderer, stroke: false, fillColor: "#ffffff", fillOpacity: 1, interactive: false }));
 		for (const s of fog.strokes) this.appendStroke(s);
+		for (const z of zones) {
+			if (z.fog !== true || z.points.length < 3) continue;
+			const poly = this.fillPolygon(z.points, "#ffffff");
+			// Las zonas, al final y en su orden (no delante de la primera: un trazo pintado después se
+			// colocaría entre dos zonas y quedaría por encima de las siguientes).
+			this.intoMask(poly, true);
+			this.zonesStart ??= poly.getElement() ?? null;
+		}
 	}
 
-	/** Añade un trazo al final (mientras se pinta, sin redibujar todo). */
+	/** Añade un trazo detrás de los anteriores y antes de las zonas (mientras se pinta, sin redibujar todo). */
 	appendStroke(stroke: FogStroke): void {
 		if (!this.mask) return;
+		if (stroke.polygon) {
+			this.intoMask(this.fillPolygon(stroke.points, stroke.mode === "reveal" ? "#000000" : "#ffffff"));
+			return;
+		}
 		const line = L.polyline(this.latLngs(stroke), {
 			renderer: this.renderer,
 			color: stroke.mode === "reveal" ? "#000000" : "#ffffff",
@@ -92,14 +109,26 @@ export class FogLayer {
 	private clear(): void {
 		this.group.clearLayers();
 		this.strokes = [];
+		this.zonesStart = null;
 		this.mask?.remove();
 		this.mask = null;
 	}
 
-	private intoMask(layer: L.Path): void {
+	/** Mete un elemento en la máscara: los trazos, antes de todas las zonas; las zonas (`atEnd`) y la base, al final. */
+	private intoMask(layer: L.Path, atEnd = false): void {
 		this.group.addLayer(layer);
 		const el = layer.getElement();
-		if (el && this.mask) this.mask.appendChild(el);
+		if (!el || !this.mask) return;
+		if (!atEnd && this.zonesStart && this.zonesStart.parentNode === this.mask) this.mask.insertBefore(el, this.zonesStart);
+		else this.mask.appendChild(el);
+	}
+
+	/** Polígono relleno de la máscara (zona, o trazo de polígono): negro = descubierto, blanco = cubierto. */
+	private fillPolygon(points: readonly Pt[], color: string): L.Polygon {
+		return L.polygon(
+			points.map((p) => toLatLng(p)),
+			{ renderer: this.renderer, stroke: false, fillColor: color, fillOpacity: 1, interactive: false },
+		);
 	}
 
 	/** Un solo punto: dos iguales, para que la línea con extremos redondos se vea como un círculo. */

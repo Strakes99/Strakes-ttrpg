@@ -154,11 +154,11 @@ export class PlayerMap extends Component {
 		}
 
 		content.clearLayers();
-		this.fogLayer?.set(data.fog, mapBounds(data));
+		this.fogLayer?.set(data.fog, mapBounds(data), data.zones);
 		// Lo que está bajo la niebla no lo ven los jugadores (salvo con el ajuste «Mostrar lo que está
 		// bajo la niebla»). Las líneas de las rutas y las zonas quedan tapadas por la propia niebla.
 		const showUnder = this.plugin.settings.fogShowUnder;
-		const hidden = (p: Pt) => !showUnder && fogCovers(data.fog, p);
+		const hidden = (p: Pt) => !showUnder && fogCovers(data.fog, p, data.zones);
 		const labels = this.plugin.playerLabels(this.file.path);
 		// Zonas visibles para los jugadores, por debajo de rutas y marcadores.
 		for (const zone of data.zones) {

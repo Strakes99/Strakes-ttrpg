@@ -1,5 +1,9 @@
 import { numberLocale } from "../i18n";
 import { Pt } from "./geometry";
+
+// Se usa junto con el resto de la geometría de zonas: está en geometry.ts para que la niebla
+// (fogData.ts) pueda usarla sin depender del modelo de datos.
+export { pointInPolygon } from "./geometry";
 import { DisplayUnit, MapData, MapZone, milesPerUnit } from "./mapData";
 
 // Zonas: polígonos de lados rectos (puntos en píxeles de la imagen, como el resto del mapa).
@@ -39,16 +43,6 @@ export function polygonCentroid(points: readonly Pt[]): Pt {
 	return { x: cx / (3 * a), y: cy / (3 * a) };
 }
 
-/** ¿El punto está dentro del polígono? (regla par-impar; el borde puede contar o no). */
-export function pointInPolygon(p: Pt, points: readonly Pt[]): boolean {
-	let inside = false;
-	for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-		const a = points[i];
-		const b = points[j];
-		if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
-	}
-	return inside;
-}
 
 /**
  * Área de una zona en unidades² del mapa: la escrita a mano tiene prioridad; si no, la calculada
