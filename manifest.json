@@ -1,7 +1,7 @@
 {
   "id": "strakes-ttrpg",
   "name": "Strakes TTRPG",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "minAppVersion": "1.13.0",
   "description": "TTRPG toolkit for game masters: image maps with markers, layers, curved routes, travel times and portals; a player screen for notes and images; and an initiative tracker with conditions, temporary HP and portrait cards.",
   "author": "Strakes99",

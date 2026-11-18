@@ -2,7 +2,7 @@
 
 A toolkit for game masters who run tabletop RPGs from Obsidian:
 
-- **Maps** — interactive image maps with markers, layers, curved routes with distances and travel times, shortest and fastest paths, and portals/stairs. Show them to your players, with what they can see under your control, and point or draw on them live.
+- **Maps** — interactive image maps with markers, zones, layers, curved routes with distances and travel times, shortest and fastest paths, portals/stairs and a fog of war. Show them to your players, with what they can see under your control, and point or draw on them live.
 - **Player screen** — a separate window for your second monitor or projector that shows notes, sections, selections, images and maps to your players.
 - **Initiative tracker** — turns, rounds, hit points (including temporary HP), conditions with icons, and a portrait "cards" view for the player screen.
 
@@ -73,12 +73,21 @@ Opens in the right sidebar.
   - **AUTO name** (on by default): the marker takes its name from the link's alias, heading or note (or from a portal's destination) and follows renames.
   - **Icons**: emoji, letters, Lucide icons or your own SVG files. The icon picker lists your SVGs and, as one more entry of its folder dropdown, every Lucide icon Obsidian ships. SVGs go in the plugin's `icons/` folder, subfolders included; you can filter by folder and name and recolor the icon. Importing SVGs whose names already exist asks whether to replace them, skip them or save them under a new name.
   - **Anchored to route nodes**: drop a marker on a route node (or a node on a marker) and they're anchored: they move together, and measuring treats the marker as its node. One marker per node; right-click → *Unanchor from node*. While editing, the anchor button turns automatic anchoring off.
-- **Visibility**: two toggles per marker, route, layer and type (*Markers* / *Routes*) in the side panel: the **eye** for your own view and the **screen** for the players. They're independent, so tidying up your editor never changes what the players see. Everything starts hidden from players.
-- **Search**: one box in the side panel filters layers, routes and markers by name.
-- **Labels**: a toolbar section turns labels on and off for you (eye) and for the players (screen), all at once or by type (right-click). You see marker names and each segment's number and route; players see marker names and each route's name once. Labels aren't saved.
+- **Visibility**: two toggles per marker, route, zone, layer and type (*Markers* / *Routes* / *Zones*) in the side panel: the **eye** for your own view and the **screen** for the players. They're independent, so tidying up your editor never changes what the players see. Everything starts hidden from players.
+- **Search**: one box in the side panel filters layers, markers, routes and zones by name.
+- **Labels**: a toolbar section turns labels on and off for you (eye) and for the players (screen), all at once or by type (right-click). You see marker and zone names and each segment's number and route; players see marker and zone names and each route's name once. Labels aren't saved.
 - **Routes**:
   - Nodes, with curve points that shape a route without adding nodes.
   - Each segment can have a manual distance (for maps not drawn to scale) and a manual travel time, or estimate them from a calibrated scale.
+  - Optional linked note with an AUTO name, like markers: with editing locked, clicking the route opens it; Ctrl+hover previews it.
+- **Zones**: straight-sided polygons drawn vertex by vertex (rooms, districts, provinces…).
+  - A name with AUTO, a linked note (click to open, Ctrl+hover to preview), fill and border colors, an area (typed, or calculated from the map scale), a layer and player visibility. The fill transparency is one setting for every zone.
+  - While drawing or dragging, vertices snap to route nodes and to other zones' vertices, so neighbouring zones share their borders. Vertices that share a point move together, also when you drag a route node over them. The anchor button turns snapping and moving together off.
+  - With editing unlocked, every zone's vertices can be dragged; select a zone to add vertices from the middle of its sides. Overlapping zones show a menu to choose which one you meant.
+- **Fog of war** (turn it on in the map properties, or just pick the fog brush):
+  - The whole map starts covered. A brush reveals or covers it; its size is in image pixels, so it covers the same area at any zoom. Right-click *Reveal* or *Cover* to do the whole map. Every stroke can be undone.
+  - **Zones**: a zone's *Fog* checkbox keeps the whole zone covered and protected from the brush; unticked, the brush decides. A brush click on a zone toggles it. Turning the fog on ticks every zone.
+  - You see it semi-transparent and can hide it with the cloud button (also in embedded maps); the players see it opaque, and markers, nodes and labels under it are hidden from them unless a setting shows them.
 - **Measure**: a panel under the *Measure* button shows the path between two nodes along visible routes, with travel time at slow (2 mph, 9 h/day), normal (3 mph, 8 h/day) or fast (4 mph, 7.5 h/day) pace. When the **shortest** and the **fastest** path differ (manual segment times count first), both are listed and you can highlight either on the map. With a calibrated scale you can also measure a straight line.
 - **Laser, pen and eraser**: the laser is a dot that follows your cursor, and dragging draws strokes that fade; the pen draws strokes that stay until Obsidian closes (with its own color); the eraser removes pen strokes. Players see all of it. With these tools, right-drag moves the map. Color, fade time and thickness are settings.
 - **Distance unit**: one setting shows every map's distances and speeds in kilometers, miles, leagues, meters or feet, or in each map's own unit. New maps are created in that unit (kilometers with *Each map's own*). The conversion is only for display: values you enter stay in the map's own unit, so switching back and forth never changes them.
@@ -88,13 +97,14 @@ Opens in the right sidebar.
   - `![[map.smap]]` shows an interactive map in a note.
   - `![[map.smap|300]]` sets the height and `![[map.smap|800x300]]` sets the width and height.
   - `![[map.smap#Marker name]]` centers the map on that marker.
-  - The embed's toolbar has layers, labels (click for all, right-click by type), fit, a **lock** (no zoom or dragging, so the wheel scrolls the note) and a button to open the map. A setting locks every embedded map and hides the lock.
+  - The embed's toolbar has layers, labels (click for all, right-click by type), fit, a button to hide the fog, a **lock** (no zoom or dragging, so the wheel scrolls the note) and a button to open the map. A setting locks every embedded map and hides the lock.
+  - Zones and routes with a note open it on click and preview it on Ctrl+hover; routes show their name on hover.
 - **Renaming**: renaming or moving a linked note or a map image updates the maps automatically.
 
 ### Maps on the player screen
 
 - Send a map from the editor's toolbar (screen-with-arrow button) or right-click a `.smap` → *Send to player screen*.
-- The players see the map full-screen, behind the initiative, with only the markers, routes and layers marked as visible to them. They can't move it: you choose what they see.
+- The players see the map full-screen, behind the initiative, with only the markers, routes, zones and layers marked as visible to them, under the fog of war. They can't move it: you choose what they see.
 - **Frame**: while the map is on the player screen, a dashed frame in your editor shows what *Send* would send (it follows the shape of the players' window), and a solid rectangle shows what they see now. Press the button again to fly their view to your frame.
 - **Live** (cast button): the players follow your view as you move. Opening side panels or resizing Obsidian never changes what they see.
 - What the players can't see is shown semi-transparent in your editor (the transparency is a setting).
