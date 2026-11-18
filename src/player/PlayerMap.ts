@@ -3,7 +3,7 @@ import { Component, TFile } from "obsidian";
 import type StrakesTTRPG from "../main";
 import { DrawingLayer } from "../map/drawing";
 import { isPlayerVisible, MapData, newMapUnit, nodeMap, normalizeMap, ROUTE_COLORS, routePath } from "../map/mapData";
-import { mapBounds, nodeMarker, pinIcon, pinTooltipOptions, routeNameLabel, toLatLng } from "../map/render";
+import { ensureZonePane, mapBounds, nodeMarker, pinIcon, pinTooltipOptions, routeNameLabel, toLatLng, zoneNameLabel, zoneStyle } from "../map/render";
 import { MapRegion } from "../types";
 import { resizeObserverFor } from "../ui/dom";
 
@@ -56,6 +56,7 @@ export class PlayerMap extends Component {
 		});
 		this.map = map;
 		this.content = L.layerGroup().addTo(map);
+		ensureZonePane(map);
 		// Láser y lápiz del DM, en el mismo punto del mapa que en su editor.
 		const drawing = new DrawingLayer(
 			map,
@@ -100,6 +101,8 @@ export class PlayerMap extends Component {
 				if (f === this.file) void this.readMap();
 			}),
 		);
+		// Ajustes (p. ej. la transparencia del relleno de las zonas).
+		this.registerEvent(this.plugin.events.on("settings", () => this.render()));
 		// El DM cambió las etiquetas de los jugadores de este mapa.
 		this.registerEvent(
 			this.plugin.events.on("player-labels", (path) => {
@@ -132,11 +135,23 @@ export class PlayerMap extends Component {
 			this.imageKey = key;
 			const img = this.plugin.app.vault.getAbstractFileByPath(data.image);
 			if (img instanceof TFile && data.width && data.height)
-				this.imageOverlay = L.imageOverlay(this.plugin.app.vault.getResourcePath(img), mapBounds(data), { interactive: false }).addTo(map).bringToBack();
+				// La imagen va en el panel más bajo de Leaflet: por encima quedan zonas, rutas y marcadores.
+				this.imageOverlay = L.imageOverlay(this.plugin.app.vault.getResourcePath(img), mapBounds(data), { interactive: false, pane: "tilePane" })
+					.addTo(map)
+					.bringToBack();
 		}
 
 		content.clearLayers();
 		const labels = this.plugin.playerLabels(this.file.path);
+		// Zonas visibles para los jugadores, por debajo de rutas y marcadores.
+		for (const zone of data.zones) {
+			if (!isPlayerVisible(data, "zones", zone)) continue;
+			content.addLayer(L.polygon(zone.points.map((p) => toLatLng(p)), { ...zoneStyle(zone, this.plugin.settings.zoneFillTransparency), interactive: false }));
+			if (labels.zones) {
+				const label = zoneNameLabel(zone);
+				if (label) content.addLayer(label);
+			}
+		}
 		const nodes = nodeMap(data);
 		for (const route of data.routes) {
 			if (!isPlayerVisible(data, "routes", route)) continue;
@@ -157,7 +172,7 @@ export class PlayerMap extends Component {
 		for (const pin of data.pins) {
 			if (!isPlayerVisible(data, "pins", pin)) continue;
 			const marker = L.marker(toLatLng(pin), { icon: pinIcon(pin), interactive: false, keyboard: false });
-			if (labels.pins && pin.name.trim()) marker.bindTooltip(pin.name, { ...pinTooltipOptions(pin), permanent: true });
+			if (labels.pins && pin.name.trim()) marker.bindTooltip(pin.name, pinTooltipOptions(pin, true));
 			content.addLayer(marker);
 		}
 

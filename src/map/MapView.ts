@@ -6,7 +6,8 @@ import { LabelState, MapRegion, uid, VIEW_TYPE_MAP } from "../types";
 import { confirmDialog, loadImageSize, promptText } from "../ui/modals";
 import { DrawingLayer, laserStrokeExpired, Stroke } from "./drawing";
 import { curvePoint, distToSegment, Pt } from "./geometry";
-import { nodeMarker, pinIcon, pinTooltipOptions, pinTooltipText, segmentLabel } from "./render";
+import { ensureZonePane, nodeMarker, pinIcon, pinTooltipOptions, pinTooltipText, segmentLabel, zoneNameLabel, zoneStyle } from "./render";
+import { displayArea, pointInPolygon, zoneArea } from "./zones";
 import { PinHoverParent } from "./hover";
 import { applyAutoNames } from "./autoName";
 import { linktextOf, parseWikilink, resolveWikilink } from "./links";
@@ -27,6 +28,7 @@ import {
 	MapData,
 	MapPin,
 	MapRoute,
+	MapZone,
 	nearestSegment,
 	nodeMap,
 	normalizeMap,
@@ -37,6 +39,7 @@ import {
 	pathGeometry,
 	DEFAULT_ICON_COLOR,
 	DEFAULT_PIN_COLOR,
+	DEFAULT_ZONE_COLOR,
 	pixelDistance,
 	pruneNodes,
 	reverseRoute,
@@ -50,10 +53,10 @@ import {
 	shortestPath,
 	splitSegment,
 } from "./mapData";
-import { editSegmentDialog, MapPropsModal, PinModal, RouteModal } from "./mapModals";
+import { editSegmentDialog, MapPropsModal, PinModal, RouteModal, ZoneModal } from "./mapModals";
 import { regionBounds } from "../player/PlayerMap";
 
-type Mode = "navigate" | "pin" | "route" | "measure" | "laser" | "pen" | "eraser" | "calibrate" | "pick-target";
+type Mode = "navigate" | "pin" | "route" | "zone" | "measure" | "laser" | "pen" | "eraser" | "calibrate" | "pick-target";
 
 function modeHint(mode: Mode): string {
 	switch (mode) {
@@ -65,6 +68,11 @@ function modeHint(mode: Mode): string {
 			return T(
 				"Clic: añadir nodo (clic en un nodo existente lo conecta). Mayús+clic: punto de curva, sin crear nodo. Enter o Esc para terminar.",
 				"Click: add a node (clicking an existing node connects it). Shift+click: curve point, without creating a node. Enter or Esc to finish.",
+			);
+		case "zone":
+			return T(
+				"Zona: clic para añadir vértices (cerca de un nodo, se pegan a él). Clic en el primero o Enter para cerrarla. Esc para cancelar.",
+				"Zone: click to add vertices (near a node, they snap to it). Click the first one or press Enter to close it. Esc to cancel.",
 			);
 		case "measure":
 			return T(
@@ -103,8 +111,14 @@ export class MapView extends TextFileView {
 	private map: L.Map | null = null;
 	private imageOverlay: L.ImageOverlay | null = null;
 	private loadedImage = "";
-	private groups = new Map<string, { pins: L.LayerGroup; routes: L.LayerGroup }>();
+	private groups = new Map<string, { pins: L.LayerGroup; routes: L.LayerGroup; zones: L.LayerGroup }>();
 	private routeLines = new Map<string, L.Polyline>();
+	/** Polígono de Leaflet de cada zona, la zona seleccionada (sus vértices, en edición) y la que se dibuja. */
+	private zonePolygons = new Map<string, L.Polygon>();
+	/** Círculo que indica dónde se pegará el vértice de zona (un nodo o un vértice de otra zona). */
+	private snapIndicator: L.CircleMarker | null = null;
+	private selectedZoneId: string | null = null;
+	private draftZone: Pt[] = [];
 	/** Marcadores de Leaflet de cada pin y de cada nodo (uno por ruta que lo usa), para moverlos al arrastrar. */
 	private pinMarkers = new Map<string, L.Marker>();
 	private nodeMarkers = new Map<string, L.Marker[]>();
@@ -124,7 +138,7 @@ export class MapView extends TextFileView {
 	private mode: Mode = "navigate";
 	private editing = false;
 	/** Tus etiquetas (sección de etiquetas de la barra, ojo). No se guardan: al abrir el mapa, apagadas. */
-	private labels: LabelState = { pins: false, routes: false };
+	private labels: LabelState = { pins: false, routes: false, zones: false };
 	/** Capa activa: si es una capa del usuario, los pines y rutas nuevos van ahí. */
 	private currentLayerId: string | null = null;
 	private selectedRouteId: string | null = null;
@@ -194,6 +208,10 @@ export class MapView extends TextFileView {
 			return false;
 		});
 		this.scope.register([], "Enter", () => {
+			if (this.mode === "zone") {
+				this.finishZone();
+				return false;
+			}
 			if (this.mode !== "route") return true;
 			this.finishRoute();
 			return false;
@@ -343,7 +361,7 @@ export class MapView extends TextFileView {
 		this.hideBroken();
 		this.mapData = normalizeMap(raw, newMapUnit(this.plugin.settings.displayUnit));
 		if (clear) {
-			this.labels = { pins: false, routes: false };
+			this.labels = { pins: false, routes: false, zones: false };
 			this.needsFit = true;
 			this.mode = "navigate";
 			this.activeRouteId = null;
@@ -408,6 +426,7 @@ export class MapView extends TextFileView {
 		this.groups.forEach((g) => {
 			g.pins.remove();
 			g.routes.remove();
+			g.zones.remove();
 		});
 		this.groups.clear();
 	}
@@ -507,10 +526,15 @@ export class MapView extends TextFileView {
 		});
 		map.on("click", (e: L.LeafletMouseEvent) => this.onMapClick(e));
 		map.on("move", () => this.followLive());
+		// Dibujando una zona: el círculo indica dónde se pegaría el próximo vértice.
+		map.on("mousemove", (e: L.LeafletMouseEvent) => {
+			if (this.mode === "zone") this.showSnap(this.zoneSnapPoint(e.latlng));
+		});
 		map.on("contextmenu", (e: L.LeafletMouseEvent) => this.onMapContextMenu(e));
 		this.overlay = L.layerGroup().addTo(map);
 		this.draftLayer = L.layerGroup().addTo(map);
 		this.map = map;
+		ensureZonePane(map);
 		this.applyMapSettings();
 		this.setupDrawing(map);
 		// El contenedor puede tener tamaño 0 al abrir la pestaña.
@@ -549,7 +573,8 @@ export class MapView extends TextFileView {
 						return;
 					}
 				}
-				this.imageOverlay = L.imageOverlay(src, this.bounds(), { interactive: false }).addTo(map);
+				// La imagen va en el panel más bajo de Leaflet: por encima quedan zonas, rutas y marcadores.
+				this.imageOverlay = L.imageOverlay(src, this.bounds(), { interactive: false, pane: "tilePane" }).addTo(map);
 				this.imageOverlay.bringToBack();
 				map.setMaxBounds(this.bounds().pad(0.5));
 			}
@@ -591,9 +616,11 @@ export class MapView extends TextFileView {
 		for (const g of this.groups.values()) {
 			g.pins.remove();
 			g.routes.remove();
+			g.zones.remove();
 		}
 		this.groups.clear();
 		this.routeLines.clear();
+		this.zonePolygons.clear();
 		this.pinMarkers.clear();
 		this.nodeMarkers.clear();
 		this.snapTarget = null;
@@ -602,12 +629,16 @@ export class MapView extends TextFileView {
 		// Un grupo por capa más uno para «sin capa» (clave ""). Cada grupo se muestra
 		// según el interruptor de su tipo (Pines / Rutas) y la visibilidad de la capa.
 		for (const layerId of ["", ...data.layers.map((l) => l.id)]) {
-			const g = { pins: L.layerGroup(), routes: L.layerGroup() };
+			const g = { pins: L.layerGroup(), routes: L.layerGroup(), zones: L.layerGroup() };
 			this.groups.set(layerId, g);
+			if (isItemVisible(data, "zones", layerId || null)) g.zones.addTo(map);
 			if (isItemVisible(data, "routes", layerId || null)) g.routes.addTo(map);
 			if (isItemVisible(data, "pins", layerId || null)) g.pins.addTo(map);
 		}
 
+		// Zonas (en su propio panel de Leaflet, por debajo de rutas y marcadores).
+		if (this.selectedZoneId && !data.zones.some((z) => z.id === this.selectedZoneId)) this.selectedZoneId = null;
+		for (const zone of data.zones) this.renderZone(zone);
 		const nodes = nodeMap(data);
 		for (const route of data.routes) this.renderRoute(route, nodes);
 		for (const pin of data.pins) this.renderPin(pin);
@@ -634,7 +665,7 @@ export class MapView extends TextFileView {
 			keyboard: false,
 			riseOnHover: true,
 		});
-		marker.bindTooltip(pinTooltipText(pin), { ...pinTooltipOptions(pin), permanent: this.labels.pins });
+		marker.bindTooltip(pinTooltipText(pin), pinTooltipOptions(pin, this.labels.pins));
 		// Con el mapa en la pantalla de jugadores, lo que ellos no ven sale semitransparente.
 		if (this.isOnPlayerScreen() && !isPlayerVisible(this.mapData!, "pins", pin)) marker.on("add", () => marker.getElement()?.addClass("strakes-not-player"));
 		marker.on("click", (e: L.LeafletMouseEvent) => this.onPinClick(pin, e.originalEvent));
@@ -683,7 +714,7 @@ export class MapView extends TextFileView {
 			className: "strakes-map-tooltip",
 		});
 		line.on("click", (e: L.LeafletMouseEvent) => {
-			if (this.mode === "pin" || this.mode === "calibrate" || this.mode === "pick-target" || this.mode === "measure") {
+			if (this.mode === "pin" || this.mode === "zone" || this.mode === "calibrate" || this.mode === "pick-target" || this.mode === "measure") {
 				this.onMapClick(e);
 				return;
 			}
@@ -721,11 +752,21 @@ export class MapView extends TextFileView {
 				L.DomEvent.stop(e.originalEvent);
 				this.nodeMenu(n, e.originalEvent);
 			});
+			// Con el ancla encendida, los vértices de zona en el mismo punto que el nodo se mueven con él.
+			let zoneVertices: { zone: MapZone; index: number }[] = [];
+			const moveZoneVertices = (p: Pt) => {
+				for (const v of zoneVertices) {
+					v.zone.points[v.index] = { x: p.x, y: p.y };
+					this.zonePolygons.get(v.zone.id)?.setLatLngs(v.zone.points.map((q) => this.ll(q)));
+				}
+			};
+			marker.on("dragstart", () => (zoneVertices = this.autoAnchor ? this.sharedVertices(null, n) : []));
 			marker.on("drag", () => {
 				const p = this.pt(marker.getLatLng());
 				n.x = p.x;
 				n.y = p.y;
 				for (const r of data.routes) if (r.nodeIds.includes(n.id)) this.redrawRouteLine(r, nodes);
+				moveZoneVertices(p);
 				// Los marcadores anclados a este nodo lo siguen.
 				for (const pin of data.pins)
 					if (pin.nodeId === n.id) {
@@ -750,6 +791,8 @@ export class MapView extends TextFileView {
 							pin.y = n.y;
 						}
 				}
+				moveZoneVertices(n);
+				zoneVertices = [];
 				this.persist();
 				this.renderAll();
 			});
@@ -863,6 +906,7 @@ export class MapView extends TextFileView {
 		tool("navigate", "hand", T("Navegar", "Navigate"));
 		tool("pin", "map-pin", T("Añadir marcador", "Add marker"));
 		tool("route", "route", T("Crear ruta", "Create route"));
+		tool("zone", "pentagon", T("Crear zona", "Create zone"));
 		// Medir: el botón y, con la herramienta activa, su panel debajo (paso de viaje y resultado).
 		const measureWrap = tb.createDiv("strakes-measure-tool");
 		this.toolButton(measureWrap, "ruler", T("Medir distancia y tiempo de viaje", "Measure distance and travel time"), () =>
@@ -922,8 +966,14 @@ export class MapView extends TextFileView {
 				tb,
 				"anchor",
 				this.autoAnchor
-					? T("Anclaje automático activado: los marcadores y nodos que sueltes cerca se anclan (clic para desactivarlo)", "Auto-anchoring on: markers and nodes you drop close together get anchored (click to turn it off)")
-					: T("Anclaje automático desactivado: no se crean anclas nuevas (las que hay siguen igual)", "Auto-anchoring off: no new anchors are created (existing ones stay)"),
+					? T(
+							"Anclaje automático activado: lo que sueltas cerca se pega (marcadores a nodos, vértices de zona a nodos y vértices) y lo que comparte un punto se mueve junto (clic para desactivarlo)",
+							"Auto-anchoring on: what you drop close by snaps (markers to nodes, zone vertices to nodes and vertices) and what shares a point moves together (click to turn it off)",
+						)
+					: T(
+							"Anclaje automático desactivado: nada se pega y cada cosa se mueve sola (los marcadores ya anclados siguen con su nodo)",
+							"Auto-anchoring off: nothing snaps and each thing moves on its own (markers already anchored stay with their node)",
+						),
 				() => {
 					this.autoAnchor = !this.autoAnchor;
 					this.renderToolbar();
@@ -956,6 +1006,348 @@ export class MapView extends TextFileView {
 			this.renderPanel();
 			window.setTimeout(() => this.afterResize(), 50);
 		}).toggleClass("is-active", this.panelOpen);
+	}
+
+	// ---------- Zonas (1.3) ----------
+
+	private renderZone(zone: MapZone): void {
+		const data = this.mapData!;
+		const g = this.groups.get(zone.layerId ?? "");
+		if (!g || zone.hidden) return;
+		const selected = this.selectedZoneId === zone.id;
+		// Con el mapa en la pantalla de jugadores, lo que ellos no ven sale semitransparente.
+		const dim = this.isOnPlayerScreen() && !isPlayerVisible(data, "zones", zone);
+		const poly = L.polygon(
+			zone.points.map((p) => this.ll(p)),
+			{ ...zoneStyle(zone, this.plugin.settings.zoneFillTransparency), weight: selected ? 3 : 2, bubblingMouseEvents: false, className: dim ? "strakes-zone strakes-not-player" : "strakes-zone" },
+		);
+		// Nombre: en el centro con las etiquetas de zona; si no, al pasar el cursor.
+		if (this.labels.zones) {
+			const label = zoneNameLabel(zone);
+			if (label) g.zones.addLayer(label);
+		} else if (zone.name.trim()) poly.bindTooltip(zone.name, { sticky: true, className: "strakes-map-tooltip" });
+		poly.on("click", (e: L.LeafletMouseEvent) => this.onZoneClick(e));
+		poly.on("contextmenu", (e: L.LeafletMouseEvent) => {
+			L.DomEvent.stop(e.originalEvent);
+			this.pickZone(this.zonesAt(this.pt(e.latlng)), e.originalEvent, (z) => this.zoneMenu(z, e.originalEvent));
+		});
+		poly.on("mouseover", (e: L.LeafletMouseEvent) => {
+			if (zone.link) this.pinHover.show(this.app, zone, e.originalEvent, undefined, this.file?.path ?? "");
+		});
+		this.zonePolygons.set(zone.id, poly);
+		g.zones.addLayer(poly);
+		if (this.editing) this.renderZoneHandles(zone, poly, g.zones, selected);
+		else if (this.mode === "zone")
+			for (const p of zone.points)
+				g.zones.addLayer(L.circleMarker(this.ll(p), { pane: "markerPane", radius: 3, color: zone.borderColor, fillColor: "#fff", fillOpacity: 1, weight: 2, interactive: false }));
+	}
+
+	/** Zonas visibles en tu vista que contienen el punto, de la de más arriba a la de más abajo. */
+	private zonesAt(p: Pt): MapZone[] {
+		const data = this.mapData;
+		if (!data) return [];
+		return data.zones.filter((z) => !z.hidden && isItemVisible(data, "zones", z.layerId) && pointInPolygon(p, z.points)).reverse();
+	}
+
+	/** Con varias zonas solapadas en el punto, un menú para elegir cuál; con una, directamente. */
+	private pickZone(zones: MapZone[], evt: MouseEvent, act: (z: MapZone) => void): void {
+		if (!zones.length) return;
+		if (zones.length === 1) {
+			act(zones[0]);
+			return;
+		}
+		const m = new Menu();
+		for (const z of zones) m.addItem((i) => i.setTitle(z.name.trim() || T("(zona sin nombre)", "(unnamed zone)")).setIcon("pentagon").onClick(() => act(z)));
+		m.showAtMouseEvent(evt);
+	}
+
+	/**
+	 * Clic en una zona. Fuera de Navegar no estorba: el clic va al mapa (colocar un marcador, una
+	 * ruta, medir, dibujar otra zona…). En Navegar, con la edición desbloqueada la selecciona (para
+	 * mover sus vértices); si no, abre su nota.
+	 */
+	private onZoneClick(e: L.LeafletMouseEvent): void {
+		if (this.mode !== "navigate") {
+			this.onMapClick(e);
+			return;
+		}
+		const evt = e.originalEvent;
+		this.pickZone(this.zonesAt(this.pt(e.latlng)), evt, (zone) => {
+			if (this.editing) {
+				this.selectedZoneId = this.selectedZoneId === zone.id ? null : zone.id;
+				this.renderAll();
+			} else if (zone.link) void this.openPinLink(zone, Keymap.isModEvent(evt));
+		});
+	}
+
+	/**
+	 * Punto al que se pega un vértice de zona: el nodo de ruta o el vértice de otra zona visible más
+	 * cercano, a menos de SNAP_PX en pantalla (sin vínculo: solo toma su posición). Con el anclaje
+	 * automático apagado, ninguno. `exceptZone`: la zona del vértice que se arrastra (no se pega a sí
+	 * misma); `skip`: vértices que se mueven con él («idZona:índice»), que tampoco cuentan.
+	 */
+	private zoneSnapPoint(ll: L.LatLng, exceptZone?: string, skip?: Set<string>): Pt | null {
+		const map = this.map;
+		const data = this.mapData;
+		if (!map || !data || !this.autoAnchor) return null;
+		const c = map.latLngToContainerPoint(ll);
+		let best: Pt | null = null;
+		let bestD = MapView.SNAP_PX;
+		const consider = (p: Pt) => {
+			const d = map.latLngToContainerPoint(this.ll(p)).distanceTo(c);
+			if (d <= bestD) {
+				bestD = d;
+				best = { x: p.x, y: p.y };
+			}
+		};
+		const node = this.nearestNode(ll);
+		if (node) consider(node);
+		for (const z of data.zones) {
+			if (z.id === exceptZone || z.hidden || !isItemVisible(data, "zones", z.layerId)) continue;
+			z.points.forEach((p, i) => {
+				if (!skip?.has(`${z.id}:${i}`)) consider(p);
+			});
+		}
+		return best;
+	}
+
+	/**
+	 * Vértices de zonas visibles (salvo `zone`) que están exactamente en el punto `p`: los compartidos
+	 * por dos zonas contiguas, o los que están sobre un nodo. Al arrastrar el vértice o el nodo se
+	 * mueven con él (solo con el ancla encendida). No se guarda ningún vínculo.
+	 */
+	private sharedVertices(zone: MapZone | null, p: Pt): { zone: MapZone; index: number }[] {
+		const data = this.mapData;
+		if (!data || !p) return [];
+		const out: { zone: MapZone; index: number }[] = [];
+		for (const z of data.zones) {
+			if (z === zone || z.hidden || !isItemVisible(data, "zones", z.layerId)) continue;
+			z.points.forEach((q, index) => {
+				if (Math.abs(q.x - p.x) < 1e-6 && Math.abs(q.y - p.y) < 1e-6) out.push({ zone: z, index });
+			});
+		}
+		return out;
+	}
+
+	/** Muestra (o quita, con null) el círculo de dónde se pegará el vértice. */
+	private showSnap(p: Pt | null): void {
+		if (!p) {
+			this.snapIndicator?.remove();
+			this.snapIndicator = null;
+			return;
+		}
+		if (!this.map) return;
+		if (this.snapIndicator) this.snapIndicator.setLatLng(this.ll(p));
+		else this.snapIndicator = L.circleMarker(this.ll(p), { radius: 9, className: "strakes-snap-indicator", interactive: false, fill: false, weight: 3 }).addTo(this.map);
+	}
+
+	/** Clic en modo Zona: añade un vértice (pegado a un nodo o a otro vértice cercano) o, en el primero, cierra la zona. */
+	private addZoneVertex(ll: L.LatLng): void {
+		const map = this.map;
+		if (!map) return;
+		const first = this.draftZone[0];
+		if (first && this.draftZone.length >= 3 && map.latLngToContainerPoint(this.ll(first)).distanceTo(map.latLngToContainerPoint(ll)) <= MapView.SNAP_PX) {
+			this.finishZone();
+			return;
+		}
+		// Cerca de un nodo o del vértice de otra zona (con el anclaje automático): toma su posición, sin
+		// vínculo. Así dos zonas contiguas (habitaciones, provincias) comparten vértices y no se cruzan.
+		this.draftZone.push(this.zoneSnapPoint(ll) ?? this.pt(ll));
+		this.showSnap(null);
+		this.renderAll();
+	}
+
+	/** Cierra la zona que se está dibujando (Enter o clic en el primer vértice) y abre su diálogo. */
+	private finishZone(): void {
+		const data = this.mapData;
+		if (!data) return;
+		const pts = this.draftZone;
+		this.draftZone = [];
+		this.setMode("navigate");
+		if (pts.length < 3) {
+			if (pts.length) new Notice(T("Una zona necesita al menos 3 vértices.", "A zone needs at least 3 vertices."));
+			return;
+		}
+		const zone: MapZone = {
+			id: uid(),
+			name: "",
+			points: pts,
+			layerId: this.currentLayerId,
+			// Como en las rutas: un color de la paleta, rotando; el mismo para el relleno y el borde.
+			color: ROUTE_COLORS[data.zones.length % ROUTE_COLORS.length],
+			borderColor: ROUTE_COLORS[data.zones.length % ROUTE_COLORS.length],
+			autoName: true,
+		};
+		this.openZoneModal(zone, true);
+	}
+
+	private openZoneModal(zone: MapZone, isNew: boolean): void {
+		const data = this.mapData!;
+		new ZoneModal(this.app, data, zone, isNew, this.file?.path ?? "", (r) => {
+			if (r.action === "delete") data.zones = data.zones.filter((z) => z.id !== zone.id);
+			else {
+				const i = data.zones.findIndex((z) => z.id === r.zone.id);
+				if (i >= 0) data.zones[i] = r.zone;
+				else data.zones.push(r.zone);
+			}
+			if (this.selectedZoneId && !data.zones.some((z) => z.id === this.selectedZoneId)) this.selectedZoneId = null;
+			this.persist();
+			this.renderAll();
+		}).open();
+	}
+
+	/**
+	 * Asideros de una zona (con la edición desbloqueada): ● vértices, en todas las zonas, que se
+	 * arrastran y se quitan con doble clic o clic derecho (mínimo 3); ◦ fantasmas a mitad de cada
+	 * lado, solo en la seleccionada, que al arrastrarlos crean un vértice. Un vértice soltado cerca de
+	 * un nodo o del vértice de otra zona toma su posición (sin vínculo).
+	 */
+	private renderZoneHandles(zone: MapZone, poly: L.Polygon, group: L.LayerGroup, withGhosts: boolean): void {
+		const handleIcon = (cls: string) => L.divIcon({ className: cls, html: "", iconSize: [12, 12], iconAnchor: [6, 6] });
+		const setColor = (m: L.Marker) => m.on("add", () => m.getElement()?.setCssProps({ "--route-color": zone.borderColor }));
+		const tip = { direction: "top" as const, offset: [0, -8] as L.PointExpression, className: "strakes-map-tooltip" };
+		const redraw = () => poly.setLatLngs(zone.points.map((p) => this.ll(p)));
+		let snap: Pt | null = null;
+		/** Vértices de otras zonas visibles en el mismo punto que el que se arrastra: se mueven con él. */
+		let shared: { zone: MapZone; index: number }[] = [];
+		const moveShared = (p: Pt) => {
+			for (const v of shared) {
+				v.zone.points[v.index] = { ...p };
+				this.zonePolygons.get(v.zone.id)?.setLatLngs(v.zone.points.map((q) => this.ll(q)));
+			}
+		};
+		const snapWhileDragging = (m: L.Marker) => {
+			snap = this.zoneSnapPoint(m.getLatLng(), zone.id, new Set(shared.map((v) => `${v.zone.id}:${v.index}`)));
+			this.showSnap(snap);
+		};
+		const finish = (j: number) => {
+			this.showSnap(null);
+			if (snap && zone.points[j]) {
+				zone.points[j] = { ...snap };
+				moveShared(snap);
+			}
+			snap = null;
+			shared = [];
+			this.persist();
+			this.renderAll();
+		};
+		// Dibujando una zona, un clic en un asidero pone ahí el vértice nuevo (si no, el asidero se queda el clic).
+		const clickInZoneMode = (m: L.Marker) =>
+			m.on("click", (e: L.LeafletMouseEvent) => {
+				if (this.mode !== "zone") return;
+				L.DomEvent.stop(e.originalEvent);
+				this.addZoneVertex(m.getLatLng());
+			});
+
+		zone.points.forEach((pt, j) => {
+			const m = L.marker(this.ll(pt), { icon: handleIcon("strakes-bend"), draggable: true, keyboard: false });
+			setColor(m);
+			m.bindTooltip(T("Vértice · doble clic o clic derecho para quitarlo", "Vertex · double-click or right-click to remove it"), tip);
+			clickInZoneMode(m);
+			// Con el ancla apagada, cada vértice se mueve solo aunque otro esté en el mismo punto.
+			m.on("dragstart", () => (shared = this.autoAnchor ? this.sharedVertices(zone, zone.points[j]) : []));
+			m.on("drag", () => {
+				const p = this.pt(m.getLatLng());
+				zone.points[j] = p;
+				redraw();
+				moveShared(p);
+				snapWhileDragging(m);
+			});
+			m.on("dragend", () => finish(j));
+			const remove = () => {
+				if (zone.points.length <= 3) {
+					new Notice(T("Una zona necesita al menos 3 vértices.", "A zone needs at least 3 vertices."));
+					return;
+				}
+				zone.points.splice(j, 1);
+				this.persist();
+				this.renderAll();
+			};
+			m.on("dblclick", (e: L.LeafletMouseEvent) => {
+				L.DomEvent.stop(e.originalEvent);
+				// Dibujando una zona, el doble clic son dos clics de vértice: no se quita nada.
+				if (this.mode !== "zone") remove();
+			});
+			// Clic derecho: lo quita directamente (no hay más opciones).
+			m.on("contextmenu", (e: L.LeafletMouseEvent) => {
+				L.DomEvent.stop(e.originalEvent);
+				remove();
+			});
+			group.addLayer(m);
+		});
+
+		if (!withGhosts) return;
+		zone.points.forEach((a, k) => {
+			const b = zone.points[(k + 1) % zone.points.length];
+			const ghost = L.marker(this.ll({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }), { icon: handleIcon("strakes-bend-ghost"), draggable: true, keyboard: false });
+			setColor(ghost);
+			ghost.bindTooltip(T("Arrastra para añadir un vértice", "Drag to add a vertex"), tip);
+			clickInZoneMode(ghost);
+			let inserted = false;
+			ghost.on("dragstart", () => {
+				zone.points.splice(k + 1, 0, this.pt(ghost.getLatLng()));
+				inserted = true;
+			});
+			ghost.on("drag", () => {
+				if (!inserted) return;
+				zone.points[k + 1] = this.pt(ghost.getLatLng());
+				redraw();
+				snapWhileDragging(ghost);
+			});
+			ghost.on("dragend", () => finish(k + 1));
+			group.addLayer(ghost);
+		});
+	}
+
+	private zoneMenu(zone: MapZone, evt: MouseEvent): void {
+		const data = this.mapData!;
+		const m = new Menu();
+		if (zone.link) {
+			m.addItem((i) => i.setTitle(T("Abrir nota", "Open note")).setIcon("file-text").onClick(() => void this.openPinLink(zone, false)));
+			m.addItem((i) =>
+				i
+					.setTitle(T("Enviar nota a la pantalla de jugadores", "Send note to player screen"))
+					.setIcon("monitor")
+					.onClick(() => this.sendPinToPlayers(zone)),
+			);
+		}
+		m.addItem((i) => i.setTitle(T("Editar…", "Edit…")).setIcon("pencil").onClick(() => this.openZoneModal(zone, false)));
+		m.addItem((i) =>
+			i
+				.setTitle(T("Editar forma", "Edit shape"))
+				.setIcon("pentagon")
+				.onClick(() => {
+					// Desbloquea la edición y la selecciona: aparecen sus vértices.
+					this.editing = true;
+					this.selectedZoneId = zone.id;
+					this.renderAll();
+				}),
+		);
+		m.addItem((i) =>
+			i
+				.setTitle(zone.players ? T("Ocultar a los jugadores", "Hide from players") : T("Mostrar a los jugadores", "Show to players"))
+				.setIcon(zone.players ? "monitor-off" : "monitor")
+				.onClick(() => {
+					zone.players = zone.players ? undefined : true;
+					this.persist();
+					this.renderAll();
+				}),
+		);
+		this.addMoveToLayerItem(m, evt, zone);
+		m.addSeparator();
+		m.addItem((i) =>
+			i
+				.setTitle(T("Eliminar", "Delete"))
+				.setIcon("trash-2")
+				.setWarning(true)
+				.onClick(() => {
+					data.zones = data.zones.filter((z) => z.id !== zone.id);
+					if (this.selectedZoneId === zone.id) this.selectedZoneId = null;
+					this.persist();
+					this.renderAll();
+				}),
+		);
+		m.showAtMouseEvent(evt);
 	}
 
 	// ---------- Marcadores anclados a nodos ----------
@@ -1437,16 +1829,36 @@ export class MapView extends TextFileView {
 			this.visToggle(row, "players", layer.players === true, (v) => (layer.players = v || undefined));
 			const nPins = data.pins.filter((p) => p.layerId === layer.id).length;
 			const nRoutes = data.routes.filter((r) => r.layerId === layer.id).length;
+			const nZones = data.zones.filter((z) => z.layerId === layer.id).length;
 			const name = row.createDiv({ cls: "strakes-panel-name", text: layer.name });
 			setTooltip(name, T("Clic para activarla: los marcadores y rutas nuevos se crearán en esta capa", "Click to make it active: new markers and routes will be created on this layer"));
 			name.onclick = () => {
 				this.currentLayerId = this.currentLayerId === layer.id ? null : layer.id;
 				this.renderPanel();
 			};
-			row.createDiv({ cls: "strakes-panel-meta", text: `${nPins}📍 ${nRoutes}〰` });
+			row.createDiv({ cls: "strakes-panel-meta", text: `${nPins}📍 ${nRoutes}〰 ${nZones}⬠` });
 			const more = row.createEl("button", { cls: "clickable-icon" });
 			setIcon(more, "more-horizontal");
 			more.onclick = (evt) => this.layerMenu(layer.id, evt);
+		}
+
+		// Marcadores. En la cabecera, los interruptores del tipo (todos los marcadores).
+		const pinsSec = this.collapsibleSection(panel, "pins", T("Marcadores", "Markers"), data.pins.length, undefined, (tools) => {
+			this.visToggle(tools, "dm", data.showPins, (v) => (data.showPins = v), T("todos los marcadores", "all markers"));
+			this.visToggle(tools, "players", data.playerPins, (v) => (data.playerPins = v), T("todos los marcadores", "all markers"));
+		});
+		if (!data.pins.length) pinsSec.createDiv({ cls: "strakes-panel-meta strakes-panel-empty", text: T("Sin marcadores.", "No markers.") });
+		for (const p of data.pins.filter((x) => match(x.name)).sort((a, b) => a.name.localeCompare(b.name))) {
+			const row = pinsSec.createDiv("strakes-panel-row");
+			row.toggleClass("is-hidden", p.hidden === true);
+			this.visToggle(row, "dm", !p.hidden, (v) => (p.hidden = v ? undefined : true));
+			this.visToggle(row, "players", p.players === true, (v) => (p.players = v || undefined));
+			const sw = row.createDiv("strakes-swatch is-round");
+			sw.setCssStyles({ background: p.color });
+			row.createDiv({ cls: "strakes-panel-name", text: p.name });
+			row.createDiv({ cls: "strakes-panel-meta", text: data.layers.find((l) => l.id === p.layerId)?.name ?? "" });
+			row.onclick = () => this.map?.flyTo(this.ll(p), Math.max(this.map.getZoom(), 0), { duration: 0.6 });
+			row.oncontextmenu = (evt) => this.pinMenu(p, evt);
 		}
 
 		// Rutas. En la cabecera, los interruptores del tipo (todas las rutas).
@@ -1475,23 +1887,28 @@ export class MapView extends TextFileView {
 			row.oncontextmenu = (evt) => this.routeMenu(r, evt);
 		}
 
-		// Marcadores. En la cabecera, los interruptores del tipo (todos los marcadores).
-		const pinsSec = this.collapsibleSection(panel, "pins", T("Marcadores", "Markers"), data.pins.length, undefined, (tools) => {
-			this.visToggle(tools, "dm", data.showPins, (v) => (data.showPins = v), T("todos los marcadores", "all markers"));
-			this.visToggle(tools, "players", data.playerPins, (v) => (data.playerPins = v), T("todos los marcadores", "all markers"));
+		// Zonas (1.3). En la cabecera, los interruptores del tipo (todas las zonas).
+		const zonesSec = this.collapsibleSection(panel, "zones", T("Zonas", "Zones"), data.zones.length, undefined, (tools) => {
+			this.visToggle(tools, "dm", data.showZones, (v) => (data.showZones = v), T("todas las zonas", "all zones"));
+			this.visToggle(tools, "players", data.playerZones, (v) => (data.playerZones = v), T("todas las zonas", "all zones"));
 		});
-		if (!data.pins.length) pinsSec.createDiv({ cls: "strakes-panel-meta strakes-panel-empty", text: T("Sin marcadores.", "No markers.") });
-		for (const p of data.pins.filter((x) => match(x.name)).sort((a, b) => a.name.localeCompare(b.name))) {
-			const row = pinsSec.createDiv("strakes-panel-row");
-			row.toggleClass("is-hidden", p.hidden === true);
-			this.visToggle(row, "dm", !p.hidden, (v) => (p.hidden = v ? undefined : true));
-			this.visToggle(row, "players", p.players === true, (v) => (p.players = v || undefined));
-			const sw = row.createDiv("strakes-swatch is-round");
-			sw.setCssStyles({ background: p.color });
-			row.createDiv({ cls: "strakes-panel-name", text: p.name });
-			row.createDiv({ cls: "strakes-panel-meta", text: data.layers.find((l) => l.id === p.layerId)?.name ?? "" });
-			row.onclick = () => this.map?.flyTo(this.ll(p), Math.max(this.map.getZoom(), 0), { duration: 0.6 });
-			row.oncontextmenu = (evt) => this.pinMenu(p, evt);
+		if (!data.zones.length) zonesSec.createDiv({ cls: "strakes-panel-meta strakes-panel-empty", text: T("Sin zonas.", "No zones.") });
+		for (const z of data.zones.filter((x) => match(x.name))) {
+			const row = zonesSec.createDiv("strakes-panel-row");
+			row.toggleClass("is-current", z.id === this.selectedZoneId);
+			row.toggleClass("is-hidden", z.hidden === true);
+			this.visToggle(row, "dm", !z.hidden, (v) => (z.hidden = v ? undefined : true));
+			this.visToggle(row, "players", z.players === true, (v) => (z.players = v || undefined));
+			const sw = row.createDiv("strakes-swatch");
+			sw.setCssStyles({ background: z.color });
+			row.createDiv({ cls: "strakes-panel-name", text: z.name.trim() || T("(sin nombre)", "(unnamed)") });
+			const area = zoneArea(data, z);
+			row.createDiv({ cls: "strakes-panel-meta", text: area ? displayArea(area.value, data.unit, this.plugin.settings.displayUnit) : "" });
+			row.onclick = () => {
+				const poly = this.zonePolygons.get(z.id);
+				if (poly) this.map?.flyToBounds(poly.getBounds().pad(0.3), { duration: 0.5 });
+			};
+			row.oncontextmenu = (evt) => this.zoneMenu(z, evt);
 		}
 
 		// Escala
@@ -1555,7 +1972,7 @@ export class MapView extends TextFileView {
 		const dm = this.labels;
 		const path = this.file?.path ?? "";
 		const pl = this.plugin.playerLabels(path);
-		const any = (s: LabelState) => s.pins || s.routes;
+		const any = (s: LabelState) => s.pins || s.routes || s.zones;
 		const setDm = (s: LabelState) => {
 			this.labels = s;
 			this.renderAll();
@@ -1576,11 +1993,11 @@ export class MapView extends TextFileView {
 		};
 		this.iconToggle(sec, "dm", any(dm), tip("dm", any(dm)), () => {
 			const v = !any(dm);
-			setDm({ pins: v, routes: v });
+			setDm({ pins: v, routes: v, zones: v });
 		});
 		this.iconToggle(sec, "players", any(pl), tip("players", any(pl)), () => {
 			const v = !any(pl);
-			setPl({ pins: v, routes: v });
+			setPl({ pins: v, routes: v, zones: v });
 		});
 		sec.oncontextmenu = (e) => {
 			e.preventDefault();
@@ -1603,6 +2020,7 @@ export class MapView extends TextFileView {
 			T("Rutas", "Routes"),
 			T("tú: número y ruta de cada tramo; jugadores: nombre de la ruta", "you: number and route of each segment; players: route name"),
 		);
+		row("zones", T("Zonas", "Zones"), T("nombres de las zonas", "zone names"));
 	}
 
 	private section(parent: HTMLElement, title: string, icon?: string, tip?: string, onClick?: () => void): HTMLElement {
@@ -1698,6 +2116,10 @@ export class MapView extends TextFileView {
 		const abandoned = this.mode === "pick-target" && mode !== "pick-target" ? this.pickTargetPin : null;
 		if (abandoned) this.pickTargetPin = null;
 		this.mode = mode;
+		if (mode !== "zone") {
+			this.draftZone = [];
+			this.showSnap(null);
+		}
 		this.measureFrom = null;
 		this.calibrateFrom = null;
 		if (mode !== "measure") this.overlay?.clearLayers();
@@ -1739,6 +2161,9 @@ export class MapView extends TextFileView {
 				if (e.originalEvent?.shiftKey) this.addPendingBend(p);
 				else this.addRoutePoint(p);
 				break;
+			case "zone":
+				this.addZoneVertex(e.latlng);
+				break;
 			case "measure":
 				this.measurePick(p);
 				break;
@@ -1749,8 +2174,9 @@ export class MapView extends TextFileView {
 				this.setPortalTarget(p);
 				break;
 			default:
-				if (this.selectedRouteId) {
+				if (this.selectedRouteId || this.selectedZoneId) {
 					this.selectedRouteId = null;
+					this.selectedZoneId = null;
 					this.renderAll();
 				}
 		}
@@ -1767,6 +2193,15 @@ export class MapView extends TextFileView {
 				.onClick(() => {
 					this.startRouteMode();
 					this.addRoutePoint(p);
+				}),
+		);
+		m.addItem((i) =>
+			i
+				.setTitle(T("Empezar zona aquí", "Start zone here"))
+				.setIcon("pentagon")
+				.onClick(() => {
+					this.setMode("zone");
+					this.addZoneVertex(e.latlng);
 				}),
 		);
 		m.showAtMouseEvent(e.originalEvent);
@@ -1837,6 +2272,9 @@ export class MapView extends TextFileView {
 				else this.addRoutePoint({ x: pin.x, y: pin.y }, this.autoAnchor ? pin : undefined);
 				return;
 			}
+			case "zone":
+				this.addZoneVertex(this.ll(pin));
+				return;
 			case "pick-target":
 				if (this.pickTargetPin && this.pickTargetPin.id !== pin.id) {
 					const portal = this.pickTargetPin;
@@ -1890,7 +2328,8 @@ export class MapView extends TextFileView {
 		window.setTimeout(() => ring.remove(), 2200);
 	}
 
-	private async openPinLink(pin: MapPin, newTab: boolean | string): Promise<void> {
+	/** Abre la nota enlazada de un marcador o una zona. */
+	private async openPinLink(pin: { link?: string }, newTab: boolean | string): Promise<void> {
 		if (!pin.link) return;
 		const source = this.file?.path ?? "";
 		const { subpath } = parseWikilink(pin.link);
@@ -1912,7 +2351,8 @@ export class MapView extends TextFileView {
 		await this.noteLeaf.openFile(file, { eState: subpath ? { subpath } : undefined });
 	}
 
-	private sendPinToPlayers(pin: MapPin): void {
+	/** Envía a la pantalla de jugadores la nota enlazada de un marcador o una zona. */
+	private sendPinToPlayers(pin: { link?: string }): void {
 		if (!pin.link) return;
 		const file = resolveWikilink(this.app, pin.link, this.file?.path ?? "");
 		if (!file) {
@@ -2103,6 +2543,21 @@ export class MapView extends TextFileView {
 		const layer = this.draftLayer;
 		if (!layer) return;
 		layer.clearLayers();
+		// Zona a medias: sus lados y vértices; el primero, más grande cuando ya se puede cerrar.
+		if (this.mode === "zone" && this.draftZone.length) {
+			const pts = this.draftZone.map((p) => this.ll(p));
+			if (pts.length > 1) L.polyline(pts, { color: DEFAULT_ZONE_COLOR, weight: 3, dashArray: "6 6", interactive: false }).addTo(layer);
+			this.draftZone.forEach((p, i) =>
+				L.circleMarker(this.ll(p), {
+					radius: i === 0 && this.draftZone.length >= 3 ? 7 : 4,
+					color: DEFAULT_ZONE_COLOR,
+					fillColor: "#fff",
+					fillOpacity: 1,
+					interactive: false,
+				}).addTo(layer),
+			);
+			return;
+		}
 		const route = this.activeRoute();
 		const data = this.mapData;
 		if (this.mode !== "route" || !route || !data || !this.pendingBends.length) return;
@@ -2293,6 +2748,9 @@ export class MapView extends TextFileView {
 				return;
 			case "measure":
 				this.measurePick(node, node.id);
+				return;
+			case "zone":
+				this.addZoneVertex(this.ll(node));
 				return;
 			case "pin":
 				// El marcador nuevo nace anclado al nodo (si el anclaje automático está activado).
@@ -2588,20 +3046,22 @@ export class MapView extends TextFileView {
 				.onClick(async () => {
 					const nP = data.pins.filter((p) => p.layerId === layerId).length;
 					const nR = data.routes.filter((r) => r.layerId === layerId).length;
+					const nZ = data.zones.filter((z) => z.layerId === layerId).length;
 					const ok =
-						nP + nR === 0 ||
+						nP + nR + nZ === 0 ||
 						(await confirmDialog(
 							this.app,
 							T("Eliminar capa", "Delete layer"),
 							T(
-								`La capa «${layer.name}» tiene ${nP} marcadores y ${nR} rutas. Quedarán sin capa (no se eliminan).`,
-								`The layer "${layer.name}" has ${nP} markers and ${nR} routes. They'll be left without a layer (they aren't deleted).`,
+								`La capa «${layer.name}» tiene ${nP} marcadores, ${nR} rutas y ${nZ} zonas. Quedarán sin capa (no se eliminan).`,
+								`The layer "${layer.name}" has ${nP} markers, ${nR} routes and ${nZ} zones. They'll be left without a layer (they aren't deleted).`,
 							),
 							T("Eliminar capa", "Delete layer"),
 						));
 					if (!ok) return;
 					for (const p of data.pins) if (p.layerId === layerId) p.layerId = null;
 					for (const r of data.routes) if (r.layerId === layerId) r.layerId = null;
+					for (const z of data.zones) if (z.layerId === layerId) z.layerId = null;
 					data.layers = data.layers.filter((l) => l.id !== layerId);
 					if (this.currentLayerId === layerId) this.currentLayerId = null;
 					this.persist();

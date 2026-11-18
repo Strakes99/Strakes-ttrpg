@@ -23,7 +23,17 @@ export interface MapLayer {
 	players?: boolean;
 }
 
-export type ItemType = "pins" | "routes";
+export type ItemType = "pins" | "routes" | "zones";
+
+/** Interruptor del tipo en la vista del DM (ojo de la cabecera de su sección del panel). */
+function typeShown(data: MapData, type: ItemType): boolean {
+	return type === "pins" ? data.showPins : type === "routes" ? data.showRoutes : data.showZones;
+}
+
+/** Interruptor del tipo para los jugadores (pantalla de la cabecera de su sección del panel). */
+function typeForPlayers(data: MapData, type: ItemType): boolean {
+	return type === "pins" ? data.playerPins : type === "routes" ? data.playerRoutes : data.playerZones;
+}
 
 export function isItemVisible(
 	data: MapData,
@@ -31,7 +41,7 @@ export function isItemVisible(
 	layerId: string | null,
 	overrides?: { types?: Partial<Record<ItemType, boolean>>; layers?: Map<string, boolean> },
 ): boolean {
-	const typeOn = overrides?.types?.[type] ?? (type === "pins" ? data.showPins : data.showRoutes);
+	const typeOn = overrides?.types?.[type] ?? typeShown(data, type);
 	if (!typeOn) return false;
 	if (!layerId) return true;
 	return overrides?.layers?.get(layerId) ?? data.layers.find((l) => l.id === layerId)?.visible ?? true;
@@ -40,7 +50,7 @@ export function isItemVisible(
 /** ¿Lo ven los jugadores? Tienen que estar marcados el elemento, su tipo y su capa (si tiene). */
 export function isPlayerVisible(data: MapData, type: ItemType, item: { layerId: string | null; players?: boolean }): boolean {
 	if (item.players !== true) return false;
-	if (!(type === "pins" ? data.playerPins : data.playerRoutes)) return false;
+	if (!typeForPlayers(data, type)) return false;
 	if (!item.layerId) return true;
 	return data.layers.find((l) => l.id === item.layerId)?.players === true;
 }
@@ -110,6 +120,33 @@ export interface MapRoute {
 	players?: boolean;
 }
 
+/** Zona (1.3): polígono de lados rectos con nota, colores, área, capa y visibilidad. */
+export interface MapZone {
+	id: string;
+	name: string;
+	/** Vértices en orden (al menos 3), en píxeles de la imagen. */
+	points: Pt[];
+	/** Capa del usuario, o null = sin capa. */
+	layerId: string | null;
+	/** Wikilink a una nota (opcional), como en los marcadores. */
+	link?: string;
+	/** Casilla AUTO: el nombre sale de la nota enlazada (alias, encabezado o nota). Sin definir = a mano. */
+	autoName?: boolean;
+	/** Color del relleno (su transparencia es un ajuste general: zoneFillTransparency). */
+	color: string;
+	/** Color del borde (solo el color: ni grosor ni patrón). */
+	borderColor: string;
+	/** Área escrita a mano, en unidades² del mapa. Sin definir = calculada con la escala. */
+	area?: number;
+	/** Oculta en la vista del DM (ojo del panel). Sin definir = visible. */
+	hidden?: boolean;
+	/** Visible para los jugadores. Sin definir = oculta a los jugadores. */
+	players?: boolean;
+}
+
+/** Color de relleno y borde de las zonas nuevas. */
+export const DEFAULT_ZONE_COLOR = "#4dabf7";
+
 export interface MapData {
 	version: 1;
 	image: string;
@@ -121,13 +158,17 @@ export interface MapData {
 	/** Interruptores por tipo, independientes de las capas (vista del DM). */
 	showPins: boolean;
 	showRoutes: boolean;
+	/** Interruptor del tipo Zonas (vista del DM) y para los jugadores (1.3). */
+	showZones: boolean;
 	/** Interruptores por tipo para los jugadores. */
 	playerPins: boolean;
 	playerRoutes: boolean;
+	playerZones: boolean;
 	layers: MapLayer[];
 	pins: MapPin[];
 	nodes: RouteNode[];
 	routes: MapRoute[];
+	zones: MapZone[];
 }
 
 /** Color de fondo por defecto de los pines nuevos. */
@@ -146,12 +187,15 @@ export function emptyMap(image: string, width: number, height: number, unit: str
 		scale: null,
 		showPins: true,
 		showRoutes: true,
+		showZones: true,
 		playerPins: false,
 		playerRoutes: false,
+		playerZones: false,
 		layers: [],
 		pins: [],
 		nodes: [],
 		routes: [],
+		zones: [],
 	};
 }
 
@@ -170,12 +214,15 @@ export function normalizeMap(raw: unknown, defaultUnit = "km"): MapData {
 		scale: typeof r.scale === "number" && r.scale > 0 ? r.scale : null,
 		showPins: r.showPins !== false,
 		showRoutes: r.showRoutes !== false,
+		showZones: r.showZones !== false,
 		playerPins: r.playerPins === true,
 		playerRoutes: r.playerRoutes === true,
+		playerZones: r.playerZones === true,
 		layers: Array.isArray(r.layers) ? r.layers : [],
 		pins: Array.isArray(r.pins) ? r.pins : [],
 		nodes: Array.isArray(r.nodes) ? r.nodes : [],
 		routes: Array.isArray(r.routes) ? r.routes : [],
+		zones: Array.isArray(r.zones) ? r.zones : [],
 	};
 	for (const l of data.layers) l.players = l.players === true ? true : undefined;
 	// Una capa inexistente equivale a «sin capa».
@@ -216,6 +263,22 @@ export function normalizeMap(raw: unknown, defaultUnit = "km"): MapData {
 		rt.hidden = rt.hidden === true ? true : undefined;
 		rt.players = rt.players === true ? true : undefined;
 	}
+	// Zonas: vértices válidos; sin al menos 3, no hay polígono y la zona se descarta.
+	const num = (v: unknown): v is number => typeof v === "number" && isFinite(v);
+	data.zones = data.zones.filter((z) => z && typeof z === "object" && Array.isArray(z.points));
+	for (const z of data.zones) {
+		z.points = z.points.filter((q) => q && num(q.x) && num(q.y)).map((q) => ({ x: q.x, y: q.y }));
+		if (typeof z.name !== "string") z.name = "";
+		if (!z.layerId || !layerIds.has(z.layerId)) z.layerId = null;
+		if (typeof z.link !== "string" || !z.link.trim()) z.link = undefined;
+		z.autoName = z.autoName === true ? true : undefined;
+		if (typeof z.color !== "string" || !z.color) z.color = DEFAULT_ZONE_COLOR;
+		if (typeof z.borderColor !== "string" || !z.borderColor) z.borderColor = z.color;
+		z.area = num(z.area) && z.area > 0 ? z.area : undefined;
+		z.hidden = z.hidden === true ? true : undefined;
+		z.players = z.players === true ? true : undefined;
+	}
+	data.zones = data.zones.filter((z) => z.points.length >= 3);
 	return data;
 }
 

@@ -291,7 +291,7 @@ export default class StrakesTTRPG extends Plugin {
 	private playerLabelState = new Map<string, LabelState>();
 
 	playerLabels(path: string): LabelState {
-		return this.playerLabelState.get(path) ?? { pins: false, routes: false };
+		return this.playerLabelState.get(path) ?? { pins: false, routes: false, zones: false };
 	}
 
 	setPlayerLabels(path: string, state: LabelState): void {
@@ -468,8 +468,10 @@ export default class StrakesTTRPG extends Plugin {
 			if (!needles.some((n) => text.includes(n.path) || lower.includes(n.base))) continue;
 			await this.app.vault.process(f, (current) => {
 				try {
-					const d = JSON.parse(current) as { image?: unknown; pins?: unknown };
+					const d = JSON.parse(current) as { image?: unknown; pins?: unknown; zones?: unknown };
 					const pins = Array.isArray(d.pins) ? (d.pins as { link?: unknown }[]) : [];
+					// Las zonas también enlazan notas (1.3).
+					const zones = Array.isArray(d.zones) ? (d.zones as { link?: unknown }[]) : [];
 					let changed = false;
 					// En orden: si un archivo se renombró dos veces seguidas, se aplican las dos.
 					for (const { file, oldPath } of batch) {
@@ -477,7 +479,7 @@ export default class StrakesTTRPG extends Plugin {
 							d.image = file.path;
 							changed = true;
 						}
-						for (const p of pins) {
+						for (const p of [...pins, ...zones]) {
 							if (typeof p.link !== "string") continue;
 							const w = parseWikilink(p.link);
 							if (!linkpathMatchesPath(w.linkpath, oldPath)) continue;
@@ -492,7 +494,9 @@ export default class StrakesTTRPG extends Plugin {
 						}
 					}
 					// Marcadores con AUTO: el nombre sigue a la nota renombrada (y los portales a ellos).
-					if (changed) applyAutoNames(pins.filter((p): p is AutoNamePin => typeof (p as { id?: unknown }).id === "string"));
+					// Zonas con AUTO: igual, desde su enlace.
+					if (changed)
+						for (const list of [pins, zones]) applyAutoNames(list.filter((p): p is AutoNamePin => typeof (p as { id?: unknown }).id === "string"));
 					return changed ? JSON.stringify(d, null, "\t") : current;
 				} catch {
 					return current;

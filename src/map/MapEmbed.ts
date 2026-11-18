@@ -6,9 +6,9 @@ import { resizeObserverFor } from "../ui/dom";
 import { loadImageSize } from "../ui/modals";
 import { PinHoverParent } from "./hover";
 import { linktextOf, resolveWikilink } from "./links";
-import { isItemVisible, ItemType, MapData, MapPin, newMapUnit, nodeMap, normalizeMap, ROUTE_COLORS, routePath } from "./mapData";
+import { isItemVisible, ItemType, MapData, MapPin, MapZone, newMapUnit, nodeMap, normalizeMap, ROUTE_COLORS, routePath } from "./mapData";
 import { LabelState } from "../types";
-import { mapBounds, nodeMarker, pinIcon, pinTooltipOptions, pinTooltipText, routeNameLabel, toLatLng } from "./render";
+import { ensureZonePane, mapBounds, nodeMarker, pinIcon, pinTooltipOptions, pinTooltipText, routeNameLabel, toLatLng, zoneNameLabel, zoneStyle } from "./render";
 
 /** Lo que Obsidian pasa a quien crea un embed (API interna `app.embedRegistry`). */
 export interface EmbedContext {
@@ -36,7 +36,7 @@ export class MapEmbed extends Component {
 	private content: L.LayerGroup | null = null;
 	/** Visibilidad de tipos y capas solo para este embed (no modifica el archivo). */
 	private layerOverride = new Map<string, boolean>();
-	private typeOverride: { pins?: boolean; routes?: boolean } = {};
+	private typeOverride: Partial<Record<ItemType, boolean>> = {};
 	private fitted = false;
 	/** Tamaño escrito en el enlace (|alto o |anchoxalto). null = se ajusta a la proporción del mapa. */
 	private explicitSize: { width: number | null; height: number } | null = null;
@@ -47,7 +47,7 @@ export class MapEmbed extends Component {
 	private domCleanup: (() => void)[] = [];
 	private pinHover = new PinHoverParent(() => this.plugin.settings.pinPreviewTitle);
 	/** Etiquetas de este mapa (no se guardan: al volver a dibujar la nota, apagadas). */
-	private labels: LabelState = { pins: false, routes: false };
+	private labels: LabelState = { pins: false, routes: false, zones: false };
 	/** Candado de este mapa (no se recuerda: al volver a dibujar la nota, abierto). */
 	private locked = false;
 	private toolbarEl: HTMLElement | null = null;
@@ -70,6 +70,8 @@ export class MapEmbed extends Component {
 		// Ajuste «Bloquear los mapas incrustados»: bloquea y quita (o devuelve) el candado.
 		this.registerEvent(
 			this.plugin.events.on("settings", () => {
+				// También redibuja: la transparencia del relleno de las zonas es un ajuste.
+				this.render();
 				this.applyLock();
 				if (this.wrapper) this.buildToolbar(this.wrapper);
 			}),
@@ -163,6 +165,7 @@ export class MapEmbed extends Component {
 		});
 		this.map = map;
 		this.content = L.layerGroup().addTo(map);
+		ensureZonePane(map);
 		this.captureWheel(wrapper);
 		this.applyLock();
 		map.on("zoomstart movestart", () => {
@@ -312,10 +315,10 @@ export class MapEmbed extends Component {
 		};
 		button("layers", T("Capas", "Layers"), (evt) => this.layersMenu(evt));
 		// Etiquetas: clic, todas a la vez; clic derecho, por tipo. Resaltado si hay alguna encendida.
-		const anyLabel = this.labels.pins || this.labels.routes;
+		const anyLabel = this.labels.pins || this.labels.routes || this.labels.zones;
 		const tag = button("tag", T("Etiquetas · clic derecho para elegirlas por tipo", "Labels · right-click to choose them by type"), () => {
 			const on = !anyLabel;
-			this.setLabels({ pins: on, routes: on });
+			this.setLabels({ pins: on, routes: on, zones: on });
 		});
 		tag.toggleClass("is-active", anyLabel);
 		tag.oncontextmenu = (evt) => {
@@ -378,6 +381,7 @@ export class MapEmbed extends Component {
 			);
 		item("pins", T("Nombres de los marcadores", "Marker names"), "map-pin");
 		item("routes", T("Nombres de las rutas", "Route names"), "route");
+		item("zones", T("Nombres de las zonas", "Zone names"), "pentagon");
 		m.showAtMouseEvent(evt);
 	}
 
@@ -386,7 +390,7 @@ export class MapEmbed extends Component {
 		if (!data) return;
 		const m = new Menu();
 		const typeItem = (type: ItemType, label: string, icon: string) => {
-			const on = this.typeOverride[type] ?? (type === "pins" ? data.showPins : data.showRoutes);
+			const on = this.typeOverride[type] ?? (type === "pins" ? data.showPins : type === "routes" ? data.showRoutes : data.showZones);
 			m.addItem((i) =>
 				i
 					.setTitle(label)
@@ -400,6 +404,7 @@ export class MapEmbed extends Component {
 		};
 		typeItem("pins", T("Marcadores", "Markers"), "map-pin");
 		typeItem("routes", T("Rutas", "Routes"), "route");
+		typeItem("zones", T("Zonas", "Zones"), "pentagon");
 		if (data.layers.length) m.addSeparator();
 		for (const layer of data.layers) {
 			const on = this.layerOverride.get(layer.id) ?? layer.visible;
@@ -436,7 +441,8 @@ export class MapEmbed extends Component {
 			if (img instanceof TFile) {
 				const src = this.app.vault.getResourcePath(img);
 				if (data.width && data.height) {
-					this.imageOverlay = L.imageOverlay(src, mapBounds(data), { interactive: false }).addTo(map);
+					// La imagen va en el panel más bajo de Leaflet: por encima quedan zonas, rutas y marcadores.
+					this.imageOverlay = L.imageOverlay(src, mapBounds(data), { interactive: false, pane: "tilePane" }).addTo(map);
 					this.imageOverlay.bringToBack();
 					map.setMaxBounds(mapBounds(data).pad(0.5));
 				} else this.measureImage(data, src);
@@ -444,6 +450,8 @@ export class MapEmbed extends Component {
 		}
 
 		content.clearLayers();
+		// Zonas (vista del DM), por debajo de rutas y marcadores.
+		for (const zone of data.zones) if (!zone.hidden && this.isVisible("zones", zone.layerId)) this.addZone(zone, content);
 		const nodes = nodeMap(data);
 		for (const route of data.routes) {
 			if (route.hidden || !this.isVisible("routes", route.layerId)) continue;
@@ -472,9 +480,33 @@ export class MapEmbed extends Component {
 		}
 	}
 
+	/** Zona del incrustado: clic abre su nota; Ctrl+cursor, la vista previa; su nombre al pasar o en su centro. */
+	private addZone(zone: MapZone, content: L.LayerGroup): void {
+		const poly = L.polygon(
+			zone.points.map((p) => toLatLng(p)),
+			{ ...zoneStyle(zone, this.plugin.settings.zoneFillTransparency), bubblingMouseEvents: false },
+		);
+		if (this.labels.zones) {
+			const label = zoneNameLabel(zone);
+			if (label) content.addLayer(label);
+		} else if (zone.name.trim()) poly.bindTooltip(zone.name, { sticky: true, className: "strakes-map-tooltip" });
+		poly.on("click", (e: L.LeafletMouseEvent) => {
+			if (!zone.link) return;
+			if (!resolveWikilink(this.app, zone.link, this.file.path)) {
+				new Notice(T(`No se encuentra la nota ${zone.link}`, `Note not found: ${zone.link}`));
+				return;
+			}
+			void this.app.workspace.openLinkText(linktextOf(zone.link), this.file.path, Keymap.isModEvent(e.originalEvent));
+		});
+		poly.on("mouseover", (e: L.LeafletMouseEvent) => {
+			if (zone.link) this.pinHover.show(this.app, zone, e.originalEvent, undefined, this.file.path);
+		});
+		content.addLayer(poly);
+	}
+
 	private pinMarker(pin: MapPin): L.Marker {
 		const marker = L.marker(toLatLng(pin), { icon: pinIcon(pin), keyboard: false, riseOnHover: true });
-		marker.bindTooltip(pinTooltipText(pin), { ...pinTooltipOptions(pin), permanent: this.labels.pins });
+		marker.bindTooltip(pinTooltipText(pin), pinTooltipOptions(pin, this.labels.pins));
 		// Clic principal: abrir la nota enlazada.
 		marker.on("click", (e: L.LeafletMouseEvent) => {
 			if (!pin.link) return;

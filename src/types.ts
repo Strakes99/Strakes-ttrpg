@@ -184,6 +184,8 @@ export type OverlayPosition = "top-left" | "top-right" | "bottom-left" | "bottom
 export interface LabelState {
 	pins: boolean;
 	routes: boolean;
+	/** Nombre de la zona en su centro (1.3). */
+	zones: boolean;
 }
 
 /** Rectángulo de un mapa en coordenadas de Leaflet (lat = y, lng = x, en píxeles de la imagen). */
@@ -247,6 +249,8 @@ export interface StrakesSettings {
 	drawWidth: number;
 	/** Mapas incrustados: bloqueados (sin zoom ni arrastre) y sin el botón del candado. */
 	lockAllEmbeds: boolean;
+	/** Mapas: transparencia (%) del relleno de todas las zonas (1.3). */
+	zoneFillTransparency: number;
 	/** Paso de viaje para calcular tiempos en los mapas. */
 	travelPace: "slow" | "normal" | "fast";
 	/** Condiciones personalizadas para el tracker de iniciativa. */
@@ -282,6 +286,7 @@ export const DEFAULT_SETTINGS: StrakesSettings = {
 	laserFadeSeconds: 3,
 	drawWidth: 4,
 	lockAllEmbeds: false,
+	zoneFillTransparency: 50,
 	collapsedMapSections: [],
 	customConditions: [],
 	conditionOverrides: {},

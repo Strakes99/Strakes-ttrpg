@@ -1,6 +1,5 @@
 import { App, HoverParent, HoverPopover } from "obsidian";
 import { linktextOf, parseWikilink, resolveWikilink } from "./links";
-import { MapPin } from "./mapData";
 
 /**
  * "Padre" de la vista previa nativa de Obsidian para los pines del mapa.
@@ -29,8 +28,8 @@ export class PinHoverParent implements HoverParent {
 		p.hoverEl.prepend(createDiv({ cls: "strakes-hover-title", text: this.title }));
 	}
 
-	/** Lanza la vista previa de la nota del pin (respeta el ajuste de Ctrl de Obsidian). */
-	show(app: App, pin: MapPin, event: MouseEvent, targetEl: HTMLElement | undefined, sourcePath: string): void {
+	/** Lanza la vista previa de la nota enlazada de un marcador o una zona (respeta el ajuste de Ctrl de Obsidian). */
+	show(app: App, pin: { link?: string }, event: MouseEvent, targetEl: HTMLElement | undefined, sourcePath: string): void {
 		if (!pin.link) return;
 		const file = resolveWikilink(app, pin.link, sourcePath);
 		const { subpath, linkpath } = parseWikilink(pin.link);

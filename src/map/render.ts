@@ -1,7 +1,8 @@
 import * as L from "leaflet";
 import { getIconIds, setIcon } from "obsidian";
 import { Pt } from "./geometry";
-import { DEFAULT_PIN_COLOR, MapData, MapPin, MapRoute, RouteNode, routePath, segmentPath } from "./mapData";
+import { DEFAULT_PIN_COLOR, MapData, MapPin, MapRoute, MapZone, RouteNode, routePath, segmentPath } from "./mapData";
+import { polygonCentroid } from "./zones";
 import { pointAtFraction } from "./geometry";
 import { customIconName, getIconLibrary } from "./icons";
 
@@ -64,9 +65,13 @@ export function pinTooltipText(pin: MapPin): string {
 	return pin.name;
 }
 
-/** Etiqueta del marcador, justo encima de su figura (la gota o el círculo del portal; ver pinIcon). */
-export function pinTooltipOptions(pin: MapPin): L.TooltipOptions {
-	return { direction: "top", offset: [0, pin.portal ? -14 : -34], className: "strakes-map-tooltip" };
+/**
+ * Etiqueta del marcador, justo encima de su figura (la gota o el círculo del portal; ver pinIcon).
+ * Al pasar el cursor, el globo del tema (strakes-map-tooltip); fija (etiquetas encendidas), la
+ * pastilla oscura de las etiquetas de rutas y zonas (strakes-map-label).
+ */
+export function pinTooltipOptions(pin: MapPin, permanent = false): L.TooltipOptions {
+	return { direction: "top", offset: [0, pin.portal ? -14 : -34], permanent, className: permanent ? "strakes-map-label" : "strakes-map-tooltip" };
 }
 
 /**
@@ -109,6 +114,37 @@ export function routeNameLabel(route: MapRoute, nodes: Map<string, RouteNode>): 
 		icon: L.divIcon({
 			className: "strakes-seg-label",
 			html: createSpan({ text: route.name }),
+			iconSize: null as unknown as L.PointExpression,
+		}),
+		keyboard: false,
+		interactive: false,
+	});
+}
+
+/** Panel de Leaflet de las zonas: por debajo de rutas y marcadores (el de las rutas es el 400). */
+export const ZONE_PANE = "strakes-zones";
+
+/** Crea en el mapa el panel de las zonas, si no existe. */
+export function ensureZonePane(map: L.Map): void {
+	if (!map.getPane(ZONE_PANE)) map.createPane(ZONE_PANE).addClass("strakes-zones-pane");
+}
+
+/**
+ * Estilo del polígono de una zona: borde de 2 px y relleno con la transparencia general
+ * (ajuste «Transparencia del relleno de las zonas», en %).
+ */
+export function zoneStyle(zone: MapZone, fillTransparency: number): L.PolylineOptions {
+	const fillOpacity = Math.min(1, Math.max(0, 1 - fillTransparency / 100));
+	return { pane: ZONE_PANE, color: zone.borderColor, weight: 2, opacity: 1, fillColor: zone.color, fillOpacity };
+}
+
+/** Nombre de la zona en su centro (etiquetas de zona). Sin nombre, nada. */
+export function zoneNameLabel(zone: MapZone): L.Marker | null {
+	if (!zone.name.trim()) return null;
+	return L.marker(toLatLng(polygonCentroid(zone.points)), {
+		icon: L.divIcon({
+			className: "strakes-seg-label strakes-zone-label",
+			html: createSpan({ text: zone.name }),
 			iconSize: null as unknown as L.PointExpression,
 		}),
 		keyboard: false,

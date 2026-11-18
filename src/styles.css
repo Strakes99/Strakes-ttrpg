@@ -1188,6 +1188,10 @@ input.strakes-portrait-zoom-num {
 .strakes-pin-wrap.is-snap-target {
 	filter: drop-shadow(0 0 3px var(--interactive-accent)) drop-shadow(0 0 3px var(--interactive-accent));
 }
+/* Dónde se pegará el vértice de zona (un nodo o un vértice de otra zona). */
+.strakes-snap-indicator { stroke: var(--interactive-accent); }
+/* Zonas: su panel va por debajo de rutas y marcadores (el de Leaflet para las rutas es el 400). */
+.leaflet-pane.strakes-zones-pane { z-index: 350; }
 /* Láser y lápiz: su panel va por encima de rutas y marcadores y no recibe el ratón. */
 .leaflet-pane.strakes-drawing-pane {
 	z-index: 640;
@@ -1516,8 +1520,34 @@ input.strakes-portrait-zoom-num {
 	font-size: var(--font-ui-small);
 	padding: 2px 6px;
 }
+/* La flecha del globo, del color del tema en las cuatro direcciones (las etiquetas que siguen al
+   cursor, como las de rutas y zonas, salen a un lado y antes la flecha se quedaba blanca). */
 .leaflet-tooltip-top.strakes-map-tooltip::before {
 	border-top-color: var(--background-primary);
+}
+.leaflet-tooltip-bottom.strakes-map-tooltip::before {
+	border-bottom-color: var(--background-primary);
+}
+.leaflet-tooltip-left.strakes-map-tooltip::before {
+	border-left-color: var(--background-primary);
+}
+.leaflet-tooltip-right.strakes-map-tooltip::before {
+	border-right-color: var(--background-primary);
+}
+/* Nombre fijo de un marcador (etiquetas encendidas): la misma pastilla que las etiquetas de rutas y zonas. */
+.leaflet-tooltip.strakes-map-label {
+	padding: 1px 5px;
+	border: none;
+	border-radius: 8px;
+	box-shadow: none;
+	background: rgba(20, 20, 24, 0.82);
+	color: #fff;
+	font-size: 11px;
+	font-weight: 600;
+	white-space: nowrap;
+}
+.leaflet-tooltip.strakes-map-label::before {
+	display: none;
 }
 
 /* Rutas */
@@ -1563,6 +1593,11 @@ input.strakes-portrait-zoom-num {
 	border: none;
 	width: 0;
 	height: 0;
+}
+/* Nombre de una zona en su centro (etiquetas de zona): como la etiqueta de un tramo, algo mayor. */
+.strakes-seg-label.strakes-zone-label span {
+	font-size: 12px;
+	font-weight: 700;
 }
 .strakes-seg-label span {
 	position: absolute;

@@ -3,9 +3,10 @@ import { T } from "../i18n";
 import { uid } from "../types";
 import { FileInputSuggest, isImageFile, promptText } from "../ui/modals";
 import { IconColorControl, IconPicker } from "../ui/iconPicker";
-import { autoPinName } from "./autoName";
+import { autoPinName, nameFromLink } from "./autoName";
 import { makeWikilink, parseWikilink, resolveWikilink, wikilinkFor } from "./links";
-import { DEFAULT_ICON_COLOR, formatDistance, formatHours, MapData, MapLayer, parseHoursInput, segmentTime, MapPin, MapRoute, nodeMap, segmentDistance, unitOptions } from "./mapData";
+import { DEFAULT_ICON_COLOR, formatDistance, formatHours, MapData, MapLayer, parseHoursInput, segmentTime, MapPin, MapRoute, MapZone, nodeMap, segmentDistance, unitOptions } from "./mapData";
+import { displayArea, zoneArea } from "./zones";
 
 // ---------- Tramo (clic en la etiqueta) ----------
 
@@ -467,6 +468,257 @@ export class PinModal extends Modal {
 		}
 		if (action !== "delete") commitLayers(this.data, this.newLayers);
 		this.onDone({ action, pin: this.pin });
+		this.close();
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+// ---------- Nombre y nota (zonas y rutas) ----------
+
+/** Lo que necesitan los campos de nombre y nota de un elemento enlazable. */
+interface Linkable {
+	name: string;
+	link?: string;
+	autoName?: boolean;
+}
+
+/**
+ * Campos «Nombre» (con casilla AUTO) y «Nota» (con su encabezado) de un elemento enlazable a una
+ * nota: las zonas y, más adelante, las rutas. Funcionan como en el diálogo del marcador (que
+ * tiene los suyos porque también maneja el destino de los portales): con AUTO, el nombre sale del
+ * enlace (alias, encabezado o nota) y escribir un nombre la desmarca.
+ */
+class NameLinkFields {
+	private autoCheck: HTMLInputElement | null = null;
+	private nameInput: HTMLInputElement | null = null;
+	private linkInput: HTMLInputElement | null = null;
+
+	constructor(
+		private app: App,
+		private item: Linkable,
+		private sourcePath: string,
+		private texts: { autoTip: string; linkDesc: string },
+	) {}
+
+	render(el: HTMLElement, focus: boolean): void {
+		const item = this.item;
+		const nameSetting = new Setting(el).setName(T("Nombre", "Name")).addText((t) => {
+			t.setValue(item.name).onChange((v) => {
+				item.name = v;
+				if (item.autoName) {
+					item.autoName = undefined;
+					if (this.autoCheck) this.autoCheck.checked = false;
+					t.setPlaceholder("");
+				}
+			});
+			this.nameInput = t.inputEl;
+			if (focus) window.setTimeout(() => t.inputEl.focus(), 10);
+		});
+		const autoLabel = nameSetting.controlEl.createEl("label", { cls: "strakes-native-check strakes-auto-name" });
+		const autoCheck = autoLabel.createEl("input", { type: "checkbox" });
+		autoCheck.checked = item.autoName === true;
+		autoLabel.appendText(T("AUTO", "AUTO"));
+		autoLabel.setAttribute("aria-label", this.texts.autoTip);
+		autoCheck.onchange = () => {
+			item.autoName = autoCheck.checked || undefined;
+			this.refreshAutoName();
+		};
+		this.autoCheck = autoCheck;
+		this.refreshAutoName();
+
+		let headingHost: HTMLElement;
+		new Setting(el)
+			.setName(T("Nota", "Note"))
+			.setDesc(this.texts.linkDesc)
+			.addText((t) => {
+				t.setPlaceholder(T("[[Nota]]", "[[Note]]")).setValue(item.link ?? "");
+				t.inputEl.addClass("strakes-wide-input");
+				this.linkInput = t.inputEl;
+				new FileInputSuggest(
+					this.app,
+					t.inputEl,
+					(f) => f.extension === "md" || f.extension === "smap" || f.extension === "canvas",
+					(f) => {
+						this.setLink(wikilinkFor(this.app, f, this.sourcePath));
+						if (!item.autoName && !item.name.trim() && this.nameInput) {
+							item.name = f.basename;
+							this.nameInput.value = f.basename;
+						}
+						this.renderHeadings(headingHost);
+					},
+				);
+				t.inputEl.addEventListener("change", () => {
+					const v = t.getValue().trim();
+					if (!v) this.setLink(undefined);
+					else {
+						// Acepta "Nota", "[[Nota]]", "Nota#Encabezado"… y lo normaliza.
+						const parsed = parseWikilink(v);
+						const f = resolveWikilink(this.app, v, this.sourcePath);
+						this.setLink(
+							f ? wikilinkFor(this.app, f, this.sourcePath, parsed.subpath, parsed.alias) : makeWikilink(parsed.linkpath, parsed.subpath, parsed.alias),
+						);
+					}
+					this.renderHeadings(headingHost);
+				});
+			});
+		headingHost = el.createDiv();
+		this.renderHeadings(headingHost);
+	}
+
+	private setLink(link: string | undefined): void {
+		this.item.link = link;
+		if (this.linkInput) this.linkInput.value = link ?? "";
+		this.refreshAutoName();
+	}
+
+	/** Con AUTO marcada, pone en el campo el nombre que da el enlace (vacío si no hay enlace). */
+	private refreshAutoName(): void {
+		const item = this.item;
+		if (!item.autoName) {
+			this.nameInput?.setAttribute("placeholder", "");
+			return;
+		}
+		item.name = nameFromLink(item.link) ?? "";
+		if (this.nameInput) {
+			this.nameInput.value = item.name;
+			this.nameInput.setAttribute("placeholder", T("Enlaza una nota", "Link a note"));
+		}
+	}
+
+	private renderHeadings(host: HTMLElement): void {
+		host.empty();
+		const item = this.item;
+		const file = item.link ? resolveWikilink(this.app, item.link, this.sourcePath) : null;
+		if (file && file.extension === "md") {
+			const headings = this.app.metadataCache.getFileCache(file)?.headings ?? [];
+			if (headings.length)
+				new Setting(host).setName(T("Encabezado (opcional)", "Heading (optional)")).addDropdown((dd) => {
+					dd.addOption("", T("— Nota completa —", "— Whole note —"));
+					for (const h of headings) dd.addOption(`#${h.heading}`, `${"  ".repeat(h.level - 1)}${h.heading}`);
+					dd.setValue(parseWikilink(item.link!).subpath);
+					dd.onChange((v) => {
+						const cur = parseWikilink(item.link ?? "");
+						this.setLink(makeWikilink(cur.linkpath, v, cur.alias));
+					});
+				});
+		} else if (item.link && !file) {
+			host.createDiv({ cls: "strakes-warning", text: T("⚠ No se encuentra esa nota.", "⚠ That note can't be found.") });
+		}
+	}
+}
+
+// ---------- Zona ----------
+
+export interface ZoneModalResult {
+	action: "save" | "delete";
+	zone: MapZone;
+}
+
+/**
+ * Diálogo de una zona (1.3): nombre con AUTO, nota, colores del relleno y del borde (la
+ * transparencia del relleno es un ajuste general), área manual, capa y visibilidad para los jugadores. El nombre puede quedar vacío
+ * (p. ej. una zona que solo sirve para la niebla).
+ */
+export class ZoneModal extends Modal {
+	private zone: MapZone;
+	/** Capas creadas en este diálogo; se añaden al mapa solo al guardar. */
+	private newLayers: MapLayer[] = [];
+	private fields: NameLinkFields;
+	private firstRender = true;
+
+	constructor(
+		app: App,
+		private data: MapData,
+		zone: MapZone,
+		private isNew: boolean,
+		sourcePath: string,
+		private onDone: (r: ZoneModalResult) => void,
+	) {
+		super(app);
+		this.zone = structuredClone(zone);
+		this.fields = new NameLinkFields(app, this.zone, sourcePath, {
+			autoTip: T(
+				"Nombre automático: el de la nota enlazada (o su encabezado o alias). Escribir un nombre la desmarca.",
+				"Automatic name: the linked note's (or its heading or alias). Typing a name unticks it.",
+			),
+			linkDesc: T(
+				"Opcional. Se guarda como wikilink, ej. [[Nota]] o [[Nota#Encabezado]]. Clic en la zona abre la nota (Ctrl/Cmd+clic: en pestaña nueva).",
+				"Optional. Saved as a wikilink, e.g. [[Note]] or [[Note#Heading]]. Clicking the zone opens the note (Ctrl/Cmd+click: in a new tab).",
+			),
+		});
+	}
+
+	onOpen(): void {
+		this.titleEl.setText(this.isNew ? T("Nueva zona", "New zone") : T("Editar zona", "Edit zone"));
+		this.render();
+	}
+
+	private render(): void {
+		const el = this.contentEl;
+		el.empty();
+		const z = this.zone;
+		this.fields.render(el, this.firstRender);
+		this.firstRender = false;
+
+		// Colores del relleno y del borde, en una fila.
+		const colors = new Setting(el).setName(T("Colores", "Colors"));
+		colors.controlEl.addClass("strakes-color-row");
+		const fill = colors.controlEl.createDiv("strakes-color-group");
+		fill.createSpan({ cls: "strakes-color-label", text: T("Relleno", "Fill") });
+		new ColorComponent(fill).setValue(z.color).onChange((v) => (z.color = v));
+		const border = colors.controlEl.createDiv("strakes-color-group");
+		border.createSpan({ cls: "strakes-color-label", text: T("Borde", "Border") });
+		new ColorComponent(border).setValue(z.borderColor).onChange((v) => (z.borderColor = v));
+
+		// Área: la escrita a mano tiene prioridad; vacía, la calculada con la escala.
+		const estimate = zoneArea(this.data, { ...z, area: undefined });
+		new Setting(el)
+			.setName(T(`Área (${this.data.unit || "sin unidad"}²)`, `Area (${this.data.unit || "no unit"}²)`))
+			.setDesc(
+				this.data.scale
+					? T("Vacío = la calculada con la escala del mapa.", "Empty = calculated from the map scale.")
+					: T("El mapa no tiene escala: escribe el área real, o déjalo vacío para no mostrarla.", "The map has no scale: enter the real area, or leave it empty to hide it."),
+			)
+			.addText((t) => {
+				t.inputEl.type = "number";
+				t.inputEl.step = "any";
+				t.setPlaceholder(estimate ? `≈ ${displayArea(estimate.value, this.data.unit, "map")}` : "?");
+				t.setValue(z.area === undefined ? "" : String(z.area));
+				t.onChange((v) => {
+					const n = parseFloat(v.replace(",", "."));
+					z.area = v.trim() === "" || isNaN(n) || n <= 0 ? undefined : n;
+				});
+			});
+
+		layerDropdown(this.app, new Setting(el).setName(T("Capa", "Layer")), this.data, this.newLayers, z.layerId, (id) => (z.layerId = id), () => this.render());
+		new Setting(el)
+			.setName(T("Visible para los jugadores", "Visible to players"))
+			.setDesc(T("También tienen que estar visibles para los jugadores su tipo y su capa (iconos de pantalla del panel).", "Its type and layer must also be visible to players (screen icons in the panel)."))
+			.addToggle((t) => t.setValue(z.players === true).onChange((on) => (z.players = on || undefined)));
+
+		const buttons = modalFooter(this);
+		if (!this.isNew)
+			buttons.addButton((b) =>
+				b
+					.setButtonText(T("Eliminar", "Delete"))
+					.setDestructive()
+					.onClick(() => this.finish("delete")),
+			);
+		buttons.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => this.close()));
+		buttons.addButton((b) =>
+			b
+				.setButtonText(T("Guardar", "Save"))
+				.setCta()
+				.onClick(() => this.finish("save")),
+		);
+	}
+
+	private finish(action: ZoneModalResult["action"]): void {
+		if (action === "save") commitLayers(this.data, this.newLayers);
+		this.onDone({ action, zone: this.zone });
 		this.close();
 	}
 

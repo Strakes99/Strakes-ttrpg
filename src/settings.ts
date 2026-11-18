@@ -223,6 +223,11 @@ export class StrakesSettingTab extends PluginSettingTab {
 						render: (setting) => this.sliderWithNumber(setting, "notPlayerTransparency", 0, 95, 1),
 					},
 					{
+						name: T("Transparencia del relleno de las zonas", "Zone fill transparency"),
+						desc: T("Transparencia (%) del relleno de todas las zonas, en el editor, en los mapas incrustados y en la pantalla de jugadores.", "Transparency (%) of every zone's fill, in the editor, embedded maps and the player screen."),
+						render: (setting) => this.sliderWithNumber(setting, "zoneFillTransparency", 0, 100, 5),
+					},
+					{
 						name: T("Color del láser", "Laser color"),
 						desc: T(
 							"Color del punto y de los trazos del láser. El lápiz empieza con este color; mientras está activo se cambia en la barra del mapa.",
@@ -275,7 +280,7 @@ export class StrakesSettingTab extends PluginSettingTab {
 	 * Mientras se arrastra se aplica en directo; se guarda al soltar. Obsidian reutiliza la fila al
 	 * llamar a `update()`: se vacían los controles antes de volver a crearlos.
 	 */
-	private sliderWithNumber(setting: Setting, key: "mapZoomStep" | "notPlayerTransparency" | "laserFadeSeconds" | "drawWidth", min: number, max: number, step: number): void {
+	private sliderWithNumber(setting: Setting, key: "mapZoomStep" | "notPlayerTransparency" | "laserFadeSeconds" | "drawWidth" | "zoneFillTransparency", min: number, max: number, step: number): void {
 		const el = setting.controlEl;
 		el.empty();
 		const value = this.plugin.settings[key];
