@@ -21,7 +21,7 @@ Desktop only (it uses a pop-out window for the player screen). Requires Obsidian
   - the selected text;
   - an image from your vault.
 - **Note titles and live updates**: a whole note is shown with its title, like the inline title in Obsidian. Shown notes and sections update live while you edit them; if the heading of a shown section is renamed or deleted, the screen is cleared and you get a notice.
-- **Clear** the screen with the eraser button (bottom-right, visible on hover) or the command *Clear player screen*.
+- **Clear** the screen with the eraser button (bottom-right, visible on hover) or the command *Clear player screen*. Closing its window clears it too; sending anything opens it again.
 - **Images** are scaled to fill the screen without being distorted or cropped.
 - **Maps** fill the screen behind the initiative, showing only what you marked as visible to players (see *Maps on the player screen* below).
 - **Fullscreen**: double-click the screen, or use the button in the bottom-right corner (visible on hover).
@@ -77,7 +77,7 @@ Opens in the right sidebar.
 - **Search**: one box in the side panel filters layers, markers, routes and zones by name.
 - **Labels**: a toolbar section turns labels on and off for you (eye) and for the players (screen), all at once or by type (right-click). You see marker and zone names and each segment's number and route; players see marker and zone names and each route's name once. Labels aren't saved.
 - **Routes**:
-  - Nodes, with curve points that shape a route without adding nodes.
+  - Nodes, with curve points (Alt+click while drawing) that shape a route without adding nodes.
   - Each segment can have a manual distance (for maps not drawn to scale) and a manual travel time, or estimate them from a calibrated scale.
   - Optional linked note with an AUTO name, like markers: with editing locked, clicking the route opens it; Ctrl+hover previews it.
 - **Zones**: straight-sided polygons drawn vertex by vertex (rooms, districts, provinces…).
@@ -85,12 +85,13 @@ Opens in the right sidebar.
   - While drawing or dragging, vertices snap to route nodes and to other zones' vertices, so neighbouring zones share their borders. Vertices that share a point move together, also when you drag a route node over them. The anchor button turns snapping and moving together off.
   - With editing unlocked, every zone's vertices can be dragged; select a zone to add vertices from the middle of its sides. Overlapping zones show a menu to choose which one you meant.
 - **Fog of war** (turn it on in the map properties, or just pick the fog brush):
-  - The whole map starts covered. A brush reveals or covers it; its size is in image pixels, so it covers the same area at any zoom. Right-click *Reveal* or *Cover* to do the whole map. Every stroke can be undone.
+  - The whole map starts covered. A brush reveals or covers it; its size is in image pixels, so it covers the same area at any zoom, and it is set with a logarithmic slider (fine control for small brushes) or a number field, with its size in map units next to them. Right-click *Reveal* or *Cover* to do the whole map. Every stroke can be undone.
   - **Zones**: a zone's *Fog* checkbox keeps the whole zone covered and protected from the brush; unticked, the brush decides. A brush click on a zone toggles it. Turning the fog on ticks every zone.
   - You see it semi-transparent and can hide it with the cloud button (also in embedded maps); the players see it opaque, and markers, nodes and labels under it are hidden from them unless a setting shows them.
-- **Measure**: a panel under the *Measure* button shows the path between two nodes along visible routes, with travel time at slow (2 mph, 9 h/day), normal (3 mph, 8 h/day) or fast (4 mph, 7.5 h/day) pace. When the **shortest** and the **fastest** path differ (manual segment times count first), both are listed and you can highlight either on the map. With a calibrated scale you can also measure a straight line.
+- **Straight lines**: hold Shift while dragging markers, nodes, curve points or zone vertices, or while placing the next point of a route, a zone, a measurement or a scale calibration, to keep it at 0°, 45° or 90° from the previous position. Snapping to nodes and vertices still wins.
+- **Measure**: a panel under the *Measure* button shows the path between two nodes along visible routes, with travel time at slow (2 mph, 9 h/day), normal (3 mph, 8 h/day) or fast (4 mph, 7.5 h/day) pace (speeds shown in km/h on metric maps). When the **shortest** and the **fastest** path differ (manual segment times count first), both are listed and you can highlight either on the map. With a calibrated scale you can also measure a straight line.
 - **Laser, pen and eraser**: the laser is a dot that follows your cursor, and dragging draws strokes that fade; the pen draws strokes that stay until Obsidian closes (with its own color); the eraser removes pen strokes. Players see all of it. With these tools, right-drag moves the map. Color, fade time and thickness are settings.
-- **Distance unit**: one setting shows every map's distances and speeds in kilometers, miles, leagues, meters or feet, or in each map's own unit. New maps are created in that unit (kilometers with *Each map's own*). The conversion is only for display: values you enter stay in the map's own unit, so switching back and forth never changes them.
+- **Units**: each map has its own unit (kilometers, miles, meters or feet), chosen in the toolbar next to *Measure* or in the map properties. Changing it converts the scale and the distances and areas you typed, so real sizes stay the same (a 5 ft grid becomes 1.52 m). Calibrating with another unit (`5 ft` on a map in meters) converts the value to the map's unit. A setting picks the unit for new maps.
 - **Zoom step**: a setting for how much each mouse wheel step zooms, in the editor and in embedded maps.
 - **Undo / redo** in the map editor.
 - **Embedding**:
@@ -107,6 +108,8 @@ Opens in the right sidebar.
 - The players see the map full-screen, behind the initiative, with only the markers, routes, zones and layers marked as visible to them, under the fog of war. They can't move it: you choose what they see.
 - **Frame**: while the map is on the player screen, a dashed frame in your editor shows what *Send* would send (it follows the shape of the players' window), and a solid rectangle shows what they see now. Press the button again to fly their view to your frame.
 - **Live** (cast button): the players follow your view as you move. Opening side panels or resizing Obsidian never changes what they see.
+- **Whole map**: right-click the fit button to show the players the whole map without moving your view (in live view, your view moves so the frame holds the whole map).
+- The fog always covers the whole map for the players, also while their view flies to a new place.
 - What the players can't see is shown semi-transparent in your editor (the transparency is a setting).
 
 ## Data and files

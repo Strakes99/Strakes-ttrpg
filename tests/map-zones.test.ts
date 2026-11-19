@@ -38,9 +38,9 @@ t("con escala: calculada", zoneArea(d, zone), { value: 25, estimated: true });
 t("manual: tiene prioridad", zoneArea(d, { ...zone, area: 40 }), { value: 40, estimated: false });
 
 // Área para mostrar
-t("área en su unidad", displayArea(25, "km", "map"), "25 km²");
-t("km² → mi²", displayArea(2.589988, "km", "mi"), "1 mi²");
-t("unidad que no es de longitud: tal cual", displayArea(3, "días", "km"), "3 días²");
+// Desde 1.3.2, siempre en la unidad del mapa (sin conversión al mostrar).
+t("área en su unidad", displayArea(25, "km"), "25 km²");
+t("unidad que no es de longitud: tal cual", displayArea(3, "días"), "3 días²");
 
 // Normalización: valores por defecto, vértices inválidos, zonas con menos de 3 vértices
 const m = normalizeMap({

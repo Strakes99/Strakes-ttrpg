@@ -5,7 +5,9 @@ import type StrakesTTRPG from "../main";
 import { LabelState, MapRegion, uid, VIEW_TYPE_MAP } from "../types";
 import { confirmDialog, loadImageSize, promptText } from "../ui/modals";
 import { DrawingLayer, laserStrokeExpired, Stroke } from "./drawing";
-import { curvePoint, distToSegment, Pt } from "./geometry";
+import { constrainAngle, curvePoint, distToSegment, Pt } from "./geometry";
+// Mayús pulsada antes de hacer clic también arrastra (para alinear): ver leafletPatch.ts.
+import "./leafletPatch";
 import { ensureZonePane, nodeMarker, pinIcon, pinTooltipOptions, pinTooltipText, segmentLabel, zoneNameLabel, zoneStyle } from "./render";
 import { displayArea, pointInPolygon, zoneArea } from "./zones";
 import { PinHoverParent } from "./hover";
@@ -18,11 +20,13 @@ import {
 	legsTime,
 	deleteNode,
 	distanceTime,
-	displayDistance,
+	formatDistance,
+	paceSpeed,
 	fastestPath,
 	formatTotal,
-	milesPerUnit,
-	newMapUnit,
+	convertMapUnit,
+	unitOptions,
+	unitFactor,
 	formatHours,
 	formatTravelTime,
 	MapData,
@@ -56,7 +60,10 @@ import {
 import { editSegmentDialog, MapPropsModal, PinModal, RouteModal, ZoneModal } from "./mapModals";
 import { regionBounds } from "../player/PlayerMap";
 import { FogLayer } from "./fogLayer";
-import { DEFAULT_FOG_COLOR, FogStroke } from "./fogData";
+import { BRUSH_STEPS, brushPosition, brushSizeAt, brushSizeRange, clampBrushSize, DEFAULT_FOG_COLOR, FogStroke } from "./fogData";
+
+/** ¿Mayús pulsada en este evento de Leaflet? (al arrastrar, su originalEvent es el del ratón) */
+const shiftHeld = (e: L.LeafletEvent): boolean => (e as { originalEvent?: MouseEvent }).originalEvent?.shiftKey === true;
 
 type Mode = "navigate" | "pin" | "route" | "zone" | "measure" | "laser" | "pen" | "eraser" | "fog" | "calibrate" | "pick-target";
 
@@ -68,18 +75,18 @@ function modeHint(mode: Mode): string {
 			return T("Clic en el mapa para colocar un marcador. Esc para salir.", "Click the map to place a marker. Esc to exit.");
 		case "route":
 			return T(
-				"Clic: añadir nodo (clic en un nodo existente lo conecta). Mayús+clic: punto de curva, sin crear nodo. Enter o Esc para terminar.",
-				"Click: add a node (clicking an existing node connects it). Shift+click: curve point, without creating a node. Enter or Esc to finish.",
+				"Clic: añadir nodo (clic en un nodo existente lo conecta). Alt+clic: punto de curva, sin crear nodo. Con Mayús, en línea recta con el punto anterior. Enter o Esc para terminar.",
+				"Click: add a node (clicking an existing node connects it). Alt+click: curve point, without creating a node. With Shift, in a straight line from the previous point. Enter or Esc to finish.",
 			);
 		case "zone":
 			return T(
-				"Zona: clic para añadir vértices (cerca de un nodo, se pegan a él). Clic en el primero o Enter para cerrarla. Esc para cancelar.",
-				"Zone: click to add vertices (near a node, they snap to it). Click the first one or press Enter to close it. Esc to cancel.",
+				"Zona: clic para añadir vértices (con el anclaje automático, cerca de un nodo o de otro vértice se pegan a él). Con Mayús, en línea recta con el anterior. Clic en el primero o Enter para cerrarla. Esc para cancelar.",
+				"Zone: click to add vertices (with auto-anchoring, near a node or another vertex they snap to it). With Shift, in a straight line from the previous one. Click the first one or press Enter to close it. Esc to cancel.",
 			);
 		case "measure":
 			return T(
-				"Clic en dos nodos para calcular la distancia por las rutas visibles (o dos puntos si el mapa tiene escala).",
-				"Click two nodes to calculate the distance along the visible routes (or two points if the map has a scale).",
+				"Clic en dos nodos para calcular la distancia por las rutas visibles (o dos puntos si el mapa tiene escala; con Mayús, el segundo alineado con el primero).",
+				"Click two nodes to calculate the distance along the visible routes (or two points if the map has a scale; with Shift, the second one aligned with the first).",
 			);
 		case "laser":
 			return T(
@@ -102,7 +109,7 @@ function modeHint(mode: Mode): string {
 				"Fog: hold the click and drag to reveal or cover (choose it in the toolbar, with the brush size). Right-click and drag: move the map. Esc to exit.",
 			);
 		case "calibrate":
-			return T("Clic en dos puntos cuya distancia real conozcas.", "Click two points whose real distance you know.");
+			return T("Clic en dos puntos cuya distancia real conozcas (con Mayús, el segundo alineado con el primero).", "Click two points whose real distance you know (with Shift, the second one aligned with the first).");
 		case "pick-target":
 			return T(
 				"Clic en el mapa (o en otro marcador) para fijar el destino del portal / escalera; se guarda también el zoom actual.",
@@ -120,10 +127,11 @@ export class MapView extends TextFileView {
 	private loadedImage = "";
 	private groups = new Map<string, { pins: L.LayerGroup; routes: L.LayerGroup; zones: L.LayerGroup }>();
 	private routeLines = new Map<string, L.Polyline>();
-	/** Polígono de Leaflet de cada zona, la zona seleccionada (sus vértices, en edición) y la que se dibuja. */
+	/** Polígono de Leaflet de cada zona. */
 	private zonePolygons = new Map<string, L.Polygon>();
-	/** Círculo que indica dónde se pegará el vértice de zona (un nodo o un vértice de otra zona). */
+	/** Círculo que indica dónde se pegará el vértice de zona (un nodo o un vértice de otra zona), o el punto con Mayús. */
 	private snapIndicator: L.CircleMarker | null = null;
+	/** Zona seleccionada (sus vértices, en edición) y vértices de la que se dibuja. */
 	private selectedZoneId: string | null = null;
 	private draftZone: Pt[] = [];
 	/** Marcadores de Leaflet de cada pin y de cada nodo (uno por ruta que lo usa), para moverlos al arrastrar. */
@@ -149,7 +157,7 @@ export class MapView extends TextFileView {
 	/** Capa activa: si es una capa del usuario, los pines y rutas nuevos van ahí. */
 	private currentLayerId: string | null = null;
 	private selectedRouteId: string | null = null;
-	/** Texto del buscador del panel (capas, rutas y marcadores). */
+	/** Texto del buscador del panel (capas, marcadores, rutas y zonas). */
 	private filter = "";
 
 	private activeRouteId: string | null = null;
@@ -162,7 +170,7 @@ export class MapView extends TextFileView {
 	/** Puntos de salida y llegada de la medición, para dibujarlos. */
 	private measurePoints: Pt[] = [];
 	/**
-	 * Última medición, para recalcular los textos si cambia el paso o la unidad. En un camino,
+	 * Última medición, para recalcular los textos si cambia el paso. En un camino,
 	 * `fastest` es null si coincide con el más corto; `show` es el que se resalta en el mapa.
 	 */
 	private lastMeasure:
@@ -177,6 +185,10 @@ export class MapView extends TextFileView {
 	/** Tiempo real: mientras está activo, los jugadores siguen esta vista. */
 	private livePlayers = false;
 	private liveFrame = 0;
+	/** Última posición del ratón sobre el mapa (para la guía de Mayús al pulsarla o soltarla sin moverlo). */
+	private lastMouse: L.LatLng | null = null;
+	/** Línea discontinua de la guía de Mayús al dibujar, medir y calibrar. */
+	private alignGuide: L.Polyline | null = null;
 	/** Marco de la vista de jugadores (div fijo sobre el mapa) y rectángulo de lo que ven ahora. */
 	private frameEl: HTMLElement | null = null;
 	private playerRect: L.LayerGroup | null = null;
@@ -268,7 +280,7 @@ export class MapView extends TextFileView {
 		const body = root.createDiv("strakes-map-body");
 		this.mapEl = body.createDiv("strakes-map-canvas");
 		this.panelEl = body.createDiv("strakes-map-panel");
-		// Buscador común a capas, rutas y marcadores, fijo arriba del panel.
+		// Buscador común a capas, marcadores, rutas y zonas, fijo arriba del panel.
 		const filterEl = this.panelEl.createEl("input", {
 			type: "search",
 			cls: "strakes-panel-filter",
@@ -372,7 +384,7 @@ export class MapView extends TextFileView {
 			return;
 		}
 		this.hideBroken();
-		this.mapData = normalizeMap(raw, newMapUnit(this.plugin.settings.displayUnit));
+		this.mapData = normalizeMap(raw, this.plugin.settings.displayUnit);
 		if (clear) {
 			this.labels = { pins: false, routes: false, zones: false };
 			this.needsFit = true;
@@ -546,10 +558,21 @@ export class MapView extends TextFileView {
 		});
 		map.on("click", (e: L.LeafletMouseEvent) => this.onMapClick(e));
 		map.on("move", () => this.followLive());
-		// Dibujando una zona: el círculo indica dónde se pegaría el próximo vértice.
+		// Dibujando una zona: el círculo indica dónde se pegaría el próximo vértice. Con Mayús (rutas,
+		// zonas, medir y calibrar), dónde quedaría el punto en línea recta con el anterior.
 		map.on("mousemove", (e: L.LeafletMouseEvent) => {
-			if (this.mode === "zone") this.showSnap(this.zoneSnapPoint(e.latlng));
+			this.lastMouse = e.latlng;
+			this.updateAlignGuide(e.originalEvent.shiftKey);
 		});
+		map.on("mouseout", () => {
+			this.lastMouse = null;
+			this.updateAlignGuide(false);
+		});
+		// Pulsar o soltar Mayús sin mover el ratón también muestra o quita la guía.
+		for (const type of ["keydown", "keyup"] as const)
+			this.registerDomEvent(this.mapEl.doc, type, (e: KeyboardEvent) => {
+				if (e.key === "Shift" && this.lastMouse) this.updateAlignGuide(e.shiftKey);
+			});
 		map.on("contextmenu", (e: L.LeafletMouseEvent) => this.onMapContextMenu(e));
 		this.overlay = L.layerGroup().addTo(map);
 		this.draftLayer = L.layerGroup().addTo(map);
@@ -623,12 +646,6 @@ export class MapView extends TextFileView {
 
 	// ---------- Render ----------
 
-	/** Vuelve a pintar los textos de distancia tras cambiar la unidad para mostrar. */
-	refreshUnits(): void {
-		if (!this.mapData) return;
-		this.renderAll();
-	}
-
 	private renderAll(): void {
 		const data = this.mapData;
 		const map = this.map;
@@ -696,7 +713,13 @@ export class MapView extends TextFileView {
 			this.pinMenu(pin, e.originalEvent);
 		});
 		// Anclado a un nodo: se mueven juntos. Suelto: al soltarlo cerca de un nodo, se ancla a él.
-		marker.on("drag", () => this.onPinDrag(pin, marker));
+		let origin: Pt | null = null;
+		marker.on("dragstart", () => (origin = { x: pin.x, y: pin.y }));
+		marker.on("drag", (e) => {
+			// Mayús: en línea recta desde donde estaba (salvo, suelto, junto a un nodo al que anclarse).
+			this.alignDrag(marker, origin, e, !this.anchorNode(pin) && this.autoAnchor && !!this.nearestNode(marker.getLatLng()));
+			this.onPinDrag(pin, marker);
+		});
 		marker.on("dragend", () => this.onPinDragEnd(pin, marker));
 		marker.on("mouseover", (e: L.LeafletMouseEvent) =>
 			this.pinHover.show(this.app, pin, e.originalEvent, marker.getElement(), this.file?.path ?? ""),
@@ -731,7 +754,7 @@ export class MapView extends TextFileView {
 						` · ${formatHours(time.hours)} a paso ${paceName}${time.unknown ? " (incompleto)" : ""}`,
 						` · ${formatHours(time.hours)} at ${paceName} pace${time.unknown ? " (incomplete)" : ""}`,
 					);
-		line.bindTooltip(`${route.name} · ${formatTotal(total, data.unit, this.plugin.settings.displayUnit)}${timeTxt}`, {
+		line.bindTooltip(`${route.name} · ${formatTotal(total, data.unit)}${timeTxt}`, {
 			sticky: true,
 			className: "strakes-map-tooltip",
 		});
@@ -765,7 +788,7 @@ export class MapView extends TextFileView {
 				// Etiqueta «número · ruta» (el número es el del diálogo de la ruta). Si la ruta muestra
 				// sus puntos de curva, la etiqueta sube un poco para no tapar el punto del centro.
 				const withHandles = this.editing && this.selectedRouteId === route.id;
-				const label = segmentLabel(route, i, nodes, true, withHandles);
+				const label = segmentLabel(route, i, nodes, withHandles);
 				if (!label) continue;
 				label.on("click", () => void this.editSegment(route, i));
 				g.routes.addLayer(label);
@@ -790,8 +813,14 @@ export class MapView extends TextFileView {
 					this.zonePolygons.get(v.zone.id)?.setLatLngs(v.zone.points.map((q) => this.ll(q)));
 				}
 			};
-			marker.on("dragstart", () => (zoneVertices = this.autoAnchor ? this.sharedVertices(null, n) : []));
-			marker.on("drag", () => {
+			let origin: Pt | null = null;
+			marker.on("dragstart", () => {
+				zoneVertices = this.autoAnchor ? this.sharedVertices(null, n) : [];
+				origin = { x: n.x, y: n.y };
+			});
+			marker.on("drag", (e) => {
+				// Mayús: en línea recta desde donde estaba (salvo junto a un marcador al que anclarse).
+				this.alignDrag(marker, origin, e, this.autoAnchor && !!this.nearestLoosePin(marker.getLatLng()));
 				const p = this.pt(marker.getLatLng());
 				n.x = p.x;
 				n.y = p.y;
@@ -862,7 +891,10 @@ export class MapView extends TextFileView {
 				const m = L.marker(this.ll(b), { icon: handleIcon("strakes-bend"), draggable: true, keyboard: false });
 				setColor(m);
 				m.bindTooltip(T("Punto de curva · doble clic para quitar", "Curve point · double-click to remove"), { direction: "top", offset: [0, -8], className: "strakes-map-tooltip" });
-				m.on("drag", () => {
+				let origin: Pt | null = null;
+				m.on("dragstart", () => (origin = { x: b.x, y: b.y }));
+				m.on("drag", (e) => {
+					this.alignDrag(m, origin, e);
 					bends[j] = this.pt(m.getLatLng());
 					this.redrawRouteLine(route, nodes);
 				});
@@ -904,12 +936,14 @@ export class MapView extends TextFileView {
 				setColor(ghost);
 				ghost.bindTooltip(T("Arrastra para curvar", "Drag to curve"), { direction: "top", offset: [0, -8], className: "strakes-map-tooltip" });
 				let inserted = false;
+				const ghostOrigin = { ...mid };
 				ghost.on("dragstart", () => {
 					bends.splice(k, 0, this.pt(ghost.getLatLng()));
 					inserted = true;
 				});
-				ghost.on("drag", () => {
+				ghost.on("drag", (e) => {
 					if (!inserted) return;
+					this.alignDrag(ghost, ghostOrigin, e);
 					bends[k] = this.pt(ghost.getLatLng());
 					this.redrawRouteLine(route, nodes);
 				});
@@ -943,7 +977,8 @@ export class MapView extends TextFileView {
 			this.setMode(this.mode === "measure" ? "navigate" : "measure"),
 		).toggleClass("is-active", this.mode === "measure");
 		if (this.mode === "measure") this.renderMeasurePanel(measureWrap.createDiv("strakes-measure-panel"));
-		// Niebla de guerra: pincel para descubrir o cubrir (solo si el mapa tiene la niebla activada).
+		this.renderUnitSelect(tb);
+		// Niebla de guerra: pincel para descubrir o cubrir (si el mapa no tiene la niebla activada, el botón la activa).
 		const fogBtn = this.toolButton(tb, "cloud-fog", T("Niebla de guerra: pincel para descubrir o cubrir", "Fog of war: brush to reveal or cover"), () => {
 			if (this.mode === "fog") return this.setMode("navigate");
 			const data = this.mapData;
@@ -993,21 +1028,38 @@ export class MapView extends TextFileView {
 					this.fogAll(mode);
 				};
 			}
-			// Tamaño del pincel en píxeles de la imagen (con escala, también en unidades del mapa).
-			const { min, max } = this.fogBrushRange();
-			const size = tb.createEl("input", { type: "range", cls: "slider strakes-fog-size", attr: { min: String(min), max: String(max), step: "1" } });
-			size.value = String(this.fogBrushSize());
-			const sizeTip = () => {
+			// Tamaño del pincel en píxeles de la imagen: deslizador logarítmico y campo numérico, con las
+			// unidades del mapa al lado si tiene escala (texto, no se escriben).
+			const range = this.fogBrushRange();
+			const size = tb.createEl("input", { type: "range", cls: "slider strakes-fog-size", attr: { min: "0", max: String(BRUSH_STEPS), step: "1" } });
+			size.value = String(brushPosition(this.fogBrushSize(), range));
+			const num = tb.createEl("input", { type: "number", cls: "strakes-fog-size-number", attr: { min: String(range.min), max: String(range.max), step: "1" } });
+			num.value = String(this.fogBrushSize());
+			tb.createSpan({ cls: "strakes-fog-size-unit", text: "px" });
+			const unitsEl = tb.createSpan({ cls: "strakes-fog-size-unit" });
+			const refresh = () => {
 				const px = this.fogBrushSize();
 				const data = this.mapData;
-				const units = data?.scale ? ` ≈ ${displayDistance(px * data.scale, data.unit, s.displayUnit)}` : "";
-				setTooltip(size, T(`Tamaño del pincel: ${px} px de la imagen${units}`, `Brush size: ${px} image px${units}`));
+				const units = data?.scale ? formatDistance(px * data.scale, data.unit) : "";
+				unitsEl.setText(units ? `(≈ ${units})` : "");
 			};
-			sizeTip();
-			size.addEventListener("input", () => (s.fogBrushSize = parseInt(size.value, 10)));
-			size.addEventListener("change", () => {
-				void this.plugin.saveSettings();
-				sizeTip();
+			refresh();
+			size.addEventListener("input", () => {
+				s.fogBrushSize = brushSizeAt(parseInt(size.value, 10), range);
+				num.value = String(s.fogBrushSize);
+				refresh();
+			});
+			size.addEventListener("change", () => void this.plugin.saveSettings());
+			// Al escribir: se aplica con Enter o al salir del campo, ajustado a los límites.
+			num.addEventListener("change", () => {
+				const n = parseFloat(num.value.replace(",", "."));
+				if (isFinite(n)) {
+					s.fogBrushSize = clampBrushSize(n, range);
+					size.value = String(brushPosition(s.fogBrushSize, range));
+					void this.plugin.saveSettings();
+				}
+				num.value = String(this.fogBrushSize());
+				refresh();
 			});
 		}
 		// Láser, lápiz y borrador (los dibujos no se guardan).
@@ -1077,7 +1129,19 @@ export class MapView extends TextFileView {
 				},
 			).toggleClass("is-active", this.autoAnchor);
 		this.renderLabelTools(tb);
-		this.toolButton(tb, "maximize", T("Encuadrar todo el mapa", "Fit the whole map"), () => this.exactZoom(() => this.map?.flyToBounds(this.bounds(), { duration: 0.5 })));
+		const fit = this.toolButton(
+			tb,
+			"maximize",
+			T(
+				"Encuadrar todo el mapa (clic derecho: encuadrarlo en la pantalla de jugadores)",
+				"Fit the whole map (right-click: fit it on the player screen)",
+			),
+			() => this.exactZoom(() => this.map?.flyToBounds(this.bounds(), { duration: 0.5 })),
+		);
+		fit.oncontextmenu = (evt) => {
+			evt.preventDefault();
+			this.fitForPlayers();
+		};
 		tb.createDiv("strakes-toolbar-sep");
 		// Pantalla de jugadores: enviar lo que hay dentro del marco, o seguir tu vista en tiempo real.
 		const onScreen = this.isOnPlayerScreen();
@@ -1228,18 +1292,16 @@ export class MapView extends TextFileView {
 
 	/** Tamaño del pincel de niebla, en píxeles de la imagen, dentro de los límites del deslizador. */
 	private fogBrushSize(): number {
-		const { min, max } = this.fogBrushRange();
-		return Math.min(max, Math.max(min, this.plugin.settings.fogBrushSize));
+		return clampBrushSize(this.plugin.settings.fogBrushSize, this.fogBrushRange());
 	}
 
 	/** Límites del tamaño del pincel: según el tamaño de la imagen (hasta una quinta parte de su lado mayor). */
 	private fogBrushRange(): { min: number; max: number } {
 		const d = this.mapData;
-		const longest = d ? Math.max(d.width, d.height) : 0;
-		return { min: 2, max: Math.max(200, Math.round(longest / 5)) };
+		return brushSizeRange(d?.width ?? 0, d?.height ?? 0);
 	}
 
-	/** Círculo del tamaño del pincel de niebla que sigue al cursor (null: se quita). En unidades del mapa: crece con el zoom. */
+	/** Círculo del tamaño del pincel de niebla que sigue al cursor (null: se quita). En píxeles de la imagen: crece con el zoom. */
 	private showBrush(p: Pt | null): void {
 		if (!p || this.mode !== "fog" || !this.map) {
 			this.brushCursor?.remove();
@@ -1277,8 +1339,11 @@ export class MapView extends TextFileView {
 		else this.snapIndicator = L.circleMarker(this.ll(p), { radius: 9, className: "strakes-snap-indicator", interactive: false, fill: false, weight: 3, pane: "markerPane" }).addTo(this.map);
 	}
 
-	/** Clic en modo Zona: añade un vértice (pegado a un nodo o a otro vértice cercano) o, en el primero, cierra la zona. */
-	private addZoneVertex(ll: L.LatLng): void {
+	/**
+	 * Clic en modo Zona: añade un vértice (pegado a un nodo o a otro vértice cercano) o, en el primero, cierra
+	 * la zona. Con `shift` y nada donde pegarse, en línea recta con el vértice anterior.
+	 */
+	private addZoneVertex(ll: L.LatLng, shift = false): void {
 		const map = this.map;
 		if (!map) return;
 		const first = this.draftZone[0];
@@ -1288,7 +1353,8 @@ export class MapView extends TextFileView {
 		}
 		// Cerca de un nodo o del vértice de otra zona (con el anclaje automático): toma su posición, sin
 		// vínculo. Así dos zonas contiguas (habitaciones, provincias) comparten vértices y no se cruzan.
-		this.draftZone.push(this.zoneSnapPoint(ll) ?? this.pt(ll));
+		const last = this.draftZone[this.draftZone.length - 1];
+		this.draftZone.push(this.zoneSnapPoint(ll) ?? (shift && last ? constrainAngle(last, this.pt(ll)) : this.pt(ll)));
 		this.showSnap(null);
 		this.renderAll();
 	}
@@ -1381,8 +1447,14 @@ export class MapView extends TextFileView {
 			m.bindTooltip(T("Vértice · doble clic o clic derecho para quitarlo", "Vertex · double-click or right-click to remove it"), tip);
 			clickInZoneMode(m);
 			// Con el ancla apagada, cada vértice se mueve solo aunque otro esté en el mismo punto.
-			m.on("dragstart", () => (shared = this.autoAnchor ? this.sharedVertices(zone, zone.points[j]) : []));
-			m.on("drag", () => {
+			let origin: Pt | null = null;
+			m.on("dragstart", () => {
+				shared = this.autoAnchor ? this.sharedVertices(zone, zone.points[j]) : [];
+				origin = { ...zone.points[j] };
+			});
+			m.on("drag", (e) => {
+				// Mayús: en línea recta desde donde estaba (salvo si hay algo donde pegarse: manda el ancla).
+				this.alignDrag(m, origin, e, !!this.zoneSnapPoint(m.getLatLng(), zone.id, new Set(shared.map((v) => `${v.zone.id}:${v.index}`))));
 				const p = this.pt(m.getLatLng());
 				zone.points[j] = p;
 				redraw();
@@ -1420,12 +1492,14 @@ export class MapView extends TextFileView {
 			ghost.bindTooltip(T("Arrastra para añadir un vértice", "Drag to add a vertex"), tip);
 			clickInZoneMode(ghost);
 			let inserted = false;
+			const ghostOrigin = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 			ghost.on("dragstart", () => {
 				zone.points.splice(k + 1, 0, this.pt(ghost.getLatLng()));
 				inserted = true;
 			});
-			ghost.on("drag", () => {
+			ghost.on("drag", (e) => {
 				if (!inserted) return;
+				this.alignDrag(ghost, ghostOrigin, e, !!this.zoneSnapPoint(ghost.getLatLng(), zone.id));
 				zone.points[k + 1] = this.pt(ghost.getLatLng());
 				redraw();
 				snapWhileDragging(ghost);
@@ -1506,7 +1580,10 @@ export class MapView extends TextFileView {
 
 	// ---------- Marcadores anclados a nodos ----------
 
-	/** Distancia (px de pantalla) a la que un marcador arrastrado se ancla a un nodo. */
+	/**
+	 * Distancia (px de pantalla) a la que algo se pega al soltarlo o al dibujar: marcadores y nodos entre
+	 * sí, vértices de zona a nodos y vértices, y el clic que cierra una zona.
+	 */
 	private static readonly SNAP_PX = 15;
 
 	/** Nodo de una ruta visible más cercano a un punto, a menos de SNAP_PX en pantalla. */
@@ -1803,12 +1880,10 @@ export class MapView extends TextFileView {
 			return;
 		}
 		if (d.kind === "fog") {
-			// Un punto nuevo solo si el cursor se movió algo (los trazos ocupan menos en el archivo).
 			const st = d.fogStroke;
-			const map = this.map;
-			if (!st || !map) return;
+			if (!st) return;
 			const last = st.points[st.points.length - 1];
-			// Un punto nuevo cada octavo de pincel, como mínimo (en píxeles de la imagen).
+			// Un punto nuevo cada octavo de pincel, como mínimo (en píxeles de la imagen): los trazos ocupan menos en el archivo.
 			if (Math.hypot(p.x - last.x, p.y - last.y) < this.fogBrushSize() / 8) return;
 			st.points.push(p);
 			this.fogLayer?.updateLastStroke();
@@ -1952,6 +2027,70 @@ export class MapView extends TextFileView {
 		void this.plugin.sendMapToPlayers(this.file.path, this.frameRegion(), this.isOnPlayerScreen());
 	}
 
+	/**
+	 * Unidad del mapa, junto a «Medir». Cambiarla convierte la escala y las distancias y áreas escritas a
+	 * mano (conserva el tamaño real) y se puede deshacer. Se ve siempre, pero solo se puede cambiar con la
+	 * edición desbloqueada; bloqueada, se ve atenuada y su texto de ayuda lo explica.
+	 */
+	private renderUnitSelect(tb: HTMLElement): void {
+		const data = this.mapData;
+		if (!data) return;
+		// El texto de ayuda va en un envoltorio: un <select> desactivado no recibe el ratón.
+		const wrap = tb.createDiv("strakes-unit-select");
+		const select = wrap.createEl("select", { cls: "dropdown" });
+		const options = unitOptions();
+		for (const o of options) select.createEl("option", { value: o.value, text: o.value });
+		// Una unidad escrita a mano (p. ej. «días») se conserva como opción.
+		if (data.unit && !options.some((o) => o.value === data.unit)) select.createEl("option", { value: data.unit, text: data.unit });
+		select.value = data.unit;
+		select.disabled = !this.editing;
+		wrap.toggleClass("is-locked", !this.editing);
+		setTooltip(
+			wrap,
+			this.editing
+				? T("Unidad del mapa: al cambiarla se convierten la escala y las distancias y áreas escritas a mano", "Map unit: changing it converts the scale and the distances and areas entered by hand")
+				: T("Unidad del mapa. Desbloquea la edición para cambiarla", "Map unit. Unlock editing to change it"),
+		);
+		select.addEventListener("change", () => {
+			convertMapUnit(data, select.value);
+			this.clearMeasure();
+			this.persist();
+			this.renderAll();
+		});
+	}
+
+	/**
+	 * Al cambiar la unidad del mapa: una medida hecha antes (o el primer punto de una calibración)
+	 * estaría en la unidad anterior, así que se quita y se vuelve a medir.
+	 */
+	private clearMeasure(): void {
+		this.measureFrom = null;
+		this.calibrateFrom = null;
+		this.lastMeasure = null;
+		this.measurePoints = [];
+		this.measureMessage = "";
+		this.drawMeasure();
+	}
+
+	/**
+	 * Clic derecho en «Encuadrar todo el mapa»: el mapa entero en la pantalla de jugadores.
+	 *  - En tiempo real: tu vista se mueve para que el marco de los jugadores lo abarque (y ellos la siguen).
+	 *  - Si no: se les envía el mapa entero sin mover tu vista (si ya lo ven, vuela; si la ventana está cerrada, se abre).
+	 */
+	private fitForPlayers(): void {
+		const map = this.map;
+		if (!this.file || !map || !this.mapData) return;
+		if (this.livePlayers && this.isOnPlayerScreen()) {
+			const f = this.frameRect();
+			if (!f) return;
+			// El marco está centrado: sus márgenes son el relleno del encuadre.
+			const pad: L.PointTuple = [f.x, f.y];
+			this.exactZoom(() => map.flyToBounds(this.bounds(), { duration: 0.5, paddingTopLeft: pad, paddingBottomRight: pad }));
+			return;
+		}
+		void this.plugin.sendMapToPlayers(this.file.path, null, this.isOnPlayerScreen());
+	}
+
 	private toggleLivePlayers(): void {
 		this.livePlayers = !this.livePlayers;
 		if (this.livePlayers) this.sendViewToPlayers();
@@ -1974,7 +2113,11 @@ export class MapView extends TextFileView {
 	 */
 	private updatePlayerFrame(): void {
 		const on = this.isOnPlayerScreen();
-		if (!on) this.livePlayers = false;
+		// El mapa dejó la pantalla de jugadores (o se cerró): el tiempo real se apaga, también su botón.
+		if (!on && this.livePlayers) {
+			this.livePlayers = false;
+			this.renderToolbar();
+		}
 		const show = on && this.plugin.settings.showPlayerFrame;
 		const f = show ? this.frameRect() : null;
 		if (f) {
@@ -2017,14 +2160,14 @@ export class MapView extends TextFileView {
 		const q = this.filter.trim().toLowerCase();
 		const match = (name: string) => !q || name.toLowerCase().includes(q);
 
-		// Capas del usuario: cada pin o ruta puede estar en una o en ninguna.
+		// Capas del usuario: cada marcador, ruta o zona puede estar en una o en ninguna.
 		const layersSec = this.collapsibleSection(panel, "layers", T("Capas", "Layers"), data.layers.length, {
 			icon: "plus",
 			tip: T("Nueva capa", "New layer"),
 			onClick: () => void this.addLayer(),
 		});
 		if (!data.layers.length)
-			layersSec.createDiv({ cls: "strakes-panel-meta strakes-panel-empty", text: T("Sin capas. Crea una con + para agrupar marcadores y rutas.", "No layers. Create one with + to group markers and routes.") });
+			layersSec.createDiv({ cls: "strakes-panel-meta strakes-panel-empty", text: T("Sin capas. Crea una con + para agrupar marcadores, rutas y zonas.", "No layers. Create one with + to group markers, routes and zones.") });
 		for (const layer of data.layers.filter((l) => match(l.name))) {
 			const row = layersSec.createDiv("strakes-panel-row strakes-layer-row");
 			row.toggleClass("is-current", layer.id === this.currentLayerId);
@@ -2081,7 +2224,7 @@ export class MapView extends TextFileView {
 			const sw = row.createDiv("strakes-swatch");
 			sw.setCssStyles({ background: r.color });
 			row.createDiv({ cls: "strakes-panel-name", text: r.name });
-			row.createDiv({ cls: "strakes-panel-meta", text: formatTotal(routeTotal(data, r, nodes), data.unit, this.plugin.settings.displayUnit) });
+			row.createDiv({ cls: "strakes-panel-meta", text: formatTotal(routeTotal(data, r, nodes), data.unit) });
 			row.onclick = () => {
 				this.selectedRouteId = r.id;
 				const line = this.routeLines.get(r.id);
@@ -2107,7 +2250,7 @@ export class MapView extends TextFileView {
 			sw.setCssStyles({ background: z.color });
 			row.createDiv({ cls: "strakes-panel-name", text: z.name.trim() || T("(sin nombre)", "(unnamed)") });
 			const area = zoneArea(data, z);
-			row.createDiv({ cls: "strakes-panel-meta", text: area ? displayArea(area.value, data.unit, this.plugin.settings.displayUnit) : "" });
+			row.createDiv({ cls: "strakes-panel-meta", text: area ? displayArea(area.value, data.unit) : "" });
 			row.onclick = () => {
 				const poly = this.zonePolygons.get(z.id);
 				if (poly) this.map?.flyToBounds(poly.getBounds().pad(0.3), { duration: 0.5 });
@@ -2120,7 +2263,7 @@ export class MapView extends TextFileView {
 		scaleSec.createDiv({
 			cls: "strakes-panel-meta",
 			text: data.scale
-				? `100 px = ${displayDistance(data.scale * 100, data.unit, this.plugin.settings.displayUnit)}`
+				? `100 px = ${formatDistance(data.scale * 100, data.unit)}`
 				: T("Sin escala: escribe la distancia de cada tramo (clic en su etiqueta).", "No scale: enter the distance of each segment (click its label)."),
 		});
 		this.panelEl.scrollTop = scroll;
@@ -2227,16 +2370,15 @@ export class MapView extends TextFileView {
 		row("zones", T("Zonas", "Zones"), T("nombres de las zonas", "zone names"));
 	}
 
-	private section(parent: HTMLElement, title: string, icon?: string, tip?: string, onClick?: () => void): HTMLElement {
+	/** Sección fija del panel (Escala): título y un botón con icono a la derecha. */
+	private section(parent: HTMLElement, title: string, icon: string, tip: string, onClick: () => void): HTMLElement {
 		const sec = parent.createDiv("strakes-panel-section");
 		const head = sec.createDiv("strakes-panel-head");
 		head.createSpan({ text: title });
-		if (icon && onClick) {
-			const b = head.createEl("button", { cls: "clickable-icon" });
-			setIcon(b, icon);
-			if (tip) setTooltip(b, tip);
-			b.onclick = onClick;
-		}
+		const b = head.createEl("button", { cls: "clickable-icon" });
+		setIcon(b, icon);
+		setTooltip(b, tip);
+		b.onclick = onClick;
 		return sec;
 	}
 
@@ -2320,14 +2462,17 @@ export class MapView extends TextFileView {
 		const abandoned = this.mode === "pick-target" && mode !== "pick-target" ? this.pickTargetPin : null;
 		if (abandoned) this.pickTargetPin = null;
 		this.mode = mode;
+		// La guía de Mayús es de la herramienta anterior.
+		this.alignGuide?.remove();
+		this.alignGuide = null;
 		if (mode !== "zone") {
 			this.draftZone = [];
 			this.showSnap(null);
 		}
 		this.measureFrom = null;
 		this.calibrateFrom = null;
-		if (mode !== "measure") this.overlay?.clearLayers();
 		if (mode !== "measure") {
+			this.overlay?.clearLayers();
 			this.measureMessage = "";
 			this.lastMeasure = null;
 			this.measurePoints = [];
@@ -2358,22 +2503,26 @@ export class MapView extends TextFileView {
 
 	private onMapClick(e: L.LeafletMouseEvent): void {
 		const p = this.pt(e.latlng);
+		const shift = e.originalEvent?.shiftKey === true;
+		// Con Mayús, en línea recta con el punto anterior (rutas, medir y calibrar; las zonas, en addZoneVertex).
+		const origin = shift ? this.drawOrigin() : null;
+		const aligned = origin ? constrainAngle(origin, p) : p;
 		switch (this.mode) {
 			case "pin":
 				this.createPin(p);
 				break;
 			case "route":
-				if (e.originalEvent?.shiftKey) this.addPendingBend(p);
-				else this.addRoutePoint(p);
+				if (e.originalEvent?.altKey) this.addPendingBend(aligned);
+				else this.addRoutePoint(aligned);
 				break;
 			case "zone":
-				this.addZoneVertex(e.latlng);
+				this.addZoneVertex(e.latlng, shift);
 				break;
 			case "measure":
-				this.measurePick(p);
+				this.measurePick(aligned);
 				break;
 			case "calibrate":
-				void this.calibratePick(p);
+				void this.calibratePick(aligned);
 				break;
 			case "pick-target":
 				this.setPortalTarget(p);
@@ -2385,6 +2534,58 @@ export class MapView extends TextFileView {
 					this.renderAll();
 				}
 		}
+		this.updateAlignGuide(shift);
+	}
+
+	/** Punto anterior al dibujar, medir o calibrar la escala, desde el que Mayús alinea el siguiente (null: no hay). */
+	private drawOrigin(): Pt | null {
+		const data = this.mapData;
+		if (!data) return null;
+		if (this.mode === "zone") return this.draftZone[this.draftZone.length - 1] ?? null;
+		if (this.mode === "measure") return this.measureFrom?.pt ?? null;
+		if (this.mode === "calibrate") return this.calibrateFrom;
+		if (this.mode !== "route") return null;
+		const route = this.activeRoute();
+		if (!route || !route.nodeIds.length) return null;
+		// El último punto de curva pendiente, o el nodo del extremo que se está extendiendo.
+		const bend = this.pendingBends[this.pendingBends.length - 1];
+		if (bend) return bend;
+		return nodeMap(data).get(this.extendAtStart ? route.nodeIds[0] : route.nodeIds[route.nodeIds.length - 1]) ?? null;
+	}
+
+	/**
+	 * Arrastrando con Mayús: el marcador queda en línea recta (0°, 45°, 90°…) desde donde empezó.
+	 * `anchored`: hay algo donde pegarse junto al cursor; manda el ancla y no se alinea.
+	 */
+	private alignDrag(marker: L.Marker, origin: Pt | null, e: L.LeafletEvent, anchored = false): void {
+		if (!origin || anchored || !shiftHeld(e)) return;
+		marker.setLatLng(this.ll(constrainAngle(origin, this.pt(marker.getLatLng()))));
+	}
+
+	/**
+	 * Vista previa al dibujar (rutas, zonas), medir y calibrar. En zonas, el círculo marca dónde se pegaría el vértice;
+	 * si no hay nada donde pegarse y Mayús está pulsada, el círculo y una línea discontinua marcan dónde
+	 * quedaría el punto en línea recta con el anterior.
+	 */
+	private updateAlignGuide(shift: boolean): void {
+		this.alignGuide?.remove();
+		this.alignGuide = null;
+		const ll = this.lastMouse;
+		const map = this.map;
+		const drawing = this.mode === "zone" || this.mode === "route" || this.mode === "measure" || this.mode === "calibrate";
+		if (!ll || !map || !drawing) {
+			if (drawing) this.showSnap(null);
+			return;
+		}
+		const snap = this.mode === "zone" ? this.zoneSnapPoint(ll) : null;
+		const origin = shift && !snap ? this.drawOrigin() : null;
+		if (!origin) {
+			this.showSnap(snap);
+			return;
+		}
+		const p = constrainAngle(origin, this.pt(ll));
+		this.showSnap(p);
+		this.alignGuide = L.polyline([this.ll(origin), this.ll(p)], { className: "strakes-align-guide", weight: 2, dashArray: "4 6", interactive: false }).addTo(map);
 	}
 
 	private onMapContextMenu(e: L.LeafletMouseEvent): void {
@@ -2732,11 +2933,11 @@ export class MapView extends TextFileView {
 		this.renderAll();
 	}
 
-	/** Mayús+clic al dibujar: punto de curva para el tramo que se cerrará con el próximo nodo. */
+	/** Alt+clic al dibujar: punto de curva para el tramo que se cerrará con el próximo nodo. */
 	private addPendingBend(p: Pt): void {
 		const route = this.activeRoute();
 		if (!route || !route.nodeIds.length) {
-			new Notice(T("Primero coloca el nodo inicial de la ruta (clic sin Mayús).", "First place the route's starting node (click without Shift)."));
+			new Notice(T("Primero coloca el nodo inicial de la ruta (clic sin Alt).", "First place the route's starting node (click without Alt)."));
 			return;
 		}
 		this.pendingBends.push(p);
@@ -3084,7 +3285,7 @@ export class MapView extends TextFileView {
 	/**
 	 * Panel de Medir, debajo de su botón: el paso de viaje y el resultado. Si el camino más corto y
 	 * el más rápido son distintos, dos filas; la elegida (por defecto, la más corta) se resalta en
-	 * el mapa. Los textos se recalculan al cambiar de paso o de unidad, sin volver a medir.
+	 * el mapa. Los textos se recalculan al cambiar de paso, sin volver a medir (al cambiar la unidad del mapa, la medida se quita).
 	 */
 	private renderMeasurePanel(panel: HTMLElement): void {
 		const data = this.mapData;
@@ -3096,13 +3297,8 @@ export class MapView extends TextFileView {
 			const b = seg.createEl("button", { text: PACES[p].label });
 			b.toggleClass("is-active", pace === p);
 			const perDay = PACES[p].hoursPerDay.toLocaleString(numberLocale());
-			// Velocidad en la unidad elegida para mostrar (en millas con «Las de cada mapa»).
-			const display = this.plugin.settings.displayUnit;
-			const perUnit = display === "map" ? null : milesPerUnit(display);
-			const speed =
-				perUnit === null || perUnit === 1
-					? T(`${PACES[p].mph} millas/h`, `${PACES[p].mph} miles/h`)
-					: `${(PACES[p].mph / perUnit).toLocaleString(numberLocale(), { maximumFractionDigits: 1 })} ${display}/h`;
+			// Velocidad en el sistema del mapa (km/h en los métricos, millas/h en el resto).
+			const speed = paceSpeed(PACES[p].mph, data.unit);
 			setTooltip(b, T(`${speed} · ${perDay} h de marcha al día`, `${speed} · ${perDay} h of travel per day`));
 			b.onclick = () => {
 				this.plugin.settings.travelPace = p;
@@ -3138,7 +3334,7 @@ export class MapView extends TextFileView {
 				t === null
 					? T(`Sin tiempo (la unidad «${data.unit}» no es de longitud)`, `No time (the unit "${data.unit}" isn't a length)`)
 					: formatTravelTime(t, pace);
-			row(T("Línea recta", "Straight line"), displayDistance(m.distance, data.unit, this.plugin.settings.displayUnit), time);
+			row(T("Línea recta", "Straight line"), formatDistance(m.distance, data.unit), time);
 			return;
 		}
 		const shortest = this.pathTexts(m.shortest, pace);
@@ -3159,7 +3355,7 @@ export class MapView extends TextFileView {
 			return T(`${n} tramo${s}`, `${n} segment${s}`);
 		};
 		const extra = res.unknown ? T(` (+ ${segs(res.unknown)} sin distancia)`, ` (+ ${segs(res.unknown)} without distance)`) : "";
-		const dist = `${displayDistance(res.distance, data.unit, this.plugin.settings.displayUnit)}${extra} · ${segs(res.legs.length)}`;
+		const dist = `${formatDistance(res.distance, data.unit)}${extra} · ${segs(res.legs.length)}`;
 		const t = legsTime(data, res.legs, pace);
 		const time =
 			t.unknown === res.legs.length
@@ -3182,17 +3378,23 @@ export class MapView extends TextFileView {
 		const px = pixelDistance(a, p);
 		const val = await promptText(this.app, T("Calibrar escala", "Calibrate scale"), {
 			description: T(
-				"¿Qué distancia real hay entre los dos puntos? Puedes incluir la unidad (ej. 50 km, 3 días).",
-				"What's the real distance between the two points? You can include the unit (e.g. 50 km, 3 days).",
+				`¿Qué distancia real hay entre los dos puntos? Puedes incluir la unidad (ej. 50 km, 3 días). Otra unidad de longitud se convierte a la del mapa (${data.unit}).`,
+				`What's the real distance between the two points? You can include the unit (e.g. 50 km, 3 days). Another length unit is converted to the map's (${data.unit}).`,
 			),
 			placeholder: `50 ${data.unit}`,
 		});
 		this.overlay!.clearLayers();
 		const parsed = val ? parseDistanceInput(val) : null;
 		if (parsed && parsed.value > 0 && px > 0) {
-			data.scale = parsed.value / px;
-			if (parsed.unit) data.unit = parsed.unit;
-			const per100 = displayDistance(data.scale * 100, data.unit, this.plugin.settings.displayUnit);
+			// Con otra unidad de longitud, el mapa se queda en la suya y el valor se convierte (5 ft en un
+			// mapa en m: 1,524 m). Si alguna no se reconoce (p. ej. «3 días»), el mapa adopta la escrita.
+			const f = parsed.unit ? unitFactor(parsed.unit, data.unit) : 1;
+			if (f !== null) data.scale = (parsed.value * f) / px;
+			else {
+				data.scale = parsed.value / px;
+				data.unit = parsed.unit;
+			}
+			const per100 = formatDistance(data.scale * 100, data.unit);
 			new Notice(T(`Escala: 100 px = ${per100}`, `Scale: 100 px = ${per100}`));
 			this.persist();
 		} else if (val !== null) {
@@ -3298,7 +3500,10 @@ export class MapView extends TextFileView {
 					data.height = 0;
 					this.needsFit = true;
 				}
-				data.unit = p.unit;
+				// Otra unidad: las distancias y áreas escritas a mano se convierten (conservan su tamaño
+				// real). La escala ya viene convertida del diálogo (o escrita en la unidad nueva).
+				if (p.unit !== data.unit) this.clearMeasure();
+				convertMapUnit(data, p.unit);
 				data.scale = p.scale;
 				// Niebla: al activarla por primera vez, el mapa entero empieza cubierto (sin trazos); al
 				// activarla (desde apagada), todas las zonas quedan con su casilla «Niebla» marcada.

@@ -417,7 +417,7 @@ export class InitiativeTracker {
 		this.changed();
 	}
 
-	/** Enemigo tachado (0 PG o menos): su turno se salta. Los PJ y aliados nunca se saltan. */
+	/** Enemigo tachado (con una condición que derrota, p. ej. Muerto): su turno se salta. Los PJ y aliados nunca se saltan. */
 	private skipsTurn(c: Combatant): boolean {
 		return isDefeatedEnemy(c, this.plugin.settings);
 	}

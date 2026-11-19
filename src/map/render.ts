@@ -25,7 +25,7 @@ export function pinIcon(pin: MapPin): L.DivIcon {
 	return L.divIcon({ className: "strakes-pin-wrap", html: el, iconSize: [32, 40], iconAnchor: pin.portal ? [16, 16] : [16, 36] });
 }
 
-export type PinIconKind = "custom" | "lucide" | "emoji" | "text" | "default";
+type PinIconKind = "custom" | "lucide" | "emoji" | "text" | "default";
 
 /** Qué clase de icono es el valor del campo «Icono» de un pin. */
 function pinIconKind(icon: string): PinIconKind {
@@ -83,7 +83,6 @@ export function segmentLabel(
 	route: MapRoute,
 	i: number,
 	nodes: Map<string, RouteNode>,
-	interactive: boolean,
 	raised = false,
 ): L.Marker | null {
 	const path = segmentPath(route, i, nodes);
@@ -99,7 +98,7 @@ export function segmentLabel(
 			iconSize: null as unknown as L.PointExpression,
 		}),
 		keyboard: false,
-		interactive,
+		interactive: true,
 	});
 }
 

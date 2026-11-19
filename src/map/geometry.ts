@@ -1,4 +1,4 @@
-// Utilidades geométricas para las rutas curvas.
+// Utilidades geométricas: rutas curvas, polígonos (zonas y niebla) y alineado con Mayús.
 
 export interface Pt {
 	x: number;
@@ -103,4 +103,32 @@ export function pointInPolygon(p: Pt, points: readonly Pt[]): boolean {
 		if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
 	}
 	return inside;
+}
+
+/** Las 8 direcciones de Mayús (0°, 45°, 90°…), como vectores unitarios exactos. */
+const D = Math.SQRT1_2;
+const DIRECTIONS: readonly Pt[] = [
+	{ x: 1, y: 0 },
+	{ x: D, y: D },
+	{ x: 0, y: 1 },
+	{ x: -D, y: D },
+	{ x: -1, y: 0 },
+	{ x: -D, y: -D },
+	{ x: 0, y: -1 },
+	{ x: D, y: -D },
+];
+
+/**
+ * Mayús al arrastrar o dibujar: el punto en línea recta desde el origen, en la más cercana de las 8
+ * direcciones (horizontal, vertical o diagonal), a la distancia de su proyección sobre ella.
+ */
+export function constrainAngle(origin: Pt, p: Pt): Pt {
+	const dx = p.x - origin.x;
+	const dy = p.y - origin.y;
+	if (!dx && !dy) return { x: p.x, y: p.y };
+	const i = (Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) + 8) % 8;
+	const u = DIRECTIONS[i];
+	const d = dx * u.x + dy * u.y;
+	// En horizontal y vertical, la otra coordenada queda exactamente igual que la del origen.
+	return { x: u.x === 0 ? origin.x : origin.x + u.x * d, y: u.y === 0 ? origin.y : origin.y + u.y * d };
 }

@@ -112,8 +112,8 @@ body.strakes-player-window .view-header {
 	display: none;
 }
 
-/* Iniciativa en pantalla de jugadores. Por defecto, lista en una esquina (cuando hay una
-   nota o imagen en pantalla); las columnas las calcula PlayerScreenView.fitList(). El
+/* Iniciativa en pantalla de jugadores. Por defecto, lista en una esquina (cuando hay
+   contenido en pantalla: nota, imagen, mapa…); las columnas las calcula PlayerScreenView.fitList(). El
    tamaño del texto lo fija cada modo (caja de la Lista o --init-text en Tarjetas). */
 .strakes-player-initiative {
 	position: absolute;
@@ -187,7 +187,7 @@ body.strakes-player-window .view-header {
 .strakes-pi-box.can-scroll {
 	overflow: auto;
 }
-/* Con una nota o imagen: banda superpuesta en la parte superior. */
+/* Con contenido en pantalla (nota, imagen, mapa…): banda superpuesta en la parte superior. */
 .strakes-player-initiative.mode-cards.has-content {
 	/* Sin tope de altura: las filas se calculan con la altura de toda la ventana. */
 	inset: 0 0 auto 0;
@@ -1083,7 +1083,7 @@ input.strakes-portrait-zoom-num {
 	padding-top: 8px;
 	border-top: 1px solid var(--background-modifier-border);
 }
-/* Secciones plegables del panel (Capas, Rutas, Pines) */
+/* Secciones plegables del panel (Capas, Marcadores, Rutas, Zonas) */
 .strakes-panel-toggle {
 	display: flex;
 	align-items: center;
@@ -1190,8 +1190,10 @@ input.strakes-portrait-zoom-num {
 }
 /* Dónde se pegará el vértice de zona (un nodo o un vértice de otra zona). */
 .strakes-snap-indicator { stroke: var(--interactive-accent); }
+/* Guía de Mayús al dibujar y medir: del punto anterior a donde quedaría el siguiente, en línea recta. */
+.strakes-align-guide { stroke: var(--interactive-accent); }
 /* Niebla de guerra: por encima de imagen, zonas y rutas (400) y por debajo de los marcadores (600).
-   En la pantalla de jugadores, con «Mostrar lo que está bajo la niebla», las rutas van por encima. */
+   En la pantalla de jugadores, con «Mostrar lo que está bajo la niebla», las zonas y rutas van por encima (550). */
 .leaflet-pane.strakes-fog-pane { z-index: 500; }
 .leaflet-pane.strakes-above-fog-pane { z-index: 550; }
 /* Círculo del pincel de niebla. */
@@ -1205,8 +1207,30 @@ input.strakes-portrait-zoom-num {
 }
 /* Más específico que input[type=range] de Obsidian (width: 100px); sin encogerse en la barra. */
 input[type="range"].strakes-fog-size {
-	width: 360px;
+	width: 180px;
 	flex: none;
+}
+/* Unidad del mapa en la barra, junto a «Medir». Con la edición bloqueada, atenuada; el <select>
+   desactivado no recibe el ratón, así que el texto de ayuda lo muestra su envoltorio. */
+.strakes-unit-select { flex: none; }
+.strakes-unit-select select.dropdown {
+	height: 24px;
+	padding-top: 0;
+	padding-bottom: 0;
+	font-size: var(--font-ui-small);
+}
+.strakes-unit-select.is-locked { opacity: 0.5; }
+.strakes-unit-select.is-locked select.dropdown { pointer-events: none; }
+/* Campo del tamaño del pincel y sus unidades (px y, con escala, unidades del mapa). */
+input[type="number"].strakes-fog-size-number {
+	width: 5em;
+	flex: none;
+}
+.strakes-fog-size-unit {
+	flex: none;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	white-space: nowrap;
 }
 /* Zonas: su panel va por debajo de rutas y marcadores (el de Leaflet para las rutas es el 400). */
 .leaflet-pane.strakes-zones-pane { z-index: 350; }
@@ -1425,7 +1449,7 @@ input[type="range"].strakes-fog-size {
 	stroke-width: initial;
 }
 
-/* Selector de iconos SVG en el diálogo del pin */
+/* Selector de iconos (SVG propios y Lucide) de los diálogos de marcador y condición */
 .strakes-icon-picker {
 	padding: 0 0 var(--size-4-3);
 	border-bottom: 1px solid var(--background-modifier-border);
@@ -1440,7 +1464,7 @@ input[type="range"].strakes-fog-size {
 	/* Espacio para el anillo del icono seleccionado (sobresale 4 px). */
 	padding: 5px;
 }
-/* Fila «Colores» del diálogo del pin: Pin e Icono lado a lado */
+/* Fila de colores de los diálogos (marcador, zona, condición…): sus grupos lado a lado */
 .strakes-color-row {
 	gap: var(--size-4-4);
 	flex-wrap: wrap;
@@ -1501,7 +1525,7 @@ input[type="range"].strakes-fog-size {
 	box-shadow: none;
 	cursor: pointer;
 }
-/* Sin fondo propio (condiciones personalizadas): recuadro neutro. */
+/* Sin fondo propio (condiciones): recuadro neutro. */
 .strakes-icon-grid.no-background button.strakes-icon-tile,
 .strakes-icon-grid.no-background button.strakes-icon-tile:hover {
 	background-color: var(--background-secondary);

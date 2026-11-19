@@ -68,3 +68,33 @@ export function fogCovers(fog: MapFog | undefined, p: Pt, zones: readonly FogZon
 	for (const s of fog.strokes) if (strokeTouches(s, p)) covered = s.mode === "cover";
 	return covered;
 }
+
+// ---- Tamaño del pincel (px de la imagen) ----
+
+/** Límites del tamaño del pincel: de 2 px a una quinta parte del lado mayor de la imagen (al menos 200). */
+export function brushSizeRange(width: number, height: number): { min: number; max: number } {
+	return { min: 2, max: Math.max(200, Math.round(Math.max(width, height) / 5)) };
+}
+
+/** El tamaño dentro de los límites, en píxeles enteros. */
+export function clampBrushSize(size: number, range: { min: number; max: number }): number {
+	return Math.min(range.max, Math.max(range.min, Math.round(size)));
+}
+
+/** Posiciones del deslizador del pincel: de 0 a BRUSH_STEPS. */
+export const BRUSH_STEPS = 1000;
+
+/**
+ * Deslizador logarítmico (como el tamaño del pincel en Krita o GIMP): mucha precisión en los tamaños
+ * pequeños y saltos mayores en los grandes. Posición 0 → mínimo; BRUSH_STEPS → máximo.
+ */
+export function brushSizeAt(position: number, range: { min: number; max: number }): number {
+	const t = Math.min(1, Math.max(0, position / BRUSH_STEPS));
+	return clampBrushSize(range.min * Math.pow(range.max / range.min, t), range);
+}
+
+/** Posición del deslizador para un tamaño (la inversa de `brushSizeAt`). */
+export function brushPosition(size: number, range: { min: number; max: number }): number {
+	const s = clampBrushSize(size, range);
+	return Math.round((BRUSH_STEPS * Math.log(s / range.min)) / Math.log(range.max / range.min));
+}

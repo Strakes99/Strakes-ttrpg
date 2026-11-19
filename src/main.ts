@@ -5,7 +5,7 @@ import { InitiativeView } from "./initiative/InitiativeView";
 import { IconLibrary, setIconLibrary } from "./map/icons";
 import { applyAutoNames, AutoNamePin } from "./map/autoName";
 import { linkpathMatchesPath, parseWikilink, wikilinkFor } from "./map/links";
-import { emptyMap, newMapUnit } from "./map/mapData";
+import { emptyMap, unitOptions } from "./map/mapData";
 import { LaserState, Stroke } from "./map/drawing";
 import { EmbedContext, MapEmbed } from "./map/MapEmbed";
 import { MapView } from "./map/MapView";
@@ -51,11 +51,11 @@ export default class StrakesTTRPG extends Plugin {
 	}
 
 	/** Abre el selector de archivos del sistema para importar SVG a la carpeta de iconos. */
-	importIcons(onDone?: () => void, folder = ""): void {
+	importIcons(onDone?: () => void): void {
 		const input = createEl("input", { type: "file", attr: { accept: ".svg,image/svg+xml", multiple: "" } });
 		input.onchange = async () => {
 			if (!input.files?.length) return;
-			const n = await this.icons.importFiles(input.files, folder, (conflict) => askIconConflict(this.app, conflict));
+			const n = await this.icons.importFiles(input.files, "", (conflict) => askIconConflict(this.app, conflict));
 			this.events.trigger("icons");
 			new Notice(
 				n
@@ -114,9 +114,9 @@ export default class StrakesTTRPG extends Plugin {
 		this.settings.collapsedMapSections = Array.isArray(loaded.collapsedMapSections) ? [...loaded.collapsedMapSections] : [];
 		this.settings.customConditions = Array.isArray(loaded.customConditions) ? [...loaded.customConditions] : [];
 		this.settings.conditionOverrides = loaded.conditionOverrides && typeof loaded.conditionOverrides === "object" ? { ...loaded.conditionOverrides } : {};
-		// «Leguas» se guarda en el idioma de la interfaz: si el idioma cambió, se adapta (si no,
-		// el desplegable de ajustes no mostraría la opción elegida).
-		if (["leguas", "leagues"].includes(this.settings.displayUnit)) this.settings.displayUnit = T("leguas", "leagues");
+		// Unidad de los mapas nuevos: lo que no sea una de las opciones (el antiguo «Las de cada mapa»,
+		// leguas…) pasa a km (si no, el desplegable saldría vacío).
+		if (!unitOptions().some((o) => o.value === this.settings.displayUnit)) this.settings.displayUnit = "km";
 		this.settings.portraitMemory = loaded.portraitMemory && typeof loaded.portraitMemory === "object" ? { ...loaded.portraitMemory } : {};
 		// Condiciones de los combatientes: lista de { id, level }. Lo que no lo sea se descarta.
 		this.settings.combat.combatants = (this.settings.combat.combatants ?? []).map((c) => ({
@@ -264,6 +264,19 @@ export default class StrakesTTRPG extends Plugin {
 		return leaf.view instanceof PlayerScreenView ? leaf.view : null;
 	}
 
+	/**
+	 * Se cerró una pantalla de jugadores. Si ya no queda ninguna, se olvida lo que mostraba: los
+	 * editores quitan el marco y la atenuación, y enviar algo vuelve a abrir la ventana. Se comprueba
+	 * un instante después, cuando la hoja cerrada ya no cuenta (y por si solo se movió de ventana).
+	 */
+	playerScreenClosed(): void {
+		window.setTimeout(() => {
+			if (this.playerContent === null || this.app.workspace.getLeavesOfType(VIEW_TYPE_PLAYER).length) return;
+			this.playerContent = null;
+			this.events.trigger("player-content");
+		}, 0);
+	}
+
 	async sendToPlayers(content: PlayerContent): Promise<void> {
 		this.playerContent = content;
 		if (content) await this.openPlayerScreen(false);
@@ -399,13 +412,13 @@ export default class StrakesTTRPG extends Plugin {
 		if (folder && !(this.app.vault.getAbstractFileByPath(folder) instanceof TFolder)) await this.app.vault.createFolder(folder);
 		let path = normalizePath(`${folder}/${image.basename}.${MAP_EXTENSION}`);
 		for (let n = 2; this.app.vault.getAbstractFileByPath(path); n++) path = normalizePath(`${folder}/${image.basename} ${n}.${MAP_EXTENSION}`);
-		const data = emptyMap(image.path, size.width, size.height, newMapUnit(this.settings.displayUnit));
+		const data = emptyMap(image.path, size.width, size.height, this.settings.displayUnit);
 		const file = await this.app.vault.create(path, JSON.stringify(data, null, "\t"));
 		await this.app.workspace.getLeaf(true).openFile(file);
 		new Notice(T(`Mapa creado: ${file.path}`, `Map created: ${file.path}`));
 	}
 
-	/** Mantiene los mapas al día cuando se renombran/mueven imágenes o notas enlazadas. */
+	/** Al renombrar o mover un archivo: actualiza lo que muestra la pantalla de jugadores, el estado en memoria de los mapas, los retratos y los mapas que lo enlazan. */
 	private async onRename(file: TAbstractFile, oldPath: string): Promise<void> {
 		if (!(file instanceof TFile)) return;
 		const pc = this.playerContent;
@@ -449,8 +462,8 @@ export default class StrakesTTRPG extends Plugin {
 
 	/**
 	 * Aplica a los mapas un grupo de renombrados: lee cada .smap una vez y solo reescribe los
-	 * que mencionan alguna de las rutas o nombres antiguos (imagen del mapa y enlaces de los
-	 * marcadores, con los nombres automáticos de los marcadores con AUTO).
+	 * que mencionan alguna de las rutas o nombres antiguos (imagen del mapa y enlaces de marcadores,
+	 * rutas y zonas, con los nombres automáticos de los que tienen AUTO).
 	 */
 	private async updateMapsAfterRenames(): Promise<void> {
 		const batch = this.pendingRenames;

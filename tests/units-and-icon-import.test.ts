@@ -1,21 +1,14 @@
-// Selector de unidades (mostrar y mapas nuevos) e importación de iconos con nombres repetidos.
+// Selector de unidades (ajuste «Unidad de los mapas nuevos», barra y propiedades del mapa) e
+// importación de iconos con nombres repetidos.
 import type { App } from "obsidian";
 import { IconConflict, IconConflictChoice, IconLibrary } from "../src/map/icons";
-import { displayDistance, newMapUnit, unitOptions } from "../src/map/mapData";
+import { unitOptions } from "../src/map/mapData";
 import { t } from "./helpers";
 
 // ---------- Unidades ----------
-t("opciones del selector", unitOptions().map((o) => o.value), ["km", "mi", "leguas", "m", "ft"]);
-t("mapas nuevos: la unidad elegida", newMapUnit("mi"), "mi");
-t("mapas nuevos con «Las de cada mapa»: km", newMapUnit("map"), "km");
-t("mapas nuevos con una unidad desconocida: km", newMapUnit("días"), "km");
-t("km → leguas", displayDistance(15, "km", "leguas"), "3,11 leguas");
-t("leguas → km", displayDistance(2, "leguas", "km"), "9,66 km");
-// El formato español no separa los miles en números de 4 cifras (1609,34).
-t("mi → m", displayDistance(1, "mi", "m"), "1609,34 m");
-t("km → ft", displayDistance(1, "km", "ft"), "3280,84 ft");
-t("misma unidad con otro nombre: sin conversión", displayDistance(3.14, "kilómetros", "km"), "3,1 km");
-t("«Las de cada mapa»: la del mapa", displayDistance(3.14, "leguas", "map"), "3,1 leguas");
+// Desde 1.3.2, sin leguas (se siguen reconociendo escritas a mano: ver map-unit-change). La conversión
+// al mostrar ya no existe: cada mapa se ve en su unidad (ver map-display-units).
+t("opciones del selector", unitOptions().map((o) => o.value), ["km", "mi", "m", "ft"]);
 
 // ---------- Importar iconos con nombres repetidos ----------
 /** Sistema de archivos en memoria con lo que usa IconLibrary. */

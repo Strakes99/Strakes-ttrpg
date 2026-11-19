@@ -1,11 +1,11 @@
-import { App, ColorComponent, Modal, Notice, Setting } from "obsidian";
+import { App, ColorComponent, Modal, Notice, Setting, TextComponent } from "obsidian";
 import { T } from "../i18n";
 import { uid } from "../types";
 import { FileInputSuggest, isImageFile, promptText } from "../ui/modals";
 import { IconColorControl, IconPicker } from "../ui/iconPicker";
 import { autoPinName, nameFromLink } from "./autoName";
 import { makeWikilink, parseWikilink, resolveWikilink, wikilinkFor } from "./links";
-import { DEFAULT_ICON_COLOR, formatDistance, formatHours, MapData, MapLayer, parseHoursInput, segmentTime, MapPin, MapRoute, MapZone, nodeMap, segmentDistance, unitOptions } from "./mapData";
+import { DEFAULT_ICON_COLOR, formatDistance, formatHours, MapData, MapLayer, parseHoursInput, segmentTime, MapPin, MapRoute, MapZone, nodeMap, segmentDistance, fieldNumber, unitFactor, unitOptions } from "./mapData";
 import { displayArea, zoneArea } from "./zones";
 import { DEFAULT_FOG_COLOR } from "./fogData";
 
@@ -25,8 +25,8 @@ export function editSegmentDialog(app: App, data: MapData, route: MapRoute, i: n
 		let done = false;
 		const nodes = nodeMap(data);
 		const result: SegmentEdit = { distance: route.segments[i] ?? null, time: route.times?.[i] ?? null };
-		const estDist = data.scale ? segmentDistance(data, { ...route, segments: route.segments.map(() => null) }, i, nodes).value : null;
-		const estTime = segmentTime(data, { ...route, segments: [...route.segments], times: [] }, i, "normal", nodes).hours;
+		const estDist = segmentDistance(data, { ...route, segments: route.segments.map(() => null) }, i, nodes).value;
+		const estTime = segmentTime(data, { ...route, times: [] }, i, "normal", nodes).hours;
 
 		const routeName = route.name.trim() ? ` · ${route.name}` : "";
 		modal.titleEl.setText(T(`Tramo ${i + 1}${routeName}`, `Segment ${i + 1}${routeName}`));
@@ -58,7 +58,7 @@ export function editSegmentDialog(app: App, data: MapData, route: MapRoute, i: n
 				t.inputEl.type = "number";
 				t.inputEl.step = "any";
 				t.setPlaceholder(estDist !== null ? `≈ ${formatDistance(estDist, "")}` : "?");
-				t.setValue(result.distance === null ? "" : String(result.distance));
+				t.setValue(result.distance === null ? "" : fieldNumber(result.distance));
 				t.onChange((v) => {
 					const n = parseFloat(v.replace(",", "."));
 					result.distance = v.trim() === "" || isNaN(n) ? null : n;
@@ -100,7 +100,7 @@ export function editSegmentDialog(app: App, data: MapData, route: MapRoute, i: n
 }
 
 /**
- * Desplegable de capa de los diálogos de marcador y ruta: «Sin capa», las capas del
+ * Desplegable de capa de los diálogos de marcador, ruta y zona: «Sin capa», las capas del
  * usuario y la opción de crear una nueva. Las capas creadas aquí van a
  * `pending` (del diálogo) y no al mapa: solo se añaden al guardar (`commitLayers`), así
  * que cancelar el diálogo no deja capas nuevas en el mapa.
@@ -199,7 +199,7 @@ export class PinModal extends Modal {
 		private isNew: boolean,
 		private sourcePath: string,
 		private onDone: (r: PinModalResult) => void,
-		private iconActions?: PinIconActions,
+		private iconActions: PinIconActions,
 	) {
 		super(app);
 		this.pin = structuredClone(pin);
@@ -270,12 +270,11 @@ export class PinModal extends Modal {
 			}),
 		);
 
-		const actions = this.iconActions;
 		this.iconPicker = new IconPicker(el, {
 			icon: p.icon ?? "",
 			iconColor: p.iconColor,
 			background: p.color,
-			reload: actions ? () => actions.reload() : undefined,
+			reload: () => this.iconActions.reload(),
 			onChange: (icon) => {
 				p.icon = icon;
 				this.iconColor?.refresh();
@@ -620,7 +619,8 @@ export interface ZoneModalResult {
 
 /**
  * Diálogo de una zona (1.3): nombre con AUTO, nota, colores del relleno y del borde (la
- * transparencia del relleno es un ajuste general), área manual, capa y visibilidad para los jugadores. El nombre puede quedar vacío
+ * transparencia del relleno es un ajuste general), área manual, capa, visibilidad para los jugadores y, con la
+ * niebla activada, la casilla «Niebla». El nombre puede quedar vacío
  * (p. ej. una zona que solo sirve para la niebla).
  */
 export class ZoneModal extends Modal {
@@ -646,8 +646,8 @@ export class ZoneModal extends Modal {
 				"Automatic name: the linked note's (or its heading or alias). Typing a name unticks it.",
 			),
 			linkDesc: T(
-				"Opcional. Se guarda como wikilink, ej. [[Nota]] o [[Nota#Encabezado]]. Clic en la zona abre la nota (Ctrl/Cmd+clic: en pestaña nueva).",
-				"Optional. Saved as a wikilink, e.g. [[Note]] or [[Note#Heading]]. Clicking the zone opens the note (Ctrl/Cmd+click: in a new tab).",
+				"Opcional. Se guarda como wikilink, ej. [[Nota]] o [[Nota#Encabezado]]. Con la edición bloqueada, clic en la zona abre la nota (Ctrl/Cmd+clic: en pestaña nueva).",
+				"Optional. Saved as a wikilink, e.g. [[Note]] or [[Note#Heading]]. With editing locked, clicking the zone opens the note (Ctrl/Cmd+click: in a new tab).",
 			),
 		});
 	}
@@ -686,8 +686,8 @@ export class ZoneModal extends Modal {
 			.addText((t) => {
 				t.inputEl.type = "number";
 				t.inputEl.step = "any";
-				t.setPlaceholder(estimate ? `≈ ${displayArea(estimate.value, this.data.unit, "map")}` : "?");
-				t.setValue(z.area === undefined ? "" : String(z.area));
+				t.setPlaceholder(estimate ? `≈ ${displayArea(estimate.value, this.data.unit)}` : "?");
+				t.setValue(z.area === undefined ? "" : fieldNumber(z.area));
 				t.onChange((v) => {
 					const n = parseFloat(v.replace(",", "."));
 					z.area = v.trim() === "" || isNaN(n) || n <= 0 ? undefined : n;
@@ -806,14 +806,15 @@ export class RouteModal extends Modal {
 		const box = el.createDiv("strakes-seg-list");
 		r.times ??= [];
 		for (let i = 0; i < r.nodeIds.length - 1; i++) {
-			const est = this.data.scale ? segmentDistance(this.data, { ...r, segments: r.segments.map(() => null) }, i, nodes).value : null;
+			const est = segmentDistance(this.data, { ...r, segments: r.segments.map(() => null) }, i, nodes).value;
 			const row = new Setting(box).setName(T(`Tramo ${i + 1}`, `Segment ${i + 1}`));
 			row.controlEl.addClass("strakes-seg-inputs");
 
 			row.controlEl.createSpan({ cls: "strakes-seg-input-label", text: this.data.unit || T("dist.", "dist.") });
 			row.addText((t) => {
 				t.setPlaceholder(est !== null ? `≈ ${formatDistance(est, "")}` : "?");
-				t.setValue(r.segments[i] === null ? "" : String(r.segments[i]));
+				const manual = r.segments[i];
+				t.setValue(manual === null ? "" : fieldNumber(manual));
 				t.inputEl.type = "number";
 				t.inputEl.step = "any";
 				t.onChange((v) => {
@@ -899,28 +900,56 @@ export class MapPropsModal extends Modal {
 		new Setting(el).setName(T("Imagen", "Image")).addText((t) => {
 			t.setValue(p.image).onChange((v) => (p.image = v.trim()));
 			t.inputEl.addClass("strakes-wide-input");
-			new FileInputSuggest(this.app, t.inputEl, isImageFile, (f) => (p.image = f.path));
+			// Obsidian enfoca el primer campo al abrir el diálogo: en este, eso abría la lista de imágenes.
+			// Se le quita el foco y la lista se conecta después (se abre al hacer clic en él o al escribir).
+			const input = t.inputEl;
+			window.setTimeout(() => {
+				if (input.doc.activeElement === input) input.blur();
+				new FileInputSuggest(this.app, input, isImageFile, (f) => (p.image = f.path));
+			}, 0);
 		});
+		// Se crea después (va debajo): al cambiar la unidad, muestra ya la escala convertida.
+		let scaleText: TextComponent | null = null;
+		const showScale = () => scaleText?.setValue(p.scale === null ? "" : String(Number(p.scale.toPrecision(12))));
+		// La escala se convierte siempre desde la de partida (la del archivo, o la última escrita a mano, con
+		// su unidad), no de un paso al siguiente: así coincide con `convertMapUnit` al guardar, también al
+		// pasar por una unidad que no es de longitud (que solo cambia el nombre).
+		let base = { scale: p.scale, unit: p.unit };
 		new Setting(el)
 			.setName(T("Unidad de distancia", "Distance unit"))
-			.setDesc(T("Cambiarla no convierte las distancias ya escritas: solo cambia su unidad.", "Changing it doesn't convert the distances already entered: it only changes their unit."))
+			.setDesc(
+				T(
+					"Cambiarla conserva el tamaño real: la escala y las distancias y áreas escritas a mano se convierten (5 ft pasan a 1,52 m). Con una unidad que no es de longitud (p. ej. «días»), solo cambia el nombre de la unidad.",
+					"Changing it keeps the real size: the scale and the distances and areas entered by hand are converted (5 ft become 1.52 m). With a unit that isn't a length (e.g. \"days\"), only the unit's name changes.",
+				),
+			)
 			.addDropdown((dd) => {
 				const options = unitOptions();
 				for (const o of options) dd.addOption(o.value, o.label);
 				// Una unidad que no está en la lista (mapas antiguos o escritos a mano) se conserva.
 				if (p.unit && !options.some((o) => o.value === p.unit)) dd.addOption(p.unit, p.unit);
-				dd.setValue(p.unit).onChange((v) => (p.unit = v));
+				dd.setValue(p.unit).onChange((v) => {
+					const f = unitFactor(base.unit, v);
+					if (base.scale !== null) {
+						p.scale = f === null ? base.scale : base.scale * f;
+						showScale();
+					}
+					p.unit = v;
+				});
 			});
 		new Setting(el)
 			.setName(T("Escala", "Scale"))
 			.setDesc(T("Unidades por píxel de la imagen. Vacío = mapa sin escala (solo distancias manuales por tramo).", "Units per image pixel. Empty = map without scale (only manual distances per segment)."))
 			.addText((t) => {
-				t.setValue(p.scale === null ? "" : String(p.scale));
+				scaleText = t;
+				showScale();
 				t.inputEl.type = "number";
 				t.inputEl.step = "any";
 				t.onChange((v) => {
 					const n = parseFloat(v);
 					p.scale = !v.trim() || isNaN(n) || n <= 0 ? null : n;
+					// Escrita a mano: está en la unidad elegida ahora.
+					base = { scale: p.scale, unit: p.unit };
 				});
 			})
 			.addButton((b) =>

@@ -5,8 +5,7 @@ import { ConditionModal, renderConditionIcon } from "./initiative/conditionUi";
 import { allConditions, CC_BY_URL, customInfo, SRD_URL } from "./initiative/conditions";
 import { confirmDialog } from "./ui/modals";
 import { unitOptions } from "./map/mapData";
-import { MapView } from "./map/MapView";
-import { StrakesSettings, VIEW_TYPE_MAP } from "./types";
+import { StrakesSettings } from "./types";
 
 /** Primera línea con texto de una descripción en Markdown, sin marcas de formato (para la lista). */
 function firstLine(markdown: string): string {
@@ -37,8 +36,6 @@ export class StrakesSettingTab extends PluginSettingTab {
 		if (key === "mapFolder" && typeof value === "string") value = value.trim().replace(/\/+$/, "");
 		(this.plugin.settings as unknown as Record<string, unknown>)[key] = value;
 		await this.save();
-		if (key === "displayUnit")
-			for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_MAP)) if (leaf.view instanceof MapView) leaf.view.refreshUnits();
 	}
 
 	private async save(): Promise<void> {
@@ -171,15 +168,15 @@ export class StrakesSettingTab extends PluginSettingTab {
 				heading: T("Mapas", "Maps"),
 				items: [
 					{
-						name: T("Unidad de distancia", "Distance unit"),
+						name: T("Unidad de los mapas nuevos", "Unit for new maps"),
 						desc: T(
-							"Las distancias y velocidades de todos los mapas se muestran convertidas a esta unidad (lo que escribes en cada mapa se guarda en su propia unidad y no cambia), y los mapas nuevos se crean con ella. Con «Las de cada mapa», cada uno se ve en su unidad y los nuevos se crean en kilómetros.",
-							"Distances and speeds of every map are shown converted to this unit (what you enter in each map is stored in its own unit and never changes), and new maps are created with it. With \"Each map's own\", each map is shown in its unit and new ones are created in kilometers.",
+							"Los mapas nuevos se crean con esta unidad. Cada mapa se ve siempre en su propia unidad; para cambiarla, usa el selector de unidad de la barra del mapa o sus propiedades.",
+							"New maps are created with this unit. Each map is always shown in its own unit; to change it, use the unit selector in the map toolbar or its properties.",
 						),
 						control: {
 							type: "dropdown",
 							key: "displayUnit",
-							options: { map: T("Las de cada mapa", "Each map's own"), ...Object.fromEntries(unitOptions().map((o) => [o.value, o.label])) },
+							options: Object.fromEntries(unitOptions().map((o) => [o.value, o.label])),
 						},
 					},
 					{
@@ -217,8 +214,8 @@ export class StrakesSettingTab extends PluginSettingTab {
 					{
 						name: T("Transparencia de lo que no ven los jugadores", "Transparency of what players can't see"),
 						desc: T(
-							"Con un mapa en la pantalla de jugadores, los marcadores y rutas que ellos no ven se muestran así de transparentes en el editor (%).",
-							"With a map on the player screen, the markers and routes they can't see are shown this transparent in the editor (%).",
+							"Con un mapa en la pantalla de jugadores, los marcadores, rutas y zonas que ellos no ven se muestran así de transparentes en el editor (%).",
+							"With a map on the player screen, the markers, routes and zones they can't see are shown this transparent in the editor (%).",
 						),
 						render: (setting) => this.sliderWithNumber(setting, "notPlayerTransparency", 0, 95, 1),
 					},
@@ -257,7 +254,7 @@ export class StrakesSettingTab extends PluginSettingTab {
 						render: (setting) => this.sliderWithNumber(setting, "drawWidth", 1, 20, 1),
 					},
 					{
-						name: T("Iconos SVG para marcadores", "SVG icons for markers"),
+						name: T("Iconos SVG para marcadores y condiciones", "SVG icons for markers and conditions"),
 						desc: this.iconsDescription(),
 						render: (setting) => {
 							const icons = this.plugin.icons;

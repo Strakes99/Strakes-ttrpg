@@ -1,12 +1,12 @@
 import { parseWikilink } from "./links";
 
 /**
- * Nombre automático de los marcadores (casilla AUTO del diálogo del marcador).
+ * Nombre automático de los marcadores, las rutas y las zonas (casilla AUTO de sus diálogos).
  *
  * Orden: alias del enlace > último encabezado > nombre de la nota > nombre del marcador
- * destino (solo portales). Todo sale del texto del enlace y de los nombres ya guardados:
+ * destino (lo último, solo portales). Todo sale del texto del enlace y de los nombres ya guardados:
  * no se lee ninguna nota ni hay nada que se revise de forma continua. Se recalcula solo en
- * momentos concretos: al editar o guardar un marcador, al elegir el destino de un portal y
+ * momentos concretos: al editar o guardar un marcador, una ruta o una zona, al elegir el destino de un portal y
  * al renombrar o mover una nota (ver `applyAutoNames`).
  */
 
@@ -36,7 +36,7 @@ export function plainText(text: string): string {
 }
 
 /**
- * Nombre que da el enlace de un marcador: el alias si lo tiene, si no el último encabezado
+ * Nombre que da el enlace de un marcador, una ruta o una zona: el alias si lo tiene, si no el último encabezado
  * («Nota#Capítulo#Sección» → «Sección»), y si no el nombre de la nota (también con
  * referencias a bloques «#^id» y con enlaces rotos). null si no hay enlace.
  */
@@ -78,7 +78,7 @@ export function autoPinName(pin: AutoNamePin, pins: readonly AutoNamePin[]): str
 }
 
 /**
- * Recalcula los nombres de todos los marcadores con AUTO de un mapa: primero los que salen
+ * Recalcula los nombres de todos los elementos con AUTO de una lista (marcadores, rutas o zonas): primero los que salen
  * de su enlace y después los de los portales (con los nombres ya actualizados). Si un
  * marcador no tiene de dónde sacar el nombre, conserva el que tenía. Devuelve true si
  * cambió algún nombre.

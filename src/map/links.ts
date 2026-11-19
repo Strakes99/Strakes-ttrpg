@@ -1,7 +1,7 @@
 import { App, TFile } from "obsidian";
 
 /**
- * Los pines guardan su enlace como wikilink: "[[Nota]]", "[[Nota#Encabezado]]",
+ * Los marcadores, las rutas y las zonas guardan su enlace como wikilink: "[[Nota]]", "[[Nota#Encabezado]]",
  * "[[Carpeta/Nota|alias]]". El formato del nombre (más corto posible, relativo o
  * absoluto) sigue el ajuste de Obsidian «Formato de los vínculos nuevos».
  */

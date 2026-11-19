@@ -18,11 +18,7 @@ const PRONE_ID = "prone";
 /** Nivel de Agotamiento con el que la criatura muere (SRD 5.2). */
 const EXHAUSTION_DEATH_LEVEL = 6;
 
-/**
- * Condiciones de las reglas básicas (SRD 5.2, licencia CC-BY-4.0).
- * Cada una tiene un icono de Lucide y un color; `implies` son las condiciones
- * que aplica automáticamente (p. ej. Paralizado → Incapacitado).
- */
+/** Apartado de la descripción de una integrada (título vacío = sin encabezado). */
 export interface ConditionSection {
 	title: Localized;
 	text: Localized;
@@ -31,6 +27,11 @@ export interface ConditionSection {
 /** Automatismos de una integrada: como `ConditionRules`, con la característica de la salvación traducible. */
 export type BuiltinRules = Omit<ConditionRules, "damageSave"> & { damageSave?: { ability: Localized } };
 
+/**
+ * Condiciones de las reglas básicas (SRD 5.2, licencia CC-BY-4.0).
+ * Cada una tiene un icono de Lucide y un color; `implies` son las condiciones
+ * que aplica automáticamente (p. ej. Paralizado → Incapacitado).
+ */
 export interface BuiltinCondition {
 	id: string;
 	name: Localized;

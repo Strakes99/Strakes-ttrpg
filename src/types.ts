@@ -225,8 +225,8 @@ export interface StrakesSettings {
 	showNpcHp: boolean;
 
 	/**
-	 * Unidad en la que se muestran distancias y velocidades. «map» = la de cada mapa.
-	 * Solo afecta a lo que se muestra: los datos del mapa siguen en su propia unidad.
+	 * Unidad de los mapas nuevos (ajuste «Unidad de los mapas nuevos»): una de `unitOptions()`. Hasta la
+	 * 1.3.1 era también la unidad en la que se mostraban todos los mapas (de ahí el nombre de la clave).
 	 */
 	displayUnit: string;
 	/** Carpeta donde se crean los mapas nuevos. Vacío = junto a la imagen. */
@@ -251,7 +251,7 @@ export interface StrakesSettings {
 	lockAllEmbeds: boolean;
 	/** Mapas: transparencia (%) del relleno de todas las zonas (1.3). */
 	zoneFillTransparency: number;
-	/** Pantalla de jugadores: mostrar marcadores y rutas aunque estén bajo la niebla (1.3). */
+	/** Pantalla de jugadores: mostrar marcadores, rutas y zonas aunque estén bajo la niebla (1.3). */
 	fogShowUnder: boolean;
 	/**
 	 * Pincel de niebla: tamaño en píxeles de la imagen (control de la barra; abarca lo mismo del mapa
@@ -265,7 +265,7 @@ export interface StrakesSettings {
 	customConditions: CustomCondition[];
 	/** Icono/color cambiados por el usuario en las condiciones integradas (por id). */
 	conditionOverrides: Record<string, ConditionOverride>;
-	/** Secciones plegadas del panel lateral del mapa ("layers", "routes", "pins"). */
+	/** Secciones plegadas del panel lateral del mapa ("layers", "pins", "routes", "zones"). */
 	collapsedMapSections: string[];
 	combat: CombatState;
 }
@@ -283,7 +283,7 @@ export const DEFAULT_SETTINGS: StrakesSettings = {
 	showPlayerHp: true,
 	showNpcHp: false,
 
-	displayUnit: "map",
+	displayUnit: "km",
 	mapFolder: "",
 	pinPreviewTitle: true,
 	notPlayerTransparency: 60,

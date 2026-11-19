@@ -8,9 +8,9 @@ import { MapFog, normalizeFog } from "./fogData";
 
 /**
  * Visibilidad en el mapa. Hay dos vistas independientes, la del DM y la de los jugadores:
- *  - Dos interruptores fijos por tipo: Pines (showPins / playerPins) y Rutas (showRoutes / playerRoutes).
- *  - Capas creadas por el usuario; cada pin o ruta está en una capa o en ninguna (layerId null).
- *  - Cada pin o ruta: `hidden` (oculto en la vista del DM) y `players` (visible para jugadores).
+ *  - Tres interruptores fijos por tipo: Pines (showPins / playerPins), Rutas (showRoutes / playerRoutes) y Zonas (showZones / playerZones).
+ *  - Capas creadas por el usuario; cada pin, ruta o zona está en una capa o en ninguna (layerId null).
+ *  - Cada pin, ruta o zona: `hidden` (oculto en la vista del DM) y `players` (visible para jugadores).
  *  DM: un elemento se ve si no está oculto, su tipo está activo y (no tiene capa o su capa está visible).
  *  Jugadores: solo si el elemento, su tipo y su capa (si tiene) están marcados para jugadores.
  *  Lo que no tiene el campo de jugadores cuenta como oculto a los jugadores.
@@ -387,53 +387,29 @@ export function formatDistance(value: number, unit: string): string {
 
 const KM_PER_MILE = 1.609344;
 
-/**
- * Unidad para mostrar (ajuste «Unidad de distancia»): «map» = la de cada mapa, o una de
- * `unitOptions()` («km», «mi», «leguas»…). Es también la unidad de los mapas nuevos.
- */
-export type DisplayUnit = string;
 
-/** Unidades del selector (ajustes y Propiedades del mapa). Todas las reconoce `milesPerUnit`. */
+/** Unidades de los selectores (ajustes, barra del mapa y Propiedades del mapa). Todas las reconoce `milesPerUnit`. */
 export function unitOptions(): { value: string; label: string }[] {
 	return [
 		{ value: "km", label: T("Kilómetros", "Kilometers") },
 		{ value: "mi", label: T("Millas", "Miles") },
-		{ value: T("leguas", "leagues"), label: T("Leguas", "Leagues") },
 		{ value: "m", label: T("Metros", "Meters") },
 		{ value: "ft", label: T("Pies", "Feet") },
 	];
 }
 
-/** Unidad de los mapas nuevos: la elegida para mostrar, o kilómetros con «Las de cada mapa». */
-export function newMapUnit(display: DisplayUnit): string {
-	return display === "map" || milesPerUnit(display) === null ? "km" : display;
+/** Velocidad de un paso de viaje en el sistema del mapa: km/h si es métrico (km, m); si no, millas/h. */
+export function paceSpeed(mph: number, unit: string): string {
+	const mpu = milesPerUnit(unit);
+	const metric = mpu !== null && [1 / KM_PER_MILE, 1 / (KM_PER_MILE * 1000)].some((f) => Math.abs(mpu - f) < 1e-12);
+	if (!metric) return T(`${mph} millas/h`, `${mph} miles/h`);
+	return `${(mph * KM_PER_MILE).toLocaleString(numberLocale(), { maximumFractionDigits: 1 })} km/h`;
 }
 
-/**
- * Distancia guardada en la unidad del mapa, lista para mostrar en la unidad elegida.
- * Solo se convierte el texto: el valor guardado no cambia, así que alternar de unidad
- * nunca acumula redondeos. Las unidades que no son de longitud (p. ej. «días») se
- * muestran tal cual.
- */
-export function displayDistance(value: number, unit: string, display: DisplayUnit): string {
-	if (display !== "map") {
-		const from = milesPerUnit(unit);
-		const to = milesPerUnit(display);
-		if (from !== null && to !== null) {
-			// El mapa ya está en esa unidad: no hay conversión, se muestra como siempre.
-			if (from === to) return formatDistance(value, display);
-			// Convertida: con hasta 2 decimales (3,1 mi → «4,99 km»).
-			const converted = (value * from) / to;
-			return `${converted.toLocaleString(numberLocale(), { maximumFractionDigits: 2 })} ${display}`;
-		}
-	}
-	return formatDistance(value, unit);
-}
-
-export function formatTotal(t: RouteTotal, unit: string, display: DisplayUnit = "map"): string {
+export function formatTotal(t: RouteTotal, unit: string): string {
 	if (!t.segments) return "—";
 	if (t.unknown === t.segments) return T("sin distancias", "no distances");
-	const base = displayDistance(t.total, unit, display);
+	const base = formatDistance(t.total, unit);
 	if (!t.unknown) return base;
 	const s = t.unknown > 1 ? "s" : "";
 	return T(`${base} + ${t.unknown} tramo${s} sin distancia`, `${base} + ${t.unknown} segment${s} without distance`);
@@ -463,6 +439,38 @@ export function milesPerUnit(unit: string): number | null {
 	if (["m", "metro", "metros", "meter", "meters"].includes(u)) return 1 / (KM_PER_MILE * 1000);
 	if (["ft", "pie", "pies", "foot", "feet"].includes(u)) return 1 / 5280;
 	return null;
+}
+
+/**
+ * Número para un campo editable: con hasta 2 decimales (9,9999999 → 10), o 2 cifras significativas
+ * si es muy pequeño (0,0042). El valor guardado no se redondea mientras no se edite el campo (p. ej.
+ * tras convertir la unidad del mapa y volver).
+ */
+export function fieldNumber(v: number): string {
+	const r = Math.round(v * 100) / 100;
+	return String(r !== 0 || v === 0 ? r : Number(v.toPrecision(2)));
+}
+
+/** Factor para pasar un valor de una unidad de longitud a otra (5 ft → m: 0,3048). null si alguna no se reconoce. */
+export function unitFactor(from: string, to: string): number | null {
+	const a = milesPerUnit(from);
+	const b = milesPerUnit(to);
+	return a === null || b === null ? null : a / b;
+}
+
+/**
+ * Cambia la unidad del mapa conservando el tamaño real: convierte la escala, las distancias manuales
+ * de los tramos y las áreas manuales de las zonas (al cuadrado). Los tiempos manuales (horas) no
+ * cambian. Si alguna de las dos unidades no es de longitud reconocida (p. ej. «días»), solo cambia la
+ * etiqueta. Los valores no se redondean.
+ */
+export function convertMapUnit(data: MapData, unit: string): void {
+	const f = unitFactor(data.unit, unit);
+	data.unit = unit;
+	if (f === null || f === 1) return;
+	if (data.scale !== null) data.scale *= f;
+	for (const r of data.routes) r.segments = r.segments.map((v) => (v === null ? null : v * f));
+	for (const z of data.zones) if (z.area !== undefined) z.area *= f * f;
 }
 
 export interface SegmentTime {
@@ -594,7 +602,7 @@ export function fastestPath(data: MapData, routes: MapRoute[], from: string, to:
 }
 
 /** Distancia conocida de unos tramos y cuántos no tienen distancia. */
-export function legsDistance(data: MapData, legs: PathLeg[]): { distance: number; unknown: number } {
+function legsDistance(data: MapData, legs: PathLeg[]): { distance: number; unknown: number } {
 	const nodes = nodeMap(data);
 	let distance = 0;
 	let unknown = 0;

@@ -6,7 +6,7 @@ import { resizeObserverFor } from "../ui/dom";
 import { loadImageSize } from "../ui/modals";
 import { PinHoverParent } from "./hover";
 import { linktextOf, resolveWikilink } from "./links";
-import { isItemVisible, ItemType, MapData, MapPin, MapZone, newMapUnit, nodeMap, normalizeMap, ROUTE_COLORS, routePath } from "./mapData";
+import { isItemVisible, ItemType, MapData, MapPin, MapZone, nodeMap, normalizeMap, ROUTE_COLORS, routePath } from "./mapData";
 import { LabelState } from "../types";
 import { ensureZonePane, mapBounds, nodeMarker, pinIcon, pinTooltipOptions, pinTooltipText, routeNameLabel, toLatLng, zoneNameLabel, zoneStyle } from "./render";
 import { FogLayer } from "./fogLayer";
@@ -117,7 +117,7 @@ export class MapEmbed extends Component {
 	/** Obsidian lo llama tras crear el embed. */
 	async loadFile(): Promise<void> {
 		try {
-			this.data = normalizeMap(JSON.parse(await this.app.vault.cachedRead(this.file)), newMapUnit(this.plugin.settings.displayUnit));
+			this.data = normalizeMap(JSON.parse(await this.app.vault.cachedRead(this.file)), this.plugin.settings.displayUnit);
 		} catch {
 			this.data = null;
 			this.teardown();
@@ -540,7 +540,7 @@ export class MapEmbed extends Component {
 		content.addLayer(poly);
 	}
 
-	/** Abre la nota enlazada de una zona o una ruta (Ctrl/Cmd+clic: en pestaña nueva). */
+	/** Abre la nota enlazada de un marcador, una zona o una ruta (Ctrl/Cmd+clic: en pestaña nueva). */
 	private openNote(link: string, evt: MouseEvent): void {
 		if (!resolveWikilink(this.app, link, this.file.path)) {
 			new Notice(T(`No se encuentra la nota ${link}`, `Note not found: ${link}`));
@@ -554,12 +554,7 @@ export class MapEmbed extends Component {
 		marker.bindTooltip(pinTooltipText(pin), pinTooltipOptions(pin, this.labels.pins));
 		// Clic principal: abrir la nota enlazada.
 		marker.on("click", (e: L.LeafletMouseEvent) => {
-			if (!pin.link) return;
-			if (!resolveWikilink(this.app, pin.link, this.file.path)) {
-				new Notice(T(`No se encuentra la nota ${pin.link}`, `Note not found: ${pin.link}`));
-				return;
-			}
-			void this.app.workspace.openLinkText(linktextOf(pin.link), this.file.path, Keymap.isModEvent(e.originalEvent));
+			if (pin.link) this.openNote(pin.link, e.originalEvent);
 		});
 		// Clic derecho: si es portal / escalera, teletransporta directamente.
 		marker.on("contextmenu", (e: L.LeafletMouseEvent) => {
@@ -588,11 +583,11 @@ export class MapEmbed extends Component {
 		window.setTimeout(() => ring.remove(), 2200);
 	}
 
+	private measuring = false;
 	/**
 	 * Mapa sin tamaño guardado (p. ej. editado a mano o aún no abierto en el editor): se mide
 	 * la imagen aquí. El tamaño queda solo en memoria, porque el embed nunca escribe el archivo.
 	 */
-	private measuring = false;
 	private measureImage(data: MapData, src: string): void {
 		if (this.measuring) return;
 		this.measuring = true;

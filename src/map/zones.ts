@@ -4,7 +4,7 @@ import { Pt } from "./geometry";
 // Se usa junto con el resto de la geometría de zonas: está en geometry.ts para que la niebla
 // (fogData.ts) pueda usarla sin depender del modelo de datos.
 export { pointInPolygon } from "./geometry";
-import { DisplayUnit, MapData, MapZone, milesPerUnit } from "./mapData";
+import { MapData, MapZone } from "./mapData";
 
 // Zonas: polígonos de lados rectos (puntos en píxeles de la imagen, como el resto del mapa).
 // El tipo MapZone y sus valores por defecto están en mapData.ts.
@@ -54,21 +54,8 @@ export function zoneArea(data: MapData, zone: MapZone): { value: number; estimat
 	return null;
 }
 
-/**
- * Área en unidades² del mapa, lista para mostrar en la unidad elegida (ajuste «Unidad de
- * distancia»), como `displayDistance` pero al cuadrado: «12,5 km²».
- */
-export function displayArea(value: number, unit: string, display: DisplayUnit): string {
-	let v = value;
-	let u = unit;
-	if (display !== "map") {
-		const from = milesPerUnit(unit);
-		const to = milesPerUnit(display);
-		if (from !== null && to !== null && from !== to) {
-			v = value * (from / to) ** 2;
-			u = display;
-		} else if (from !== null && to !== null) u = display;
-	}
-	const rounded = v >= 100 ? Math.round(v) : Math.round(v * 100) / 100;
-	return `${rounded.toLocaleString(numberLocale())} ${u}²`.trim();
+/** Área en unidades² del mapa, lista para mostrar: «12,5 km²» (con hasta 2 decimales; sin ellos desde 100). */
+export function displayArea(value: number, unit: string): string {
+	const rounded = value >= 100 ? Math.round(value) : Math.round(value * 100) / 100;
+	return `${rounded.toLocaleString(numberLocale())} ${unit}²`.trim();
 }

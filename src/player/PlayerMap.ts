@@ -2,7 +2,7 @@ import * as L from "leaflet";
 import { Component, TFile } from "obsidian";
 import type StrakesTTRPG from "../main";
 import { DrawingLayer } from "../map/drawing";
-import { isPlayerVisible, MapData, newMapUnit, nodeMap, normalizeMap, ROUTE_COLORS, routePath } from "../map/mapData";
+import { isPlayerVisible, MapData, nodeMap, normalizeMap, ROUTE_COLORS, routePath } from "../map/mapData";
 import { ensureZonePane, mapBounds, nodeMarker, pinIcon, pinTooltipOptions, routeNameLabel, toLatLng, zoneNameLabel, zoneStyle } from "../map/render";
 import { MapRegion } from "../types";
 import { resizeObserverFor } from "../ui/dom";
@@ -10,7 +10,7 @@ import { FogLayer } from "../map/fogLayer";
 import { fogCovers } from "../map/fogData";
 import { Pt } from "../map/geometry";
 
-/** Panel para las rutas por encima de la niebla (ajuste «Mostrar lo que está bajo la niebla»). */
+/** Panel para las zonas y rutas por encima de la niebla (ajuste «Mostrar lo que está bajo la niebla»). */
 const ABOVE_FOG_PANE = "strakes-above-fog";
 const fromLatLng = (ll: L.LatLng): Pt => ({ x: ll.lng, y: ll.lat });
 
@@ -65,7 +65,7 @@ export class PlayerMap extends Component {
 		this.map = map;
 		this.content = L.layerGroup().addTo(map);
 		ensureZonePane(map);
-		// Niebla opaca y, por encima de ella, las rutas si se muestra lo que está debajo (ajuste).
+		// Niebla opaca y, por encima de ella, las zonas y rutas si se muestra lo que está debajo (ajuste).
 		this.fogLayer = new FogLayer(map, 1);
 		this.register(() => this.fogLayer?.remove());
 		if (!map.getPane(ABOVE_FOG_PANE)) map.createPane(ABOVE_FOG_PANE).addClass("strakes-above-fog-pane");
@@ -129,7 +129,7 @@ export class PlayerMap extends Component {
 
 	private async readMap(): Promise<void> {
 		try {
-			this.data = normalizeMap(JSON.parse(await this.plugin.app.vault.cachedRead(this.file)), newMapUnit(this.plugin.settings.displayUnit));
+			this.data = normalizeMap(JSON.parse(await this.plugin.app.vault.cachedRead(this.file)));
 		} catch {
 			return; // Archivo dañado: se queda lo que había.
 		}

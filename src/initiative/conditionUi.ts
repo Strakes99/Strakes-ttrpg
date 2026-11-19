@@ -209,9 +209,7 @@ export function showConditionMenu(evt: MouseEvent, c: Combatant, plugin: Strakes
 			.setTitle(T("Nueva condición personalizada…", "New custom condition…"))
 			.setIcon("plus")
 			.onClick(() =>
-				new ConditionModal(plugin.app, plugin, { kind: "custom", cond: null }, (created) => {
-					if (created) tracker.addCondition(c.id, created.id);
-				}).open(),
+				new ConditionModal(plugin.app, plugin, { kind: "custom", cond: null }, (created) => tracker.addCondition(c.id, created.id)).open(),
 			),
 	);
 	m.showAtMouseEvent(evt);
@@ -280,7 +278,7 @@ export class ConditionModal extends Modal {
 		app: App,
 		private plugin: StrakesTTRPG,
 		private target: ConditionTarget,
-		private onDone: (saved: { id: string } | null) => void,
+		private onDone: (saved: { id: string }) => void,
 	) {
 		super(app);
 		const toDraft = (info: ConditionInfo): ConditionDraft => ({

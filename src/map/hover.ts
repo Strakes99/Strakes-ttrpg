@@ -2,7 +2,7 @@ import { App, HoverParent, HoverPopover } from "obsidian";
 import { linktextOf, parseWikilink, resolveWikilink } from "./links";
 
 /**
- * "Padre" de la vista previa nativa de Obsidian para los pines del mapa.
+ * "Padre" de la vista previa nativa de Obsidian para los marcadores, rutas y zonas del mapa.
  * Obsidian asigna aquí la ventana emergente (hoverPopover) al crearla; aprovechamos
  * ese momento para añadir arriba el título de la nota, que la vista previa no muestra.
  * Solo con enlaces a la nota completa: un encabezado o un bloque ya se ven solos (decisión del

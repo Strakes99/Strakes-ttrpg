@@ -24,8 +24,7 @@ export function memoryKey(name: string): string {
 	return splitName(name).base.toLowerCase();
 }
 
-export function rememberPortrait(plugin: StrakesTTRPG, name: string, portrait: Portrait | null | undefined): void {
-	if (!portrait) return;
+export function rememberPortrait(plugin: StrakesTTRPG, name: string, portrait: Portrait): void {
 	plugin.settings.portraitMemory[memoryKey(name)] = { ...portrait };
 }
 

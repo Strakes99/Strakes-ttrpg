@@ -10,8 +10,8 @@ import { Combatant, VIEW_TYPE_PLAYER } from "../types";
 
 /**
  * Vista que se abre en una ventana emergente y que ven los jugadores.
- * Muestra el contenido enviado (nota, sección, texto o imagen) y,
- * opcionalmente, el orden de iniciativa como overlay o a pantalla completa.
+ * Muestra el contenido enviado (nota, sección, texto, imagen o mapa) y,
+ * opcionalmente, el orden de iniciativa (Lista o Tarjetas) encima.
  */
 export class PlayerScreenView extends ItemView {
 	private contentHost!: HTMLElement;
@@ -53,7 +53,7 @@ export class PlayerScreenView extends ItemView {
 
 		root.addEventListener("dblclick", () => this.toggleFullscreen());
 
-		// Si está en su propia ventana, ocultamos las pestañas de Obsidian.
+		// Si está en su propia ventana, se oculta la cabecera de la vista (las pestañas se conservan para poder arrastrar la ventana).
 		if (this.containerEl.win !== window) this.containerEl.doc.body.addClass("strakes-player-window");
 
 		this.registerEvent(this.plugin.events.on("player-content", () => void this.renderContent()));
@@ -93,6 +93,7 @@ export class PlayerScreenView extends ItemView {
 	async onClose(): Promise<void> {
 		if (this.containerEl.win !== window) this.containerEl.doc.body.removeClass("strakes-player-window");
 		this.renderComp?.unload();
+		this.plugin.playerScreenClosed();
 	}
 
 	toggleFullscreen(): void {
@@ -273,7 +274,7 @@ export class PlayerScreenView extends ItemView {
 		const s = this.plugin.settings;
 		const showHp = c.isPlayer ? s.showPlayerHp : s.showNpcHp;
 		if (!showHp || c.hp === null) return "";
-		// Un enemigo a 0 PG o menos (tachado) deja de mostrar sus PG aunque esté activado.
+		// Un enemigo derrotado (tachado) deja de mostrar sus PG aunque esté activado.
 		if (isDefeatedEnemy(c, this.plugin.settings)) return "";
 		return `${c.hp}${c.tempHp ? `(${c.tempHp})` : ""}${c.maxHp !== null ? `/${c.maxHp}` : ""}`;
 	}
@@ -321,7 +322,7 @@ export class PlayerScreenView extends ItemView {
 	/**
 	 * Tarjetas: el texto (nombres y PG) tiene siempre el tamaño configurado. Las tarjetas
 	 * se reparten en filas según el ancho de la ventana, y el número de filas según su
-	 * altura completa (también con una nota o imagen en pantalla). Se respeta el tamaño de
+	 * altura completa (también con contenido en pantalla: nota, imagen, mapa…). Se respeta el tamaño de
 	 * retrato configurado; solo si así no caben, se reduce el retrato lo justo (mínimo
 	 * 24 px). Si ni así caben, como último recurso se permite desplazar.
 	 */
@@ -353,7 +354,7 @@ export class PlayerScreenView extends ItemView {
 	 * columnas (en orden de iniciativa: de arriba abajo y luego a la siguiente columna),
 	 * con tantas filas por columna como quepan en la altura disponible.
 	 *  - Pantalla vacía: casi toda la pantalla.
-	 *  - Con una nota o imagen: caja en la esquina elegida (hasta 45 % × 80 % de la pantalla).
+	 *  - Con contenido en pantalla (nota, imagen, mapa…): caja en la esquina elegida (hasta 45 % × 80 % de la pantalla).
 	 * Si las columnas no caben a lo ancho, como último recurso se permite desplazar.
 	 */
 	private fitList(box: HTMLElement, expanded: boolean): void {
