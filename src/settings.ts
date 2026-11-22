@@ -4,6 +4,7 @@ import type StrakesTTRPG from "./main";
 import { ConditionModal, renderConditionIcon } from "./initiative/conditionUi";
 import { allConditions, CC_BY_URL, customInfo, SRD_URL } from "./initiative/conditions";
 import { confirmDialog } from "./ui/modals";
+import { decimalInput, parseDecimal } from "./ui/dom";
 import { unitOptions } from "./map/mapData";
 import { StrakesSettings } from "./types";
 
@@ -133,7 +134,7 @@ export class StrakesSettingTab extends PluginSettingTab {
 								b
 									.setButtonText(T("Nueva condición…", "New condition…"))
 									.setCta()
-									.onClick(() => new ConditionModal(this.app, this.plugin, { kind: "custom", cond: null }, () => this.update()).open()),
+									.onClick(() => new ConditionModal(this.app, this.plugin, { kind: "custom", cond: null }).open()),
 							);
 						},
 					},
@@ -158,7 +159,7 @@ export class StrakesSettingTab extends PluginSettingTab {
 							b
 								.setIcon("pencil")
 								.setTooltip(T("Editar", "Edit"))
-								.onClick(() => new ConditionModal(this.app, this.plugin, { kind: "custom", cond }, () => this.update()).open()),
+								.onClick(() => new ConditionModal(this.app, this.plugin, { kind: "custom", cond }).open()),
 						);
 					},
 				})),
@@ -291,7 +292,9 @@ export class StrakesSettingTab extends PluginSettingTab {
 		const value = this.plugin.settings[key];
 		const slider = el.createEl("input", { type: "range", cls: "slider", attr: { min: String(min), max: String(max), step: String(step) } });
 		slider.value = String(value);
-		const num = el.createEl("input", { type: "number", cls: "strakes-setting-number", attr: { min: String(min), max: String(max), step: String(step) } });
+		// Campo de texto (no numérico): acepta coma y punto, y se muestra siempre con punto.
+		const num = el.createEl("input", { cls: "strakes-setting-number" });
+		decimalInput(num);
 		num.value = String(value);
 		slider.addEventListener("input", () => {
 			num.value = slider.value;
@@ -300,11 +303,13 @@ export class StrakesSettingTab extends PluginSettingTab {
 		});
 		slider.addEventListener("change", () => void this.setControlValue(key, parseFloat(slider.value)));
 		num.addEventListener("input", () => {
-			const n = parseFloat(num.value.replace(",", "."));
+			const n = parseDecimal(num.value);
 			if (!isFinite(n) || n < min || n > max) return;
 			slider.value = String(n);
 			void this.setControlValue(key, n);
 		});
+		// Al salir del campo (o con Enter), un valor inválido o fuera de rango vuelve al guardado.
+		num.addEventListener("change", () => (num.value = String(this.plugin.settings[key])));
 	}
 
 	private iconsDescription(): string {
@@ -347,7 +352,7 @@ export class StrakesSettingTab extends PluginSettingTab {
 				setIcon(eye, "eye-off");
 				setTooltip(b, T("Oculta: no aparece en ningún menú ni se aplica", "Hidden: not shown in any menu nor applied"));
 			} else if (s.conditionOverrides[info.id]) b.createSpan({ cls: "strakes-builtin-cond-mark", text: "•" });
-			b.onclick = () => new ConditionModal(this.app, this.plugin, { kind: "builtin", id: info.id }, () => this.update()).open();
+			b.onclick = () => new ConditionModal(this.app, this.plugin, { kind: "builtin", id: info.id }).open();
 		}
 		return () => block.remove();
 	}

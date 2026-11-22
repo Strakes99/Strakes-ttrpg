@@ -6,9 +6,9 @@ import { resizeObserverFor } from "../ui/dom";
 import { loadImageSize } from "../ui/modals";
 import { PinHoverParent } from "./hover";
 import { linktextOf, resolveWikilink } from "./links";
-import { isItemVisible, ItemType, MapData, MapPin, MapZone, nodeMap, normalizeMap, ROUTE_COLORS, routePath } from "./mapData";
+import { isItemVisible, ItemType, MapData, MapPin, MapZone, nodeMap, normalizeMap, portalLinks, ROUTE_COLORS, routePath } from "./mapData";
 import { LabelState } from "../types";
-import { ensureZonePane, mapBounds, nodeMarker, pinIcon, pinTooltipOptions, pinTooltipText, routeNameLabel, toLatLng, zoneNameLabel, zoneStyle } from "./render";
+import { ensureZonePane, mapBounds, nodeMarker, pinIcon, portalArrowLayers, pinTooltipOptions, pinTooltipText, routeNameLabel, toLatLng, zoneNameLabel, zoneStyle } from "./render";
 import { FogLayer } from "./fogLayer";
 import { pointInPolygon } from "./geometry";
 
@@ -50,6 +50,8 @@ export class MapEmbed extends Component {
 	private pinHover = new PinHoverParent(() => this.plugin.settings.pinPreviewTitle);
 	/** Etiquetas de este mapa (no se guardan: al volver a dibujar la nota, apagadas). */
 	private labels: LabelState = { pins: false, routes: false, zones: false };
+	/** Flechas de los portales encendidas (botón de la barra). No se recuerdan. */
+	private portalArrows = false;
 	/** Niebla de guerra, semitransparente (vista del DM), y si está oculta (botón de la nube; no se recuerda). */
 	private fogLayer: FogLayer | null = null;
 	private fogHidden = false;
@@ -338,6 +340,18 @@ export class MapEmbed extends Component {
 			evt.stopPropagation();
 			this.labelsMenu(evt);
 		};
+		// Flechas de los portales: hacia dónde lleva cada uno. No se recuerdan.
+		button(
+			"signpost",
+			this.portalArrows
+				? T("Flechas de los portales y escaleras: se ven (clic para ocultarlas)", "Portal and stairs arrows: shown (click to hide them)")
+				: T("Mostrar hacia dónde llevan los portales y escaleras", "Show where portals and stairs lead"),
+			() => {
+				this.portalArrows = !this.portalArrows;
+				this.render();
+				if (this.wrapper) this.buildToolbar(this.wrapper);
+			},
+		).toggleClass("is-active", this.portalArrows);
 		button("maximize", T("Encuadrar todo", "Fit all"), () => this.fitWhole(true));
 		// Ocultar la niebla (solo si el mapa la tiene activada): no la borra.
 		if (this.data?.fog?.enabled)
@@ -502,7 +516,9 @@ export class MapEmbed extends Component {
 				if (n) content.addLayer(nodeMarker(n, route.color, { draggable: false, interactive: false }));
 			}
 		}
-		for (const pin of data.pins) if (!pin.hidden && this.isVisible("pins", pin.layerId)) content.addLayer(this.pinMarker(pin));
+		const pinVisible = (pin: MapPin) => !pin.hidden && this.isVisible("pins", pin.layerId);
+		for (const pin of data.pins) if (pinVisible(pin)) content.addLayer(this.pinMarker(pin));
+		if (this.portalArrows) for (const l of portalArrowLayers(portalLinks(data.pins, pinVisible))) content.addLayer(l);
 
 		// Primero el tamaño según la proporción, luego el encuadre.
 		this.applyAutoSize();

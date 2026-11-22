@@ -819,3 +819,43 @@ export function parseDistanceInput(s: string): { value: number; unit: string } |
 	if (!m) return null;
 	return { value: parseFloat(m[1].replace(",", ".")), unit: m[2].trim() };
 }
+
+// ---------- Flechas de los portales (1.3.3) ----------
+
+/** Flecha de un portal o escalera a su destino. `both`: ida y vuelta (una sola línea, punta en los dos extremos). */
+export interface PortalLink {
+	from: Pt;
+	to: Pt;
+	both: boolean;
+	/** Id del que sale el color (en ida y vuelta, el menor de los dos: el mismo se mire por donde se mire). */
+	colorKey: string;
+}
+
+/**
+ * Flechas de los portales visibles (`visible`) hacia su destino: otro marcador (`targetPinId`) o un punto
+ * fijo (`target`). Como al usarlos en el editor, si el marcador destino ya no existe no hay flecha, y un
+ * portal sin destino no dibuja nada. Dos portales que llevan el uno al otro, los dos visibles, dan una
+ * sola flecha de ida y vuelta.
+ */
+export function portalLinks(pins: readonly MapPin[], visible: (pin: MapPin) => boolean): PortalLink[] {
+	const byId = new Map(pins.map((p) => [p.id, p]));
+	const done = new Set<string>();
+	const links: PortalLink[] = [];
+	for (const p of pins) {
+		if (!p.portal || done.has(p.id) || !visible(p)) continue;
+		const dest = p.targetPinId ? byId.get(p.targetPinId) : undefined;
+		const to = dest ? { x: dest.x, y: dest.y } : !p.targetPinId && p.target ? { x: p.target.x, y: p.target.y } : null;
+		if (!to || (to.x === p.x && to.y === p.y)) continue;
+		const both = !!dest && dest.portal && dest.targetPinId === p.id && visible(dest);
+		if (both) done.add(dest.id);
+		links.push({ from: { x: p.x, y: p.y }, to, both, colorKey: both && dest.id < p.id ? dest.id : p.id });
+	}
+	return links;
+}
+
+/** Color de la flecha de un portal: «aleatorio», pero fijo para cada id (no cambia al redibujar). */
+export function portalColor(key: string): string {
+	let h = 0;
+	for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+	return `hsl(${h % 360}, 75%, 55%)`;
+}

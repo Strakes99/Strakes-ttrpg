@@ -278,7 +278,8 @@ export class ConditionModal extends Modal {
 		app: App,
 		private plugin: StrakesTTRPG,
 		private target: ConditionTarget,
-		private onDone: (saved: { id: string }) => void,
+		/** Al guardar (no al cancelar). */
+		private onDone?: (saved: { id: string }) => void,
 	) {
 		super(app);
 		const toDraft = (info: ConditionInfo): ConditionDraft => ({
@@ -663,7 +664,10 @@ export class ConditionModal extends Modal {
 	private async finish(id: string): Promise<void> {
 		await this.plugin.saveSettings();
 		this.plugin.events.trigger("combat");
-		this.onDone({ id });
+		// La lista de condiciones personalizadas de los ajustes se calcula al registrar la pestaña: se
+		// recalcula aquí, se haya abierto el diálogo desde los ajustes o desde el menú de un combatiente.
+		this.plugin.settingTab.update();
+		this.onDone?.({ id });
 		this.close();
 	}
 

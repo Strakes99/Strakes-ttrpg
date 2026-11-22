@@ -41,6 +41,11 @@ export default class StrakesTTRPG extends Plugin {
 	 */
 	events = new Events();
 	playerContent: PlayerContent = null;
+	/**
+	 * Pestaña de ajustes. Obsidian guarda sus definiciones al registrarla y solo las recalcula con
+	 * `update()`: lo que cambie la lista de condiciones personalizadas fuera de ella tiene que llamarlo.
+	 */
+	settingTab!: StrakesSettingTab;
 	tracker!: InitiativeTracker;
 	icons!: IconLibrary;
 
@@ -50,10 +55,16 @@ export default class StrakesTTRPG extends Plugin {
 		this.events.trigger("icons");
 	}
 
-	/** Abre el selector de archivos del sistema para importar SVG a la carpeta de iconos. */
+	/**
+	 * Abre el selector de archivos del sistema para importar SVG a la carpeta de iconos. El campo de
+	 * archivo va (oculto) en el documento de la ventana activa, como hace Obsidian: suelto, sin añadirlo
+	 * al documento, el selector no llegaba a abrirse. Se quita al elegir o al cancelar.
+	 */
 	importIcons(onDone?: () => void): void {
-		const input = createEl("input", { type: "file", attr: { accept: ".svg,image/svg+xml", multiple: "" } });
+		const input = activeDocument.body.createEl("input", { type: "file", cls: "strakes-file-input", attr: { accept: ".svg,image/svg+xml", multiple: "" } });
+		input.addEventListener("cancel", () => input.remove());
 		input.onchange = async () => {
+			input.remove();
 			if (!input.files?.length) return;
 			const n = await this.icons.importFiles(input.files, "", (conflict) => askIconConflict(this.app, conflict));
 			this.events.trigger("icons");
@@ -98,7 +109,8 @@ export default class StrakesTTRPG extends Plugin {
 		this.register(() => {
 			if (this.renameTimer !== null) window.clearTimeout(this.renameTimer);
 		});
-		this.addSettingTab(new StrakesSettingTab(this.app, this));
+		this.settingTab = new StrakesSettingTab(this.app, this);
+		this.addSettingTab(this.settingTab);
 	}
 
 	onunload(): void {

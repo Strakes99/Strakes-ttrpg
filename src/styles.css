@@ -1234,6 +1234,8 @@ input[type="number"].strakes-fog-size-number {
 }
 /* Zonas: su panel va por debajo de rutas y marcadores (el de Leaflet para las rutas es el 400). */
 .leaflet-pane.strakes-zones-pane { z-index: 350; }
+/* Líneas de las flechas de los portales: por encima de la niebla (500), por debajo de los marcadores (600). */
+.leaflet-pane.strakes-portal-arrows-pane { z-index: 590; }
 /* Láser y lápiz: su panel va por encima de rutas y marcadores y no recibe el ratón. */
 .leaflet-pane.strakes-drawing-pane {
 	z-index: 640;
@@ -1791,4 +1793,33 @@ input[type="number"].strakes-fog-size-number {
 .strakes-modal-footer {
 	flex-shrink: 0;
 	border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Campo de archivo oculto para «Importar SVG…»: tiene que estar en el documento para que se abra el
+   selector, pero no se ve ni recibe el ratón. */
+.strakes-file-input {
+	position: fixed;
+	width: 1px;
+	height: 1px;
+	opacity: 0;
+	pointer-events: none;
+	z-index: -1;
+}
+
+/* Flechas de los portales (1.3.3): punta triangular del color de su línea, girada hacia su destino
+   alrededor de la punta (arriba en el centro), con un contorno oscuro para verse sobre cualquier fondo. */
+.leaflet-marker-icon.strakes-portal-arrow {
+	background: none;
+	border: none;
+	pointer-events: none;
+}
+.strakes-portal-arrow-head {
+	width: 0;
+	height: 0;
+	border-left: 8px solid transparent;
+	border-right: 8px solid transparent;
+	border-bottom: 16px solid var(--strakes-arrow-color);
+	transform: rotate(var(--strakes-arrow-angle));
+	transform-origin: 50% 0;
+	filter: drop-shadow(0 0 1.5px rgb(0 0 0 / 0.9));
 }

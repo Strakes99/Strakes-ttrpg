@@ -1,7 +1,7 @@
 import * as L from "leaflet";
 import { getIconIds, setIcon } from "obsidian";
 import { Pt } from "./geometry";
-import { DEFAULT_PIN_COLOR, MapData, MapPin, MapRoute, MapZone, RouteNode, routePath, segmentPath } from "./mapData";
+import { DEFAULT_PIN_COLOR, MapData, MapPin, MapRoute, MapZone, PortalLink, portalColor, RouteNode, routePath, segmentPath } from "./mapData";
 import { polygonCentroid } from "./zones";
 import { pointAtFraction } from "./geometry";
 import { customIconName, getIconLibrary } from "./icons";
@@ -126,7 +126,12 @@ export const ZONE_PANE = "strakes-zones";
 /** Crea en el mapa el panel de las zonas, si no existe. */
 export function ensureZonePane(map: L.Map): void {
 	if (!map.getPane(ZONE_PANE)) map.createPane(ZONE_PANE).addClass("strakes-zones-pane");
+	// Líneas de las flechas de los portales (1.3.3): por encima de la niebla (500), por debajo de los marcadores (600).
+	if (!map.getPane(PORTAL_ARROW_PANE)) map.createPane(PORTAL_ARROW_PANE).addClass("strakes-portal-arrows-pane");
 }
+
+/** Panel de las líneas de las flechas de los portales (lo crea `ensureZonePane`, junto al de las zonas). */
+const PORTAL_ARROW_PANE = "strakes-portal-arrows";
 
 /**
  * Estilo del polígono de una zona: borde de 2 px y relleno con la transparencia general
@@ -166,4 +171,37 @@ export function nodeMarker(n: RouteNode, color: string, opts: { draggable: boole
 	});
 	marker.on("add", () => marker.getElement()?.setCssProps({ "--route-color": color }));
 	return marker;
+}
+
+/**
+ * Flechas de los portales (1.3.3): una línea discontinua del portal a su destino y una punta en el
+ * destino (en ida y vuelta, también en el portal). La línea va en su propio panel, por encima de la
+ * niebla (en la vista del DM no se ve apagada) y por debajo de los marcadores; la punta es un triángulo
+ * girado en el panel de los marcadores, por encima de ellos, con el mismo tamaño en pantalla a cualquier
+ * zoom. Necesitan `ensureZonePane` en el mapa. Sin ratón.
+ */
+export function portalArrowLayers(links: readonly PortalLink[]): L.Layer[] {
+	const layers: L.Layer[] = [];
+	for (const link of links) {
+		const color = portalColor(link.colorKey);
+		layers.push(L.polyline([toLatLng(link.from), toLatLng(link.to)], { color, weight: 3, opacity: 0.95, dashArray: "8 6", interactive: false, pane: PORTAL_ARROW_PANE }));
+		layers.push(arrowHead(link.to, link.from, color));
+		if (link.both) layers.push(arrowHead(link.from, link.to, color));
+	}
+	return layers;
+}
+
+/** Punta de flecha en `at`, apuntando en la dirección que va de `from` a `at`. */
+function arrowHead(at: Pt, from: Pt, color: string): L.Marker {
+	// En pantalla, la y del mapa crece hacia arriba; el triángulo apunta hacia arriba sin girar.
+	const angle = (Math.atan2(-(at.y - from.y), at.x - from.x) * 180) / Math.PI + 90;
+	const head = createDiv({ cls: "strakes-portal-arrow-head" });
+	head.setCssProps({ "--strakes-arrow-color": color, "--strakes-arrow-angle": `${angle}deg` });
+	return L.marker(toLatLng(at), {
+		// La punta del triángulo (arriba en el centro) cae justo en el punto.
+		icon: L.divIcon({ className: "strakes-portal-arrow", html: head, iconSize: [16, 16], iconAnchor: [8, 0] }),
+		interactive: false,
+		keyboard: false,
+		zIndexOffset: 1000,
+	});
 }

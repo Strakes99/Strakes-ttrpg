@@ -2,11 +2,12 @@ import { App, ColorComponent, Modal, Notice, Setting, TextComponent } from "obsi
 import { T } from "../i18n";
 import { uid } from "../types";
 import { FileInputSuggest, isImageFile, promptText } from "../ui/modals";
+import { decimalInput, parseDecimal } from "../ui/dom";
 import { IconColorControl, IconPicker } from "../ui/iconPicker";
 import { autoPinName, nameFromLink } from "./autoName";
 import { makeWikilink, parseWikilink, resolveWikilink, wikilinkFor } from "./links";
-import { DEFAULT_ICON_COLOR, formatDistance, formatHours, MapData, MapLayer, parseHoursInput, segmentTime, MapPin, MapRoute, MapZone, nodeMap, segmentDistance, fieldNumber, unitFactor, unitOptions } from "./mapData";
-import { displayArea, zoneArea } from "./zones";
+import { DEFAULT_ICON_COLOR, formatHours, MapData, MapLayer, parseHoursInput, segmentTime, MapPin, MapRoute, MapZone, nodeMap, segmentDistance, fieldNumber, unitFactor, unitOptions } from "./mapData";
+import { zoneArea } from "./zones";
 import { DEFAULT_FOG_COLOR } from "./fogData";
 
 // ---------- Tramo (clic en la etiqueta) ----------
@@ -55,13 +56,12 @@ export function editSegmentDialog(app: App, data: MapData, route: MapRoute, i: n
 			)
 			.addText((t) => {
 				distInput = t.inputEl;
-				t.inputEl.type = "number";
-				t.inputEl.step = "any";
-				t.setPlaceholder(estDist !== null ? `≈ ${formatDistance(estDist, "")}` : "?");
+				decimalInput(t.inputEl);
+				t.setPlaceholder(estDist !== null ? `≈ ${fieldNumber(estDist)}` : "?");
 				t.setValue(result.distance === null ? "" : fieldNumber(result.distance));
 				t.onChange((v) => {
-					const n = parseFloat(v.replace(",", "."));
-					result.distance = v.trim() === "" || isNaN(n) ? null : n;
+					const n = parseDecimal(v);
+					result.distance = isNaN(n) ? null : n;
 				});
 				onEnter(t.inputEl);
 			});
@@ -183,11 +183,10 @@ function modalFooter(modal: Modal): Setting {
 
 export class PinModal extends Modal {
 	private pin: MapPin;
-	private autoCheck: HTMLInputElement | null = null;
 	/** Capas creadas en este diálogo; se añaden al mapa solo al guardar. */
 	private newLayers: MapLayer[] = [];
-	private nameInput: HTMLInputElement | null = null;
-	private linkInput: HTMLInputElement | null = null;
+	/** Nombre con AUTO y nota: como en zonas y rutas, pero el nombre AUTO puede salir del destino del portal. */
+	private fields: NameLinkFields;
 	private firstRender = true;
 	private iconPicker: IconPicker | null = null;
 	private iconColor: IconColorControl | null = null;
@@ -197,12 +196,29 @@ export class PinModal extends Modal {
 		private data: MapData,
 		pin: MapPin,
 		private isNew: boolean,
-		private sourcePath: string,
+		sourcePath: string,
 		private onDone: (r: PinModalResult) => void,
 		private iconActions: PinIconActions,
 	) {
 		super(app);
 		this.pin = structuredClone(pin);
+		this.fields = new NameLinkFields(
+			app,
+			this.pin,
+			sourcePath,
+			{
+				autoTip: T(
+					"Nombre automático: el de la nota enlazada (o su encabezado o alias) o, en un portal sin nota, el del marcador destino. Escribir un nombre la desmarca.",
+					"Automatic name: the linked note's (or its heading or alias) or, for a portal without a note, the destination marker's. Typing a name unticks it.",
+				),
+				linkDesc: T(
+					"Opcional. Se guarda como wikilink, ej. [[Nota]] o [[Nota#Encabezado]]. Clic en el marcador abre la nota (Ctrl/Cmd+clic: en pestaña nueva).",
+					"Optional. Saved as a wikilink, e.g. [[Note]] or [[Note#Heading]]. Clicking the marker opens the note (Ctrl/Cmd+click: in a new tab).",
+				),
+				autoPlaceholder: T("Enlaza una nota o un marcador destino", "Link a note or a destination marker"),
+			},
+			() => autoPinName(this.pin, this.data.pins),
+		);
 	}
 
 	onOpen(): void {
@@ -215,41 +231,10 @@ export class PinModal extends Modal {
 		el.empty();
 		const p = this.pin;
 
-		// Nombre con casilla AUTO: marcada, el nombre sale de la nota o del destino del
-		// portal; escribir en el campo la desmarca (así basta con teclear para ponerlo a mano).
-		const nameSetting = new Setting(el).setName(T("Nombre", "Name")).addText((t) => {
-			t.setValue(p.name).onChange((v) => {
-				p.name = v;
-				if (p.autoName) {
-					p.autoName = false;
-					if (this.autoCheck) this.autoCheck.checked = false;
-					t.setPlaceholder("");
-				}
-			});
-			this.nameInput = t.inputEl;
-			if (this.firstRender) window.setTimeout(() => t.inputEl.focus(), 10);
-		});
-		const autoLabel = nameSetting.controlEl.createEl("label", { cls: "strakes-native-check strakes-auto-name" });
-		const autoCheck = autoLabel.createEl("input", { type: "checkbox" });
-		autoCheck.checked = p.autoName === true;
-		autoLabel.appendText(T("AUTO", "AUTO"));
-		autoLabel.setAttribute(
-			"aria-label",
-			T(
-				"Nombre automático: el de la nota enlazada (o su encabezado o alias) o, en un portal sin nota, el del marcador destino. Escribir un nombre la desmarca.",
-				"Automatic name: the linked note's (or its heading or alias) or, for a portal without a note, the destination marker's. Typing a name unticks it.",
-			),
-		);
-		autoCheck.onchange = () => {
-			p.autoName = autoCheck.checked || undefined;
-			this.refreshAutoName();
-		};
-		this.autoCheck = autoCheck;
-		this.refreshAutoName();
+		// Nombre con casilla AUTO (sale de la nota o del destino del portal) y nota enlazada (se abre con
+		// clic principal). El foco, solo la primera vez: el diálogo se redibuja al cambiar el portal.
+		this.fields.render(el, this.firstRender);
 		this.firstRender = false;
-
-		// Nota enlazada (opcional): se abre con clic principal.
-		this.renderLinkFields(el);
 
 		// Portal / escalera: se usa con clic derecho. Al activarlo, las opciones de
 		// destino aparecen en esta misma fila (antes del interruptor).
@@ -265,7 +250,7 @@ export class PinModal extends Modal {
 		portal.addToggle((t) =>
 			t.setValue(p.portal).onChange((v) => {
 				p.portal = v;
-				this.refreshAutoName();
+				this.fields.refreshAutoName();
 				this.render();
 			}),
 		);
@@ -325,99 +310,6 @@ export class PinModal extends Modal {
 		);
 	}
 
-	private renderLinkFields(el: HTMLElement): void {
-		const p = this.pin;
-		// Los encabezados se pintan en su propio contenedor para no reconstruir
-		// todo el diálogo (eso haría perder el clic en «Guardar» tras escribir).
-		let headingHost: HTMLElement;
-		new Setting(el)
-			.setName(T("Nota", "Note"))
-			.setDesc(
-				T(
-					"Opcional. Se guarda como wikilink, ej. [[Nota]] o [[Nota#Encabezado]]. Clic en el marcador abre la nota (Ctrl/Cmd+clic: en pestaña nueva).",
-					"Optional. Saved as a wikilink, e.g. [[Note]] or [[Note#Heading]]. Clicking the marker opens the note (Ctrl/Cmd+click: in a new tab).",
-				),
-			)
-			.addText((t) => {
-				t.setPlaceholder(T("[[Nota]]", "[[Note]]")).setValue(p.link ?? "");
-				t.inputEl.addClass("strakes-wide-input");
-				this.linkInput = t.inputEl;
-				new FileInputSuggest(
-					this.app,
-					t.inputEl,
-					(f) => f.extension === "md" || f.extension === "smap" || f.extension === "canvas",
-					(f) => {
-						this.setLink(wikilinkFor(this.app, f, this.sourcePath));
-						if (!p.autoName && !p.name.trim() && this.nameInput) {
-							p.name = f.basename;
-							this.nameInput.value = f.basename;
-						}
-						this.renderHeadings(headingHost);
-					},
-				);
-				t.inputEl.addEventListener("change", () => {
-					const v = t.getValue().trim();
-					if (!v) {
-						this.setLink(undefined);
-					} else {
-						// Acepta "Nota", "[[Nota]]", "Nota#Encabezado"… y lo normaliza.
-						const parsed = parseWikilink(v);
-						const f = resolveWikilink(this.app, v, this.sourcePath);
-						this.setLink(
-							f
-								? wikilinkFor(this.app, f, this.sourcePath, parsed.subpath, parsed.alias)
-								: makeWikilink(parsed.linkpath, parsed.subpath, parsed.alias),
-						);
-					}
-					this.renderHeadings(headingHost);
-				});
-			});
-		headingHost = el.createDiv();
-		this.renderHeadings(headingHost);
-	}
-
-	private setLink(link: string | undefined): void {
-		this.pin.link = link;
-		if (this.linkInput) this.linkInput.value = link ?? "";
-		this.refreshAutoName();
-	}
-
-	/** Con AUTO marcada, pone en el campo el nombre automático (vacío si no hay de dónde sacarlo). */
-	private refreshAutoName(): void {
-		const p = this.pin;
-		if (!p.autoName) {
-			this.nameInput?.setAttribute("placeholder", "");
-			return;
-		}
-		p.name = autoPinName(p, this.data.pins) ?? "";
-		if (this.nameInput) {
-			this.nameInput.value = p.name;
-			this.nameInput.setAttribute("placeholder", T("Enlaza una nota o un marcador destino", "Link a note or a destination marker"));
-		}
-	}
-
-	private renderHeadings(host: HTMLElement): void {
-		host.empty();
-		const p = this.pin;
-		const file = p.link ? resolveWikilink(this.app, p.link, this.sourcePath) : null;
-		if (file && file.extension === "md") {
-			const headings = this.app.metadataCache.getFileCache(file)?.headings ?? [];
-			if (headings.length) {
-				new Setting(host).setName(T("Encabezado (opcional)", "Heading (optional)")).addDropdown((dd) => {
-					dd.addOption("", T("— Nota completa —", "— Whole note —"));
-					for (const h of headings) dd.addOption(`#${h.heading}`, `${"\u00a0\u00a0".repeat(h.level - 1)}${h.heading}`);
-					dd.setValue(parseWikilink(p.link!).subpath);
-					dd.onChange((v) => {
-						const cur = parseWikilink(p.link ?? "");
-						this.setLink(makeWikilink(cur.linkpath, v, cur.alias));
-					});
-				});
-			}
-		} else if (p.link && !file) {
-			host.createDiv({ cls: "strakes-warning", text: T("⚠ No se encuentra esa nota.", "⚠ That note can't be found.") });
-		}
-	}
-
 	/** Opciones de destino del portal, dentro de la fila «Portal / escalera». */
 	private addPortalControls(setting: Setting): void {
 		const p = this.pin;
@@ -439,7 +331,7 @@ export class PinModal extends Modal {
 				dd.setValue(p.targetPinId ?? "");
 				dd.onChange((v) => {
 					p.targetPinId = v || undefined;
-					this.refreshAutoName();
+					this.fields.refreshAutoName();
 					this.render();
 				});
 			})
@@ -487,9 +379,9 @@ interface Linkable {
 
 /**
  * Campos «Nombre» (con casilla AUTO) y «Nota» (con su encabezado) de un elemento enlazable a una
- * nota: las zonas y las rutas. Funcionan como en el diálogo del marcador (que
- * tiene los suyos porque también maneja el destino de los portales): con AUTO, el nombre sale del
- * enlace (alias, encabezado o nota) y escribir un nombre la desmarca.
+ * nota: marcadores, zonas y rutas. Con AUTO, el nombre sale de `autoNameOf` (por defecto, del enlace:
+ * alias, encabezado o nota; en los marcadores, también del destino de un portal) y escribir un nombre
+ * la desmarca.
  */
 class NameLinkFields {
 	private autoCheck: HTMLInputElement | null = null;
@@ -500,7 +392,9 @@ class NameLinkFields {
 		private app: App,
 		private item: Linkable,
 		private sourcePath: string,
-		private texts: { autoTip: string; linkDesc: string },
+		/** Textos de la casilla AUTO, de la fila «Nota» y de ejemplo del nombre con AUTO (por defecto, «Enlaza una nota»). */
+		private texts: { autoTip: string; linkDesc: string; autoPlaceholder?: string },
+		private autoNameOf: () => string | null = () => nameFromLink(item.link),
 	) {}
 
 	render(el: HTMLElement, focus: boolean): void {
@@ -574,17 +468,20 @@ class NameLinkFields {
 		this.refreshAutoName();
 	}
 
-	/** Con AUTO marcada, pone en el campo el nombre que da el enlace (vacío si no hay enlace). */
-	private refreshAutoName(): void {
+	/**
+	 * Con AUTO marcada, pone en el campo el nombre automático (vacío si no hay de dónde sacarlo). El
+	 * diálogo del marcador también lo llama al cambiar el portal o su destino.
+	 */
+	refreshAutoName(): void {
 		const item = this.item;
 		if (!item.autoName) {
 			this.nameInput?.setAttribute("placeholder", "");
 			return;
 		}
-		item.name = nameFromLink(item.link) ?? "";
+		item.name = this.autoNameOf() ?? "";
 		if (this.nameInput) {
 			this.nameInput.value = item.name;
-			this.nameInput.setAttribute("placeholder", T("Enlaza una nota", "Link a note"));
+			this.nameInput.setAttribute("placeholder", this.texts.autoPlaceholder ?? T("Enlaza una nota", "Link a note"));
 		}
 	}
 
@@ -684,13 +581,12 @@ export class ZoneModal extends Modal {
 					: T("El mapa no tiene escala: escribe el área real, o déjalo vacío para no mostrarla.", "The map has no scale: enter the real area, or leave it empty to hide it."),
 			)
 			.addText((t) => {
-				t.inputEl.type = "number";
-				t.inputEl.step = "any";
-				t.setPlaceholder(estimate ? `≈ ${displayArea(estimate.value, this.data.unit)}` : "?");
+				decimalInput(t.inputEl);
+				t.setPlaceholder(estimate ? `≈ ${fieldNumber(estimate.value)}` : "?");
 				t.setValue(z.area === undefined ? "" : fieldNumber(z.area));
 				t.onChange((v) => {
-					const n = parseFloat(v.replace(",", "."));
-					z.area = v.trim() === "" || isNaN(n) || n <= 0 ? undefined : n;
+					const n = parseDecimal(v);
+					z.area = isNaN(n) || n <= 0 ? undefined : n;
 				});
 			});
 
@@ -812,14 +708,13 @@ export class RouteModal extends Modal {
 
 			row.controlEl.createSpan({ cls: "strakes-seg-input-label", text: this.data.unit || T("dist.", "dist.") });
 			row.addText((t) => {
-				t.setPlaceholder(est !== null ? `≈ ${formatDistance(est, "")}` : "?");
+				t.setPlaceholder(est !== null ? `≈ ${fieldNumber(est)}` : "?");
 				const manual = r.segments[i];
 				t.setValue(manual === null ? "" : fieldNumber(manual));
-				t.inputEl.type = "number";
-				t.inputEl.step = "any";
+				decimalInput(t.inputEl);
 				t.onChange((v) => {
-					const n = parseFloat(v.replace(",", "."));
-					r.segments[i] = v.trim() === "" || isNaN(n) ? null : n;
+					const n = parseDecimal(v);
+					r.segments[i] = isNaN(n) ? null : n;
 				});
 			});
 
@@ -943,11 +838,10 @@ export class MapPropsModal extends Modal {
 			.addText((t) => {
 				scaleText = t;
 				showScale();
-				t.inputEl.type = "number";
-				t.inputEl.step = "any";
+				decimalInput(t.inputEl);
 				t.onChange((v) => {
-					const n = parseFloat(v);
-					p.scale = !v.trim() || isNaN(n) || n <= 0 ? null : n;
+					const n = parseDecimal(v);
+					p.scale = isNaN(n) || n <= 0 ? null : n;
 					// Escrita a mano: está en la unidad elegida ahora.
 					base = { scale: p.scale, unit: p.unit };
 				});

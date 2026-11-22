@@ -8,7 +8,7 @@ import { DrawingLayer, laserStrokeExpired, Stroke } from "./drawing";
 import { constrainAngle, curvePoint, distToSegment, Pt } from "./geometry";
 // Mayús pulsada antes de hacer clic también arrastra (para alinear): ver leafletPatch.ts.
 import "./leafletPatch";
-import { ensureZonePane, nodeMarker, pinIcon, pinTooltipOptions, pinTooltipText, segmentLabel, zoneNameLabel, zoneStyle } from "./render";
+import { ensureZonePane, nodeMarker, portalArrowLayers, pinIcon, pinTooltipOptions, pinTooltipText, segmentLabel, zoneNameLabel, zoneStyle } from "./render";
 import { displayArea, pointInPolygon, zoneArea } from "./zones";
 import { PinHoverParent } from "./hover";
 import { applyAutoNames } from "./autoName";
@@ -25,6 +25,7 @@ import {
 	fastestPath,
 	formatTotal,
 	convertMapUnit,
+	portalLinks,
 	unitOptions,
 	unitFactor,
 	formatHours,
@@ -185,6 +186,9 @@ export class MapView extends TextFileView {
 	/** Tiempo real: mientras está activo, los jugadores siguen esta vista. */
 	private livePlayers = false;
 	private liveFrame = 0;
+	/** Flechas de los portales encendidas (botón de la barra). Solo en memoria: empieza apagado al abrir el mapa. */
+	private portalArrows = false;
+	private portalArrowLayer: L.LayerGroup | null = null;
 	/** Última posición del ratón sobre el mapa (para la guía de Mayús al pulsarla o soltarla sin moverlo). */
 	private lastMouse: L.LatLng | null = null;
 	/** Línea discontinua de la guía de Mayús al dibujar, medir y calibrar. */
@@ -387,6 +391,7 @@ export class MapView extends TextFileView {
 		this.mapData = normalizeMap(raw, this.plugin.settings.displayUnit);
 		if (clear) {
 			this.labels = { pins: false, routes: false, zones: false };
+			this.portalArrows = false;
 			this.needsFit = true;
 			this.mode = "navigate";
 			this.activeRouteId = null;
@@ -575,6 +580,7 @@ export class MapView extends TextFileView {
 			});
 		map.on("contextmenu", (e: L.LeafletMouseEvent) => this.onMapContextMenu(e));
 		this.overlay = L.layerGroup().addTo(map);
+		this.portalArrowLayer = L.layerGroup().addTo(map);
 		this.draftLayer = L.layerGroup().addTo(map);
 		this.map = map;
 		ensureZonePane(map);
@@ -680,6 +686,7 @@ export class MapView extends TextFileView {
 		const nodes = nodeMap(data);
 		for (const route of data.routes) this.renderRoute(route, nodes);
 		for (const pin of data.pins) this.renderPin(pin);
+		this.renderPortalArrows();
 
 		this.renderDraft();
 		this.renderToolbar();
@@ -1129,6 +1136,19 @@ export class MapView extends TextFileView {
 				},
 			).toggleClass("is-active", this.autoAnchor);
 		this.renderLabelTools(tb);
+		// Flechas de los portales: hacia dónde lleva cada uno, sin usarlos. Solo para el DM; no se guarda.
+		this.toolButton(
+			tb,
+			"signpost",
+			this.portalArrows
+				? T("Flechas de los portales y escaleras: se ven (clic para ocultarlas)", "Portal and stairs arrows: shown (click to hide them)")
+				: T("Mostrar hacia dónde llevan los portales y escaleras", "Show where portals and stairs lead"),
+			() => {
+				this.portalArrows = !this.portalArrows;
+				this.renderPortalArrows();
+				this.renderToolbar();
+			},
+		).toggleClass("is-active", this.portalArrows);
 		const fit = this.toolButton(
 			tb,
 			"maximize",
@@ -2057,6 +2077,17 @@ export class MapView extends TextFileView {
 			this.persist();
 			this.renderAll();
 		});
+	}
+
+	/** Flechas de los portales visibles en tu vista (si el botón está encendido). */
+	private renderPortalArrows(): void {
+		const layer = this.portalArrowLayer;
+		const data = this.mapData;
+		if (!layer) return;
+		layer.clearLayers();
+		if (!this.portalArrows || !data) return;
+		const visible = (pin: MapPin) => !pin.hidden && isItemVisible(data, "pins", pin.layerId);
+		for (const l of portalArrowLayers(portalLinks(data.pins, visible))) layer.addLayer(l);
 	}
 
 	/**

@@ -69,7 +69,7 @@ Opens in the right sidebar.
 - **Create** a map: right-click an image → *Create map from this image*, or use the command *Create new map from an image*.
 - **Markers**:
   - Optional link to a note or heading, stored as a wikilink. Left-click opens it; Ctrl+hover shows a preview (with the note title when the link is to a whole note).
-  - **Portal / stairs**: right-click → *Use portal / stairs* moves the camera to another point or another marker (in embedded maps, right-click jumps directly). A portal's point is the center of its circle.
+  - **Portal / stairs**: right-click → *Use portal / stairs* moves the camera to another point or another marker (in embedded maps, right-click jumps directly). A portal's point is the center of its circle. A toolbar button (also in embedded maps) shows where every portal leads, with a dashed arrow to its destination (one double-headed arrow for two-way portals); only you see them.
   - **AUTO name** (on by default): the marker takes its name from the link's alias, heading or note (or from a portal's destination) and follows renames.
   - **Icons**: emoji, letters, Lucide icons or your own SVG files. The icon picker lists your SVGs and, as one more entry of its folder dropdown, every Lucide icon Obsidian ships. SVGs go in the plugin's `icons/` folder, subfolders included; you can filter by folder and name and recolor the icon. Importing SVGs whose names already exist asks whether to replace them, skip them or save them under a new name.
   - **Anchored to route nodes**: drop a marker on a route node (or a node on a marker) and they're anchored: they move together, and measuring treats the marker as its node. One marker per node; right-click → *Unanchor from node*. While editing, the anchor button turns automatic anchoring off.
@@ -78,7 +78,7 @@ Opens in the right sidebar.
 - **Labels**: a toolbar section turns labels on and off for you (eye) and for the players (screen), all at once or by type (right-click). You see marker and zone names and each segment's number and route; players see marker and zone names and each route's name once. Labels aren't saved.
 - **Routes**:
   - Nodes, with curve points (Alt+click while drawing) that shape a route without adding nodes.
-  - Each segment can have a manual distance (for maps not drawn to scale) and a manual travel time, or estimate them from a calibrated scale.
+  - Each segment can have a manual distance (for maps not drawn to scale) and a manual travel time, or estimate them from a calibrated scale. Decimal fields accept a comma or a point.
   - Optional linked note with an AUTO name, like markers: with editing locked, clicking the route opens it; Ctrl+hover previews it.
 - **Zones**: straight-sided polygons drawn vertex by vertex (rooms, districts, provinces…).
   - A name with AUTO, a linked note (click to open, Ctrl+hover to preview), fill and border colors, an area (typed, or calculated from the map scale), a layer and player visibility. The fill transparency is one setting for every zone.
@@ -98,7 +98,7 @@ Opens in the right sidebar.
   - `![[map.smap]]` shows an interactive map in a note.
   - `![[map.smap|300]]` sets the height and `![[map.smap|800x300]]` sets the width and height.
   - `![[map.smap#Marker name]]` centers the map on that marker.
-  - The embed's toolbar has layers, labels (click for all, right-click by type), fit, a button to hide the fog, a **lock** (no zoom or dragging, so the wheel scrolls the note) and a button to open the map. A setting locks every embedded map and hides the lock.
+  - The embed's toolbar has layers, labels (click for all, right-click by type), portal arrows, fit, a button to hide the fog, a **lock** (no zoom or dragging, so the wheel scrolls the note) and a button to open the map. A setting locks every embedded map and hides the lock.
   - Zones and routes with a note open it on click and preview it on Ctrl+hover; routes show their name on hover.
 - **Renaming**: renaming or moving a linked note or a map image updates the maps automatically.
 
