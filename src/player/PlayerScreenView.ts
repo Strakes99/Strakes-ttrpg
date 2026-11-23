@@ -28,7 +28,7 @@ export class PlayerScreenView extends ItemView {
 		return VIEW_TYPE_PLAYER;
 	}
 	getDisplayText(): string {
-		return T("Pantalla de jugadores", "Player screen");
+		return T("playerScreenView.playerScreen");
 	}
 	getIcon(): string {
 		return "monitor";
@@ -44,11 +44,11 @@ export class PlayerScreenView extends ItemView {
 		const toolbar = root.createDiv("strakes-player-toolbar");
 		const fs = toolbar.createEl("button", { cls: "clickable-icon" });
 		setIcon(fs, "maximize");
-		setTooltip(fs, T("Pantalla completa (doble clic también)", "Fullscreen (or double-click)"));
+		setTooltip(fs, T("playerScreenView.fullscreenOrDoubleClick"));
 		fs.onclick = () => this.toggleFullscreen();
 		const clear = toolbar.createEl("button", { cls: "clickable-icon" });
 		setIcon(clear, "eraser");
-		setTooltip(clear, T("Limpiar pantalla", "Clear screen"));
+		setTooltip(clear, T("playerScreenView.clearScreen"));
 		clear.onclick = () => this.plugin.sendToPlayers(null);
 
 		root.addEventListener("dblclick", () => this.toggleFullscreen());
@@ -102,7 +102,7 @@ export class PlayerScreenView extends ItemView {
 			void doc.exitFullscreen();
 		} else {
 			this.contentEl.requestFullscreen().catch(() => {
-				new Notice(T("No se pudo activar la pantalla completa. Haz doble clic en la pantalla de jugadores.", "Couldn't enter fullscreen. Double-click the player screen."));
+				new Notice(T("playerScreenView.couldntEnterFullscreenDoubleClick"));
 			});
 		}
 	}
@@ -139,7 +139,7 @@ export class PlayerScreenView extends ItemView {
 				target.addClass("strakes-player-image-wrap");
 				target.createEl("img", { cls: "strakes-player-image", attr: { src: this.app.vault.getResourcePath(file) } });
 			} else {
-				target.setText(T(`Imagen no encontrada: ${content.path}`, `Image not found: ${content.path}`));
+				target.setText(T("playerScreenView.imageNotFound", { path: content.path }));
 			}
 		} else if (content.kind === "map") {
 			const file = this.app.vault.getAbstractFileByPath(content.path);
@@ -147,7 +147,7 @@ export class PlayerScreenView extends ItemView {
 				target.addClass("strakes-player-map");
 				mapFile = file;
 			} else {
-				target.setText(T(`Mapa no encontrado: ${content.path}`, `Map not found: ${content.path}`));
+				target.setText(T("playerScreenView.mapNotFound", { path: content.path }));
 			}
 		} else {
 			let markdown = "";
@@ -159,7 +159,7 @@ export class PlayerScreenView extends ItemView {
 			} else {
 				const file = this.app.vault.getAbstractFileByPath(content.path);
 				if (!(file instanceof TFile)) {
-					markdown = T(`*Nota no encontrada: ${content.path}*`, `*Note not found: ${content.path}*`);
+					markdown = T("playerScreenView.noteNotFound", { path: content.path });
 				} else {
 					sourcePath = file.path;
 					const read = await this.readNote(file, content.subpath);
@@ -171,10 +171,7 @@ export class PlayerScreenView extends ItemView {
 						if (token !== this.renderToken) return;
 						const section = (content.subpath ?? "").replace(/^#\^?/, "");
 						new Notice(
-							T(
-								`La sección «${section}» ya no existe en «${file.basename}»: se ha vaciado la pantalla de jugadores.`,
-								`The section "${section}" no longer exists in "${file.basename}": the player screen has been cleared.`,
-							),
+							T("playerScreenView.theSectionNoLongerExists", { section, basename: file.basename }),
 							8000,
 						);
 						void this.plugin.sendToPlayers(null);
@@ -247,7 +244,7 @@ export class PlayerScreenView extends ItemView {
 
 		const box = host.createDiv("strakes-pi-box");
 		this.initBox = box;
-		box.createDiv({ cls: "strakes-pi-round", text: T(`Ronda ${tracker.state.round}`, `Round ${tracker.state.round}`) });
+		box.createDiv({ cls: "strakes-pi-round", text: T("playerScreenView.round", { round: tracker.state.round }) });
 		const list = box.createDiv("strakes-pi-list");
 		for (const c of visible) {
 			const row = list.createDiv("strakes-pi-row");
@@ -290,7 +287,7 @@ export class PlayerScreenView extends ItemView {
 		host.addClass("mode-cards");
 		host.setCssProps({ "--card-gap": `${Math.max(0, s.cardGap)}px` });
 		const wrap = host.createDiv("strakes-pc-wrap");
-		wrap.createDiv({ cls: "strakes-pi-round strakes-pc-round", text: T(`Ronda ${tracker.state.round}`, `Round ${tracker.state.round}`) });
+		wrap.createDiv({ cls: "strakes-pi-round strakes-pc-round", text: T("playerScreenView.round", { round: tracker.state.round }) });
 		const grid = wrap.createDiv("strakes-pc-grid");
 		for (const c of visible) {
 			const down = isDefeatedEnemy(c, this.plugin.settings);

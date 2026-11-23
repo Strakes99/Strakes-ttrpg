@@ -391,10 +391,10 @@ const KM_PER_MILE = 1.609344;
 /** Unidades de los selectores (ajustes, barra del mapa y Propiedades del mapa). Todas las reconoce `milesPerUnit`. */
 export function unitOptions(): { value: string; label: string }[] {
 	return [
-		{ value: "km", label: T("Kilómetros", "Kilometers") },
-		{ value: "mi", label: T("Millas", "Miles") },
-		{ value: "m", label: T("Metros", "Meters") },
-		{ value: "ft", label: T("Pies", "Feet") },
+		{ value: "km", label: T("mapData.kilometers") },
+		{ value: "mi", label: T("mapData.miles") },
+		{ value: "m", label: T("mapData.meters") },
+		{ value: "ft", label: T("mapData.feet") },
 	];
 }
 
@@ -402,17 +402,16 @@ export function unitOptions(): { value: string; label: string }[] {
 export function paceSpeed(mph: number, unit: string): string {
 	const mpu = milesPerUnit(unit);
 	const metric = mpu !== null && [1 / KM_PER_MILE, 1 / (KM_PER_MILE * 1000)].some((f) => Math.abs(mpu - f) < 1e-12);
-	if (!metric) return T(`${mph} millas/h`, `${mph} miles/h`);
+	if (!metric) return T("mapData.milesH", { mph });
 	return `${(mph * KM_PER_MILE).toLocaleString(numberLocale(), { maximumFractionDigits: 1 })} km/h`;
 }
 
 export function formatTotal(t: RouteTotal, unit: string): string {
 	if (!t.segments) return "—";
-	if (t.unknown === t.segments) return T("sin distancias", "no distances");
+	if (t.unknown === t.segments) return T("mapData.noDistances");
 	const base = formatDistance(t.total, unit);
 	if (!t.unknown) return base;
-	const s = t.unknown > 1 ? "s" : "";
-	return T(`${base} + ${t.unknown} tramo${s} sin distancia`, `${base} + ${t.unknown} segment${s} without distance`);
+	return T("mapData.segmentsWithoutDistance", { base, count: t.unknown });
 }
 
 // ---------- Tiempos de viaje ----------
@@ -421,9 +420,9 @@ export type Pace = "slow" | "normal" | "fast";
 
 /** Pasos de viaje: millas por hora y horas de marcha por día. */
 export const PACES: Record<Pace, { label: string; mph: number; hoursPerDay: number }> = {
-	slow: { get label() { return T("Lento", "Slow"); }, mph: 2, hoursPerDay: 9 },
-	normal: { get label() { return T("Normal", "Normal"); }, mph: 3, hoursPerDay: 8 },
-	fast: { get label() { return T("Rápido", "Fast"); }, mph: 4, hoursPerDay: 7.5 },
+	slow: { get label() { return T("mapData.slow"); }, mph: 2, hoursPerDay: 9 },
+	normal: { get label() { return T("mapData.normal"); }, mph: 3, hoursPerDay: 8 },
+	fast: { get label() { return T("mapData.fast"); }, mph: 4, hoursPerDay: 7.5 },
 };
 
 /**
@@ -541,14 +540,10 @@ export function formatTravelTime(hours: number, pace: Pace): string {
 	const days = Math.floor(totalMin / perDayMin);
 	const restMin = totalMin - days * perDayMin;
 	if (!days) return formatHours(hours);
-	const s = days > 1 ? "s" : "";
-	const dayTxt = T(`${days} día${s}`, `${days} day${s}`);
-	const restTxt = restMin > 0 ? T(` y ${formatHours(restMin / 60)}`, ` and ${formatHours(restMin / 60)}`) : "";
+	const dayTxt = T("mapData.days", { count: days });
+	const restTxt = restMin > 0 ? T("mapData.and", { time: formatHours(restMin / 60) }) : "";
 	const perDayTxt = perDay.toLocaleString(numberLocale());
-	return T(
-		`${dayTxt}${restTxt} (${formatHours(hours)} de marcha, ${perDayTxt} h/día)`,
-		`${dayTxt}${restTxt} (${formatHours(hours)} of travel, ${perDayTxt} h/day)`,
-	);
+	return T("mapData.ofTravelHDay", { dayTxt, restTxt, hours: formatHours(hours), perDayTxt });
 }
 
 /** Interpreta «6», «6,5», «6h», «6 h 30 min», «45 min», «1h30», «2 hours 15 minutes» → horas. */

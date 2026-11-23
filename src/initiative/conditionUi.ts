@@ -38,7 +38,7 @@ export function renderConditionChips(container: HTMLElement, c: Combatant, opts:
 		chip.toggleClass("is-implied", !a.explicit);
 		renderConditionIcon(chip, a.info);
 		if (a.level) chip.createSpan({ cls: "strakes-cond-level", text: String(a.level) });
-		const title = a.level ? T(`${a.info.name} (nivel ${a.level})`, `${a.info.name} (level ${a.level})`) : a.info.name;
+		const title = a.level ? T("conditionUi.level", { name: a.info.name, level: a.level }) : a.info.name;
 		// Datos de esta aplicación (duración, lanzador…): solo en el panel del DM.
 		const entry = opts.interactive && a.explicit ? c.conditions.find((x) => x.id === a.info.id) : undefined;
 		const extra = entry ? entryTooltipLines(opts.plugin.tracker, c, entry) : [];
@@ -49,10 +49,10 @@ export function renderConditionChips(container: HTMLElement, c: Combatant, opts:
 			else setIcon(timer, "hourglass");
 		}
 		const base = a.auto
-			? T(`${title} · automática (${a.reason})`, `${title} · automatic (${a.reason})`)
+			? T("conditionUi.automatic", { title, reason: a.reason })
 			: a.explicit
 				? title
-				: T(`${title} · aplicada por ${a.impliedBy.join(", ")}`, `${title} · applied by ${a.impliedBy.join(", ")}`);
+				: T("conditionUi.appliedBy", { title, impliedBy: a.impliedBy.join(", ") });
 		setTooltip(chip, [base, ...extra].join("\n"));
 		if (!opts.interactive) continue;
 		chip.addEventListener("click", (e) => {
@@ -66,19 +66,13 @@ export function renderConditionChips(container: HTMLElement, c: Combatant, opts:
 			// Automáticas: solo se avisa (se quitan solas).
 			if (a.auto) {
 				new Notice(
-					T(
-						`${a.info.name} es automática (${a.reason}): se quita sola ${a.endsWhen}.`,
-						`${a.info.name} is automatic (${a.reason}): it goes away on its own ${a.endsWhen}.`,
-					),
+					T("conditionUi.isAutomaticItGoesAway", { name: a.info.name, reason: a.reason, endsWhen: a.endsWhen }),
 				);
 				return;
 			}
 			if (!a.explicit) {
 				new Notice(
-					T(
-						`${a.info.name} la aplica ${a.impliedBy.join(", ")}: quita esa condición para quitarla.`,
-						`${a.info.name} is applied by ${a.impliedBy.join(", ")}: remove that condition to remove it.`,
-					),
+					T("conditionUi.isAppliedByRemoveThat", { name: a.info.name, impliedBy: a.impliedBy.join(", ") }),
 				);
 				return;
 			}
@@ -110,23 +104,23 @@ function toggleConditionCard(anchor: HTMLElement, a: ActiveCondition, plugin: St
 	const card = doc.body.createDiv("strakes-cond-card");
 	const head = card.createDiv("strakes-cond-card-head");
 	renderConditionIcon(head.createSpan(), a.info);
-	head.createSpan({ cls: "strakes-cond-card-title", text: a.level ? T(`${a.info.name} · nivel ${a.level}`, `${a.info.name} · level ${a.level}`) : a.info.name });
-	if (a.auto) card.createDiv({ cls: "strakes-cond-card-note", text: T(`Automática (${a.reason}).`, `Automatic (${a.reason}).`) });
+	head.createSpan({ cls: "strakes-cond-card-title", text: a.level ? T("conditionUi.level2", { name: a.info.name, level: a.level }) : a.info.name });
+	if (a.auto) card.createDiv({ cls: "strakes-cond-card-note", text: T("conditionUi.automatic2", { reason: a.reason }) });
 	else if (!a.explicit)
-		card.createDiv({ cls: "strakes-cond-card-note", text: T(`Aplicada por ${a.impliedBy.join(", ")}.`, `Applied by ${a.impliedBy.join(", ")}.`) });
+		card.createDiv({ cls: "strakes-cond-card-note", text: T("conditionUi.appliedBy2", { impliedBy: a.impliedBy.join(", ") }) });
 	// Descripción en Markdown (negrita, cursiva, encabezados…), con el renderizador de Obsidian.
 	const text = card.createDiv("strakes-cond-card-text");
 	const markdown = new Component();
 	markdown.load();
 	const description = a.info.description.trim();
 	if (description) void MarkdownRenderer.render(app, description, text, "", markdown).then(() => place());
-	else text.setText(T("Sin descripción.", "No description."));
+	else text.setText(T("conditionUi.noDescription"));
 	// Las puestas a mano: duración, lanzador, salvación (y hechizo, si es una concentración).
 	const entry = a.explicit ? c.conditions.find((x) => x.id === a.info.id) : undefined;
 	if (entry) renderEntryDetails(card, plugin, c, entry, a.info);
 	card.createDiv({
 		cls: "strakes-cond-card-hint",
-		text: a.auto ? T(`Se quita sola ${a.endsWhen}.`, `It goes away on its own ${a.endsWhen}.`) : T("Clic derecho en el icono para quitarla.", "Right-click the icon to remove it."),
+		text: a.auto ? T("conditionUi.itGoesAwayOnIts", { endsWhen: a.endsWhen }) : T("conditionUi.rightClickTheIconTo"),
 	});
 
 	// Posición: debajo del icono, sin salirse de la ventana (se recalcula al terminar el Markdown).
@@ -181,9 +175,9 @@ export function showConditionMenu(evt: MouseEvent, c: Combatant, plugin: Strakes
 			const entry = active.get(info.id);
 			let title = info.name;
 			if (info.maxLevel)
-				title += entry ? T(` (nivel ${entry.level ?? 1} → ${Math.min(info.maxLevel, (entry.level ?? 1) + 1)})`, ` (level ${entry.level ?? 1} → ${Math.min(info.maxLevel, (entry.level ?? 1) + 1)})`) : "";
-			else if (!entry && autoIds.has(info.id)) title += T(" (automática)", " (automatic)");
-			else if (!entry && implied.has(info.id)) title += T(" (aplicada)", " (applied)");
+				title += entry ? T("conditionUi.level3", { level: entry.level ?? 1, maxLevel: Math.min(info.maxLevel, (entry.level ?? 1) + 1) }) : "";
+			else if (!entry && autoIds.has(info.id)) title += T("conditionUi.automatic3");
+			else if (!entry && implied.has(info.id)) title += T("conditionUi.applied");
 			i.setTitle(title).setChecked(!!entry);
 			const iconEl = (i as unknown as { iconEl?: HTMLElement }).iconEl;
 			if (iconEl) {
@@ -206,7 +200,7 @@ export function showConditionMenu(evt: MouseEvent, c: Combatant, plugin: Strakes
 	m.addSeparator();
 	m.addItem((i) =>
 		i
-			.setTitle(T("Nueva condición personalizada…", "New custom condition…"))
+			.setTitle(T("conditionUi.newCustomCondition"))
 			.setIcon("plus")
 			.onClick(() =>
 				new ConditionModal(plugin.app, plugin, { kind: "custom", cond: null }, (created) => tracker.addCondition(c.id, created.id)).open(),
@@ -315,39 +309,30 @@ export class ConditionModal extends Modal {
 		const d = this.draft;
 		const builtin = this.target.kind === "builtin";
 		const isNew = this.target.kind === "custom" && !this.target.cond;
-		this.titleEl.setText(builtin ? T(`Editar condición: ${d.name}`, `Edit condition: ${d.name}`) : isNew ? T("Nueva condición", "New condition") : T("Editar condición", "Edit condition"));
+		this.titleEl.setText(builtin ? T("conditionUi.editCondition", { name: d.name }) : isNew ? T("conditionUi.newCondition") : T("conditionUi.editCondition2"));
 		this.modalEl.addClass("strakes-cond-modal");
 		const el = this.contentEl;
 		if (builtin) {
 			el.createDiv({
 				cls: "setting-item-description strakes-cond-builtin-note",
-				text: T(
-					"Condición de las reglas básicas. Puedes cambiarla por completo para tu mesa, también sus automatismos; «Restablecer» vuelve a la original.",
-					"Basic rules condition. You can fully change it for your table, automations included; \"Reset\" restores the original.",
-				),
+				text: T("conditionUi.basicRulesConditionYouCan"),
 			});
 			new Setting(el)
-				.setName(T("Oculta", "Hidden"))
+				.setName(T("conditionUi.hidden"))
 				.setDesc(
-					T(
-						"No aparece en ningún menú ni editor, no se aplica sola y ninguna otra condición la aplica. Se vuelve a mostrar desde aquí.",
-						"It doesn't appear in any menu or editor, isn't applied automatically and no other condition applies it. Show it again from here.",
-					),
+					T("conditionUi.itDoesntAppearInAny"),
 				)
 				.addToggle((t) => t.setValue(d.hidden).onChange((v) => (d.hidden = v)));
 		}
 
-		new Setting(el).setName(T("Nombre", "Name")).addText((t) => {
+		new Setting(el).setName(T("conditionUi.name")).addText((t) => {
 			t.setValue(d.name).onChange((v) => (d.name = v));
 			window.setTimeout(() => t.inputEl.focus(), 10);
 		});
 		new Setting(el)
-			.setName(T("Descripción", "Description"))
+			.setName(T("conditionUi.description"))
 			.setDesc(
-				T(
-					"Se muestra al hacer clic en el icono de la condición. Admite Markdown: **negrita**, *cursiva* y encabezados (# Título, ## Subtítulo).",
-					"Shown when you click the condition's icon. Supports Markdown: **bold**, *italic* and headings (# Title, ## Subtitle).",
-				),
+				T("conditionUi.shownWhenYouClickThe"),
 			)
 			.addTextArea((t) => {
 				t.setValue(d.description).onChange((v) => (d.description = v));
@@ -365,10 +350,10 @@ export class ConditionModal extends Modal {
 				this.iconColor?.refresh();
 			},
 		});
-		const colors = new Setting(el).setName(T("Color", "Color"));
+		const colors = new Setting(el).setName(T("conditionUi.color"));
 		colors.controlEl.addClass("strakes-color-row");
 		this.iconColor = new IconColorControl(colors.controlEl.createDiv("strakes-color-group"), {
-			label: T("Icono", "Icon"),
+			label: T("conditionUi.icon"),
 			getIcon: () => d.icon || this.original?.icon || "",
 			color: d.color,
 			defaultColor: this.original?.color ?? DEFAULT_CUSTOM_COLOR,
@@ -380,8 +365,8 @@ export class ConditionModal extends Modal {
 
 		// Acumulativa (como Agotamiento): cada vez que se aplica sube un nivel.
 		const cumulative = new Setting(el)
-			.setName(T("Acumulativa", "Cumulative"))
-			.setDesc(T("Cada vez que se aplica sube un nivel, hasta el máximo; el clic derecho en el icono baja uno.", "Each time it's applied it goes up one level, up to the maximum; right-clicking the icon lowers it by one."));
+			.setName(T("conditionUi.cumulative"))
+			.setDesc(T("conditionUi.eachTimeItsAppliedIt"));
 		let levelInput: HTMLInputElement | null = null;
 		cumulative.addText((t) => {
 			levelInput = t.inputEl;
@@ -389,13 +374,13 @@ export class ConditionModal extends Modal {
 			t.inputEl.min = "2";
 			t.inputEl.max = "99";
 			t.inputEl.addClass("strakes-cond-level-input");
-			t.setPlaceholder(T("Máx.", "Max")).setValue(d.maxLevel ? String(d.maxLevel) : "");
+			t.setPlaceholder(T("conditionUi.max")).setValue(d.maxLevel ? String(d.maxLevel) : "");
 			t.setDisabled(!d.maxLevel);
 			t.onChange((v) => {
 				const n = parseInt(v, 10);
 				if (!isNaN(n) && n >= 2) d.maxLevel = Math.min(99, n);
 			});
-			setTooltip(t.inputEl, T("Nivel máximo", "Maximum level"));
+			setTooltip(t.inputEl, T("conditionUi.maximumLevel"));
 		});
 		cumulative.addToggle((t) =>
 			t.setValue(!!d.maxLevel).onChange((on) => {
@@ -409,25 +394,25 @@ export class ConditionModal extends Modal {
 
 		// Condiciones que aplica (en cadena: si aplica Paralizado, también Incapacitado).
 		new Setting(el)
-			.setName(T("Aplica condiciones", "Applies conditions"))
-			.setDesc(T("Al tener esta condición, se aplican también las marcadas.", "While it has this condition, the checked ones also apply.")).settingEl.addClass("strakes-cond-implies-setting");
+			.setName(T("conditionUi.appliesConditions"))
+			.setDesc(T("conditionUi.whileItHasThisCondition")).settingEl.addClass("strakes-cond-implies-setting");
 		this.conditionChecks(el, d.implies, (ids) => (d.implies = ids));
 
 		// Automatismos: los mismos para integradas y personalizadas.
-		new Setting(el).setName(T("Automatismos", "Automations")).setHeading();
+		new Setting(el).setName(T("conditionUi.automations")).setHeading();
 		this.rulesEl = el.createDiv("strakes-cond-rules");
 		this.renderRules();
 
 		const buttons = new Setting(el);
-		if (builtin) buttons.addButton((b) => b.setButtonText(T("Restablecer", "Reset")).onClick(() => void this.saveBuiltin(true)));
-		buttons.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => this.close()));
+		if (builtin) buttons.addButton((b) => b.setButtonText(T("conditionUi.reset")).onClick(() => void this.saveBuiltin(true)));
+		buttons.addButton((b) => b.setButtonText(T("conditionUi.cancel")).onClick(() => this.close()));
 		buttons.addButton((b) =>
 			b
-				.setButtonText(T("Guardar", "Save"))
+				.setButtonText(T("conditionUi.save"))
 				.setCta()
 				.onClick(() => {
 					if (!d.name.trim()) {
-						new Notice(T("Ponle un nombre a la condición", "Give the condition a name"));
+						new Notice(T("conditionUi.giveTheConditionAName"));
 						return;
 					}
 					void (builtin ? this.saveBuiltin(false) : this.saveCustom());
@@ -462,12 +447,12 @@ export class ConditionModal extends Modal {
 
 		// Por PG.
 		new Setting(box)
-			.setName(T("Se aplica sola según los PG", "Applies automatically by HP"))
-			.setDesc(T("Mientras se cumpla alguno de estos umbrales (Ensangrentado: PG ≤ 50 % del máximo, para todos).", "While any of these thresholds holds (Bloodied: HP ≤ 50% of max, for everyone)."))
+			.setName(T("conditionUi.appliesAutomaticallyByHp"))
+			.setDesc(T("conditionUi.whileAnyOfTheseThresholds"))
 			.addExtraButton((b) =>
 				b
 					.setIcon("plus")
-					.setTooltip(T("Añadir umbral de PG", "Add HP threshold"))
+					.setTooltip(T("conditionUi.addHpThreshold"))
 					.onClick(() => {
 						r.hpTriggers = [...(r.hpTriggers ?? []), { threshold: "zero", who: "all" }];
 						this.renderRules();
@@ -477,7 +462,7 @@ export class ConditionModal extends Modal {
 			const row = new Setting(box).setClass("strakes-rule-row");
 			row.addDropdown((dd) =>
 				dd
-					.addOptions({ percent: T("PG ≤ % del máximo", "HP ≤ % of max"), zero: T("PG ≤ 0", "HP ≤ 0"), "negative-max": T("PG ≤ −máximo", "HP ≤ −max") })
+					.addOptions({ percent: T("conditionUi.hpOfMax"), zero: T("conditionUi.hp0"), "negative-max": T("conditionUi.hpMax") })
 					.setValue(t.threshold)
 					.onChange((v) => {
 						t.threshold = v as HpTrigger["threshold"];
@@ -499,14 +484,14 @@ export class ConditionModal extends Modal {
 				});
 			row.addDropdown((dd) =>
 				dd
-					.addOptions({ all: T("Todos", "Everyone"), enemies: T("Enemigos", "Enemies"), allies: T("PJ y aliados", "PCs and allies") })
+					.addOptions({ all: T("conditionUi.everyone"), enemies: T("conditionUi.enemies"), allies: T("conditionUi.pcsAndAllies") })
 					.setValue(t.who)
 					.onChange((v) => (t.who = v as RuleTarget)),
 			);
 			row.addExtraButton((b) =>
 				b
 					.setIcon("trash-2")
-					.setTooltip(T("Quitar", "Remove"))
+					.setTooltip(T("conditionUi.remove"))
 					.onClick(() => {
 						r.hpTriggers!.splice(i, 1);
 						this.renderRules();
@@ -517,16 +502,16 @@ export class ConditionModal extends Modal {
 		// Por nivel de otra condición acumulativa.
 		const cumulative = this.others().filter((x) => x.maxLevel);
 		new Setting(box)
-			.setName(T("Se aplica sola según el nivel de otra", "Applies automatically by another's level"))
+			.setName(T("conditionUi.appliesAutomaticallyByAnothersLevel"))
 			.setDesc(
 				cumulative.length
-					? T("Cuando otra condición acumulativa llega a ese nivel (Muerto: Agotamiento 6).", "When another cumulative condition reaches that level (Dead: Exhaustion 6).")
-					: T("No hay otras condiciones acumulativas.", "There are no other cumulative conditions."),
+					? T("conditionUi.whenAnotherCumulativeConditionReaches")
+					: T("conditionUi.thereAreNoOtherCumulative"),
 			)
 			.addExtraButton((b) =>
 				b
 					.setIcon("plus")
-					.setTooltip(T("Añadir umbral de nivel", "Add level threshold"))
+					.setTooltip(T("conditionUi.addLevelThreshold"))
 					.setDisabled(!cumulative.length)
 					.onClick(() => {
 						const first = cumulative[0];
@@ -540,14 +525,14 @@ export class ConditionModal extends Modal {
 			row.addDropdown((dd) => {
 				for (const info of cumulative) dd.addOption(info.id, info.name);
 				// Una condición que ya no está disponible (oculta o borrada) se ve, pero no se puede elegir.
-				if (!cumulative.some((x) => x.id === t.conditionId)) dd.addOption(t.conditionId, T("(no disponible)", "(unavailable)"));
+				if (!cumulative.some((x) => x.id === t.conditionId)) dd.addOption(t.conditionId, T("conditionUi.unavailable"));
 				dd.setValue(t.conditionId).onChange((v) => (t.conditionId = v));
 			});
 			row.addText((tx) => {
 				tx.inputEl.type = "number";
 				tx.inputEl.min = "1";
 				tx.inputEl.addClass("strakes-rule-number");
-				setTooltip(tx.inputEl, T("Desde este nivel", "From this level"));
+				setTooltip(tx.inputEl, T("conditionUi.fromThisLevel"));
 				tx.setValue(String(t.minLevel)).onChange((v) => {
 					const n = parseInt(v, 10);
 					if (n >= 1) t.minLevel = n;
@@ -556,7 +541,7 @@ export class ConditionModal extends Modal {
 			row.addExtraButton((b) =>
 				b
 					.setIcon("trash-2")
-					.setTooltip(T("Quitar", "Remove"))
+					.setTooltip(T("conditionUi.remove"))
 					.onClick(() => {
 						r.levelTriggers!.splice(i, 1);
 						this.renderRules();
@@ -566,28 +551,28 @@ export class ConditionModal extends Modal {
 
 		// Al terminar, deja…
 		new Setting(box)
-			.setName(T("Al terminar, deja", "When it ends, leaves"))
-			.setDesc(T("Cuando termina (sola o quitándola), se aplican las marcadas (Inconsciente → Derribado).", "When it ends (on its own or removed), the checked ones are applied (Unconscious → Prone)."))
+			.setName(T("conditionUi.whenItEndsLeaves"))
+			.setDesc(T("conditionUi.whenItEndsOnIts"))
 			.settingEl.addClass("strakes-cond-implies-setting");
 		this.conditionChecks(box, r.leaves ?? [], (ids) => (r.leaves = ids));
 
 		// Termina sola si…
 		new Setting(box)
-			.setName(T("Termina sola si el combatiente tiene", "Ends on its own if the combatant has"))
-			.setDesc(T("Alguna de las marcadas (Concentración: Incapacitado o Muerto).", "Any of the checked ones (Concentration: Incapacitated or Dead)."))
+			.setName(T("conditionUi.endsOnItsOwnIf"))
+			.setDesc(T("conditionUi.anyOfTheCheckedOnes"))
 			.settingEl.addClass("strakes-cond-implies-setting");
 		this.conditionChecks(box, r.endsWith ?? [], (ids) => (r.endsWith = ids));
 		new Setting(box)
-			.setName(T("Termina sola a 0 PG o menos", "Ends on its own at 0 HP or less"))
+			.setName(T("conditionUi.endsOnItsOwnAt"))
 			.addToggle((t) => t.setValue(!!r.endsAtZeroHp).onChange((v) => (r.endsAtZeroHp = v || undefined)));
 
 		// Aviso al recibir daño.
 		const save = new Setting(box)
-			.setName(T("Tirada de salvación al recibir daño", "Saving throw when taking damage"))
-			.setDesc(T("Avisa de la tirada con la CD de Concentración: la mitad del daño, mínimo 10 y máximo 30.", "Shows the roll with the Concentration DC: half the damage, at least 10 and at most 30."));
+			.setName(T("conditionUi.savingThrowWhenTakingDamage"))
+			.setDesc(T("conditionUi.showsTheRollWithThe"));
 		save.addText((tx) =>
 			tx
-				.setPlaceholder(T("Característica (p. ej. Constitución)", "Ability (e.g. Constitution)"))
+				.setPlaceholder(T("conditionUi.abilityEGConstitution"))
 				.setValue(r.damageSave?.ability ?? "")
 				.setDisabled(!r.damageSave)
 				.onChange((v) => {
@@ -596,25 +581,22 @@ export class ConditionModal extends Modal {
 		);
 		save.addToggle((t) =>
 			t.setValue(!!r.damageSave).onChange((v) => {
-				r.damageSave = v ? { ability: r.damageSave?.ability || T("Constitución", "Constitution") } : undefined;
+				r.damageSave = v ? { ability: r.damageSave?.ability || T("conditionUi.constitution") } : undefined;
 				this.renderRules();
 			}),
 		);
 
 		new Setting(box)
-			.setName(T("Derrota al enemigo", "Defeats the enemy"))
-			.setDesc(T("Un enemigo con esta condición sale tachado, pierde su turno y los jugadores solo ven esta condición (Muerto).", "An enemy with this condition is struck through, loses its turn and players only see this condition (Dead)."))
+			.setName(T("conditionUi.defeatsTheEnemy"))
+			.setDesc(T("conditionUi.anEnemyWithThisCondition"))
 			.addToggle((t) => t.setValue(!!r.defeats).onChange((v) => (r.defeats = v || undefined)));
 		new Setting(box)
-			.setName(T("Avisar al aplicarse o terminar sola", "Notify when applied or ended automatically"))
+			.setName(T("conditionUi.notifyWhenAppliedOrEnded"))
 			.addToggle((t) => t.setValue(!!r.announce).onChange((v) => (r.announce = v || undefined)));
 		new Setting(box)
-			.setName(T("Es una concentración", "Is a concentration"))
+			.setName(T("conditionUi.isAConcentration"))
 			.setDesc(
-				T(
-					"En su ficha se indica el hechizo, y las condiciones que duran «mientras el lanzador mantenga la Concentración» terminan al perderla o cambiar de hechizo (Concentración).",
-					"Its card lets you set the spell, and conditions that last \"while the caster keeps Concentration\" end when it's lost or the spell changes (Concentration).",
-				),
+				T("conditionUi.itsCardLetsYouSet"),
 			)
 			.addToggle((t) => t.setValue(!!r.concentration).onChange((v) => (r.concentration = v || undefined)));
 	}

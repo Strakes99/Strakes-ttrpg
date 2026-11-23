@@ -124,7 +124,7 @@ export class MapEmbed extends Component {
 			this.data = null;
 			this.teardown();
 			this.ctx.containerEl.empty();
-			this.ctx.containerEl.createDiv({ cls: "strakes-warning", text: T(`No se pudo leer el mapa ${this.file.basename}.`, `Couldn't read the map ${this.file.basename}.`) });
+			this.ctx.containerEl.createDiv({ cls: "strakes-warning", text: T("mapEmbed.couldntReadTheMap", { basename: this.file.basename }) });
 			return;
 		}
 		this.buildDom();
@@ -327,10 +327,10 @@ export class MapEmbed extends Component {
 			};
 			return b;
 		};
-		button("layers", T("Capas", "Layers"), (evt) => this.layersMenu(evt));
+		button("layers", T("mapEmbed.layers"), (evt) => this.layersMenu(evt));
 		// Etiquetas: clic, todas a la vez; clic derecho, por tipo. Resaltado si hay alguna encendida.
 		const anyLabel = this.labels.pins || this.labels.routes || this.labels.zones;
-		const tag = button("tag", T("Etiquetas · clic derecho para elegirlas por tipo", "Labels · right-click to choose them by type"), () => {
+		const tag = button("tag", T("mapEmbed.labelsRightClickToChoose"), () => {
 			const on = !anyLabel;
 			this.setLabels({ pins: on, routes: on, zones: on });
 		});
@@ -344,20 +344,20 @@ export class MapEmbed extends Component {
 		button(
 			"signpost",
 			this.portalArrows
-				? T("Flechas de los portales y escaleras: se ven (clic para ocultarlas)", "Portal and stairs arrows: shown (click to hide them)")
-				: T("Mostrar hacia dónde llevan los portales y escaleras", "Show where portals and stairs lead"),
+				? T("mapEmbed.portalAndStairsArrowsShown")
+				: T("mapEmbed.showWherePortalsAndStairs"),
 			() => {
 				this.portalArrows = !this.portalArrows;
 				this.render();
 				if (this.wrapper) this.buildToolbar(this.wrapper);
 			},
 		).toggleClass("is-active", this.portalArrows);
-		button("maximize", T("Encuadrar todo", "Fit all"), () => this.fitWhole(true));
+		button("maximize", T("mapEmbed.fitAll"), () => this.fitWhole(true));
 		// Ocultar la niebla (solo si el mapa la tiene activada): no la borra.
 		if (this.data?.fog?.enabled)
 			button(
 				this.fogHidden ? "cloud-off" : "cloud",
-				this.fogHidden ? T("Niebla oculta (clic para mostrarla)", "Fog hidden (click to show it)") : T("Ocultar la niebla", "Hide the fog"),
+				this.fogHidden ? T("mapEmbed.fogHiddenClickToShow") : T("mapEmbed.hideTheFog"),
 				() => {
 					this.fogHidden = !this.fogHidden;
 					this.render();
@@ -369,15 +369,15 @@ export class MapEmbed extends Component {
 			button(
 				this.locked ? "lock" : "unlock",
 				this.locked
-					? T("Bloqueado: sin zoom ni arrastre (clic para desbloquear)", "Locked: no zoom or dragging (click to unlock)")
-					: T("Bloquear el zoom y el arrastre", "Lock zoom and dragging"),
+					? T("mapEmbed.lockedNoZoomOrDragging")
+					: T("mapEmbed.lockZoomAndDragging"),
 				() => {
 					this.locked = !this.locked;
 					this.applyLock();
 					if (this.wrapper) this.buildToolbar(this.wrapper);
 				},
 			);
-		button("external-link", T("Abrir el mapa para editarlo", "Open the map to edit it"), (evt) => {
+		button("external-link", T("mapEmbed.openTheMapToEdit"), (evt) => {
 			void this.app.workspace.getLeaf(Keymap.isModEvent(evt) ? "split" : "tab").openFile(this.file);
 		});
 	}
@@ -416,9 +416,9 @@ export class MapEmbed extends Component {
 					.setChecked(this.labels[key])
 					.onClick(() => this.setLabels({ ...this.labels, [key]: !this.labels[key] })),
 			);
-		item("pins", T("Nombres de los marcadores", "Marker names"), "map-pin");
-		item("routes", T("Nombres de las rutas", "Route names"), "route");
-		item("zones", T("Nombres de las zonas", "Zone names"), "pentagon");
+		item("pins", T("mapEmbed.markerNames"), "map-pin");
+		item("routes", T("mapEmbed.routeNames"), "route");
+		item("zones", T("mapEmbed.zoneNames"), "pentagon");
 		m.showAtMouseEvent(evt);
 	}
 
@@ -439,9 +439,9 @@ export class MapEmbed extends Component {
 					}),
 			);
 		};
-		typeItem("pins", T("Marcadores", "Markers"), "map-pin");
-		typeItem("routes", T("Rutas", "Routes"), "route");
-		typeItem("zones", T("Zonas", "Zones"), "pentagon");
+		typeItem("pins", T("mapEmbed.markers"), "map-pin");
+		typeItem("routes", T("mapEmbed.routes"), "route");
+		typeItem("zones", T("mapEmbed.zones"), "pentagon");
 		if (data.layers.length) m.addSeparator();
 		for (const layer of data.layers) {
 			const on = this.layerOverride.get(layer.id) ?? layer.visible;
@@ -547,7 +547,7 @@ export class MapEmbed extends Component {
 			};
 			if (zones.length <= 1) return open(zones[0] ?? zone);
 			const m = new Menu();
-			for (const z of zones) m.addItem((i) => i.setTitle(z.name.trim() || T("(zona sin nombre)", "(unnamed zone)")).setIcon("pentagon").onClick(() => open(z)));
+			for (const z of zones) m.addItem((i) => i.setTitle(z.name.trim() || T("mapEmbed.unnamedZone")).setIcon("pentagon").onClick(() => open(z)));
 			m.showAtMouseEvent(e.originalEvent);
 		});
 		poly.on("mouseover", (e: L.LeafletMouseEvent) => {
@@ -559,7 +559,7 @@ export class MapEmbed extends Component {
 	/** Abre la nota enlazada de un marcador, una zona o una ruta (Ctrl/Cmd+clic: en pestaña nueva). */
 	private openNote(link: string, evt: MouseEvent): void {
 		if (!resolveWikilink(this.app, link, this.file.path)) {
-			new Notice(T(`No se encuentra la nota ${link}`, `Note not found: ${link}`));
+			new Notice(T("mapEmbed.noteNotFound", { link }));
 			return;
 		}
 		void this.app.workspace.openLinkText(linktextOf(link), this.file.path, Keymap.isModEvent(evt));
@@ -590,7 +590,7 @@ export class MapEmbed extends Component {
 		const target = pin.targetPinId ? data.pins.find((p) => p.id === pin.targetPinId) : null;
 		const dest = target ?? pin.target;
 		if (!dest) {
-			new Notice(T("Este portal / escalera no tiene destino.", "This portal / stairs has no destination."));
+			new Notice(T("mapEmbed.thisPortalStairsHasNo"));
 			return;
 		}
 		map.flyTo(toLatLng(dest), target ? map.getZoom() : pin.target!.zoom, { duration: 0.9 });
@@ -633,7 +633,7 @@ export class MapEmbed extends Component {
 			map.fitBounds(mapBounds(data), { animate: false });
 			map.setView(toLatLng(pin), Math.min(map.getZoom() + 2, map.getMaxZoom()), { animate: false });
 		} else {
-			if (wanted) new Notice(T(`Mapa ${this.file.basename}: no hay ningún marcador llamado «${wanted}».`, `Map ${this.file.basename}: there's no marker named "${wanted}".`));
+			if (wanted) new Notice(T("mapEmbed.mapTheresNoMarkerNamed", { basename: this.file.basename, wanted }));
 			this.fitWhole(false);
 		}
 	}

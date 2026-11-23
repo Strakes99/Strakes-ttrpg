@@ -30,7 +30,7 @@ export function editSegmentDialog(app: App, data: MapData, route: MapRoute, i: n
 		const estTime = segmentTime(data, { ...route, times: [] }, i, "normal", nodes).hours;
 
 		const routeName = route.name.trim() ? ` · ${route.name}` : "";
-		modal.titleEl.setText(T(`Tramo ${i + 1}${routeName}`, `Segment ${i + 1}${routeName}`));
+		modal.titleEl.setText(T("mapModals.segment", { i: i + 1, routeName }));
 		const el = modal.contentEl;
 		const save = () => {
 			if (result.distance !== null && result.distance < 0) warnNegativeDistances([i]);
@@ -48,11 +48,11 @@ export function editSegmentDialog(app: App, data: MapData, route: MapRoute, i: n
 
 		let distInput: HTMLInputElement | null = null;
 		new Setting(el)
-			.setName(T(`Distancia (${data.unit || "sin unidad"})`, `Distance (${data.unit || "no unit"})`))
+			.setName(T("mapModals.segmentDistanceUnit", { unit: data.unit || T("mapModals.noUnit") }))
 			.setDesc(
 				data.scale
-					? T("Vacío = la estimada por la escala del mapa.", "Empty = estimated from the map scale.")
-					: T("El mapa no tiene escala: escribe la distancia real.", "The map has no scale: enter the real distance."),
+					? T("mapModals.emptyEstimatedFromTheMap")
+					: T("mapModals.theMapHasNoScale"),
 			)
 			.addText((t) => {
 				distInput = t.inputEl;
@@ -66,12 +66,9 @@ export function editSegmentDialog(app: App, data: MapData, route: MapRoute, i: n
 				onEnter(t.inputEl);
 			});
 		new Setting(el)
-			.setName(T("Tiempo de viaje (paso normal)", "Travel time (normal pace)"))
+			.setName(T("mapModals.travelTimeNormalPace"))
 			.setDesc(
-				T(
-					"Horas, ej. 6, 6,5 o 6h 30m. Vacío = se calcula desde la distancia. Los pasos lento y rápido se ajustan a partir de este tiempo.",
-					"Hours, e.g. 6, 6.5 or 6h 30m. Empty = calculated from the distance. Slow and fast paces are adjusted from this time.",
-				),
+				T("mapModals.hoursEG66"),
 			)
 			.addText((t) => {
 				t.setPlaceholder(estTime !== null ? `≈ ${formatHours(estTime)}` : "?");
@@ -85,8 +82,8 @@ export function editSegmentDialog(app: App, data: MapData, route: MapRoute, i: n
 				onEnter(t.inputEl);
 			});
 		new Setting(el)
-			.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => modal.close()))
-			.addButton((b) => b.setButtonText(T("Guardar", "Save")).setCta().onClick(save));
+			.addButton((b) => b.setButtonText(T("mapModals.cancel")).onClick(() => modal.close()))
+			.addButton((b) => b.setButtonText(T("mapModals.save")).setCta().onClick(save));
 
 		modal.onClose = () => {
 			if (!done) resolve(null);
@@ -115,13 +112,13 @@ function layerDropdown(
 	rerender: () => void,
 ): void {
 	setting.addDropdown((dd) => {
-		dd.addOption("", T("— Sin capa —", "— No layer —"));
+		dd.addOption("", T("mapModals.noLayer"));
 		for (const l of [...data.layers, ...pending]) dd.addOption(l.id, l.name);
-		dd.addOption("__new__", T("➕ Nueva capa…", "➕ New layer…"));
+		dd.addOption("__new__", T("mapModals.newLayer"));
 		dd.setValue(value ?? "");
 		dd.onChange(async (v) => {
 			if (v !== "__new__") return onChange(v || null);
-			const name = await promptText(app, T("Nueva capa", "New layer"), { placeholder: T("Nombre de la capa", "Layer name") });
+			const name = await promptText(app, T("mapModals.newLayer2"), { placeholder: T("mapModals.layerName") });
 			if (name && name.trim()) {
 				const layer = { id: uid(), name: name.trim(), visible: true };
 				pending.push(layer);
@@ -138,14 +135,7 @@ function layerDropdown(
  */
 function warnNegativeDistances(segments: number[]): void {
 	const list = segments.map((i) => i + 1).join(", ");
-	const many = segments.length > 1;
-	new Notice(
-		T(
-			`${many ? "Los tramos" : "El tramo"} ${list} ${many ? "tienen" : "tiene"} distancia negativa. Se guarda igual, pero la medición del camino más corto puede dar resultados extraños.`,
-			`Segment${many ? "s" : ""} ${list} ${many ? "have" : "has"} a negative distance. It's saved anyway, but shortest-path measuring may give odd results.`,
-		),
-		8000,
-	);
+	new Notice(T("mapModals.negativeDistance", { list, count: segments.length }), 8000);
 }
 
 /** Añade al mapa las capas creadas en un diálogo (al guardarlo). */
@@ -207,22 +197,16 @@ export class PinModal extends Modal {
 			this.pin,
 			sourcePath,
 			{
-				autoTip: T(
-					"Nombre automático: el de la nota enlazada (o su encabezado o alias) o, en un portal sin nota, el del marcador destino. Escribir un nombre la desmarca.",
-					"Automatic name: the linked note's (or its heading or alias) or, for a portal without a note, the destination marker's. Typing a name unticks it.",
-				),
-				linkDesc: T(
-					"Opcional. Se guarda como wikilink, ej. [[Nota]] o [[Nota#Encabezado]]. Clic en el marcador abre la nota (Ctrl/Cmd+clic: en pestaña nueva).",
-					"Optional. Saved as a wikilink, e.g. [[Note]] or [[Note#Heading]]. Clicking the marker opens the note (Ctrl/Cmd+click: in a new tab).",
-				),
-				autoPlaceholder: T("Enlaza una nota o un marcador destino", "Link a note or a destination marker"),
+				autoTip: T("mapModals.automaticNameTheLinkedNotes"),
+				linkDesc: T("mapModals.optionalSavedAsAWikilink"),
+				autoPlaceholder: T("mapModals.linkANoteOrA"),
 			},
 			() => autoPinName(this.pin, this.data.pins),
 		);
 	}
 
 	onOpen(): void {
-		this.titleEl.setText(this.isNew ? T("Nuevo marcador", "New marker") : T("Editar marcador", "Edit marker"));
+		this.titleEl.setText(this.isNew ? T("mapModals.newMarker") : T("mapModals.editMarker"));
 		this.render();
 	}
 
@@ -238,14 +222,11 @@ export class PinModal extends Modal {
 
 		// Portal / escalera: se usa con clic derecho. Al activarlo, las opciones de
 		// destino aparecen en esta misma fila (antes del interruptor).
-		const portal = new Setting(el).setName(T("Portal / escalera", "Portal / stairs"));
+		const portal = new Setting(el).setName(T("mapModals.portalStairs"));
 		if (p.portal) this.addPortalControls(portal);
 		else
 			portal.setDesc(
-				T(
-					"Con clic derecho, la cámara viaja a su destino (en el editor, desde el menú; en notas, directamente).",
-					"On right-click, the camera travels to its destination (in the editor, from the menu; in notes, directly).",
-				),
+				T("mapModals.onRightClickTheCamera"),
 			);
 		portal.addToggle((t) =>
 			t.setValue(p.portal).onChange((v) => {
@@ -267,17 +248,17 @@ export class PinModal extends Modal {
 		});
 
 		// Colores del marcador y del icono, lado a lado en una sola fila.
-		const colors = new Setting(el).setName(T("Colores", "Colors"));
+		const colors = new Setting(el).setName(T("mapModals.colors"));
 		colors.controlEl.addClass("strakes-color-row");
 		const pinGroup = colors.controlEl.createDiv("strakes-color-group");
-		pinGroup.createSpan({ cls: "strakes-color-label", text: T("Marcador", "Marker") });
+		pinGroup.createSpan({ cls: "strakes-color-label", text: T("mapModals.marker") });
 		new ColorComponent(pinGroup).setValue(p.color).onChange((v) => {
 			p.color = v;
 			// Los recuadros del selector usan el color del marcador de fondo.
 			this.iconPicker?.setBackground(v);
 		});
 		this.iconColor = new IconColorControl(colors.controlEl.createDiv("strakes-color-group"), {
-			label: T("Icono", "Icon"),
+			label: T("mapModals.icon"),
 			getIcon: () => p.icon ?? "",
 			color: p.iconColor,
 			defaultColor: DEFAULT_ICON_COLOR,
@@ -287,24 +268,24 @@ export class PinModal extends Modal {
 			},
 		});
 
-		layerDropdown(this.app, new Setting(el).setName(T("Capa", "Layer")), this.data, this.newLayers, p.layerId, (id) => (p.layerId = id), () => this.render());
+		layerDropdown(this.app, new Setting(el).setName(T("mapModals.layer")), this.data, this.newLayers, p.layerId, (id) => (p.layerId = id), () => this.render());
 		new Setting(el)
-			.setName(T("Visible para los jugadores", "Visible to players"))
-			.setDesc(T("También tienen que estar visibles para los jugadores su tipo y su capa (iconos de pantalla del panel).", "Its type and layer must also be visible to players (screen icons in the panel)."))
+			.setName(T("mapModals.visibleToPlayers"))
+			.setDesc(T("mapModals.itsTypeAndLayerMust"))
 			.addToggle((t) => t.setValue(p.players === true).onChange((on) => (p.players = on || undefined)));
 
 		const buttons = modalFooter(this);
 		if (!this.isNew)
 			buttons.addButton((b) =>
 				b
-					.setButtonText(T("Eliminar", "Delete"))
+					.setButtonText(T("mapModals.delete"))
 					.setDestructive()
 					.onClick(() => this.finish("delete")),
 			);
-		buttons.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => this.close()));
+		buttons.addButton((b) => b.setButtonText(T("mapModals.cancel")).onClick(() => this.close()));
 		buttons.addButton((b) =>
 			b
-				.setButtonText(T("Guardar", "Save"))
+				.setButtonText(T("mapModals.save"))
 				.setCta()
 				.onClick(() => this.finish("save")),
 		);
@@ -317,17 +298,14 @@ export class PinModal extends Modal {
 		setting
 			.setDesc(
 				p.targetPinId
-					? T("Destino: el marcador elegido. Se usa con clic derecho.", "Destination: the chosen marker. Used with right-click.")
+					? T("mapModals.destinationTheChosenMarkerUsed")
 					: p.target
-						? T(
-								`Destino: punto fijo (x ${Math.round(p.target.x)}, y ${Math.round(p.target.y)}). Se usa con clic derecho.`,
-								`Destination: fixed point (x ${Math.round(p.target.x)}, y ${Math.round(p.target.y)}). Used with right-click.`,
-							)
-						: T("Elige el destino: otro marcador o un punto del mapa.", "Choose the destination: another marker or a point on the map."),
+						? T("mapModals.destinationFixedPointXY", { x: Math.round(p.target.x), y: Math.round(p.target.y) })
+						: T("mapModals.chooseTheDestinationAnotherMarker"),
 			)
 			.addDropdown((dd) => {
-				dd.addOption("", p.target ? T("— Punto fijo —", "— Fixed point —") : T("— Ninguno —", "— None —"));
-				for (const o of others) dd.addOption(o.id, o.name || T("(sin nombre)", "(unnamed)"));
+				dd.addOption("", p.target ? T("mapModals.fixedPoint") : T("mapModals.none"));
+				for (const o of others) dd.addOption(o.id, o.name || T("mapModals.unnamed"));
 				dd.setValue(p.targetPinId ?? "");
 				dd.onChange((v) => {
 					p.targetPinId = v || undefined;
@@ -337,8 +315,8 @@ export class PinModal extends Modal {
 			})
 			.addButton((b) =>
 				b
-					.setButtonText(T("Elegir en el mapa…", "Pick on the map…"))
-					.setTooltip(T("Cierra este diálogo; haz clic en el mapa para fijar el destino con el zoom actual.", "Closes this dialog; click the map to set the destination with the current zoom."))
+					.setButtonText(T("mapModals.pickOnTheMap"))
+					.setTooltip(T("mapModals.closesThisDialogClickThe"))
 					.onClick(() => this.finish("pick-target")),
 			);
 	}
@@ -350,11 +328,8 @@ export class PinModal extends Modal {
 		if (action !== "delete" && !nameLater && !this.pin.name.trim()) {
 			new Notice(
 				this.pin.autoName
-					? T(
-							"AUTO no tiene de dónde tomar el nombre: enlaza una nota o un marcador destino, o escribe un nombre.",
-							"AUTO has nowhere to take the name from: link a note or a destination marker, or type a name.",
-						)
-					: T("Ponle un nombre al marcador", "Give the marker a name"),
+					? T("mapModals.autoHasNowhereToTake")
+					: T("mapModals.giveTheMarkerAName"),
 			);
 			return;
 		}
@@ -399,7 +374,7 @@ class NameLinkFields {
 
 	render(el: HTMLElement, focus: boolean): void {
 		const item = this.item;
-		const nameSetting = new Setting(el).setName(T("Nombre", "Name")).addText((t) => {
+		const nameSetting = new Setting(el).setName(T("mapModals.name")).addText((t) => {
 			t.setValue(item.name).onChange((v) => {
 				item.name = v;
 				if (item.autoName) {
@@ -414,7 +389,7 @@ class NameLinkFields {
 		const autoLabel = nameSetting.controlEl.createEl("label", { cls: "strakes-native-check strakes-auto-name" });
 		const autoCheck = autoLabel.createEl("input", { type: "checkbox" });
 		autoCheck.checked = item.autoName === true;
-		autoLabel.appendText(T("AUTO", "AUTO"));
+		autoLabel.appendText(T("mapModals.auto"));
 		autoLabel.setAttribute("aria-label", this.texts.autoTip);
 		autoCheck.onchange = () => {
 			item.autoName = autoCheck.checked || undefined;
@@ -425,10 +400,10 @@ class NameLinkFields {
 
 		let headingHost: HTMLElement;
 		new Setting(el)
-			.setName(T("Nota", "Note"))
+			.setName(T("mapModals.note"))
 			.setDesc(this.texts.linkDesc)
 			.addText((t) => {
-				t.setPlaceholder(T("[[Nota]]", "[[Note]]")).setValue(item.link ?? "");
+				t.setPlaceholder(T("mapModals.note2")).setValue(item.link ?? "");
 				t.inputEl.addClass("strakes-wide-input");
 				this.linkInput = t.inputEl;
 				new FileInputSuggest(
@@ -481,7 +456,7 @@ class NameLinkFields {
 		item.name = this.autoNameOf() ?? "";
 		if (this.nameInput) {
 			this.nameInput.value = item.name;
-			this.nameInput.setAttribute("placeholder", this.texts.autoPlaceholder ?? T("Enlaza una nota", "Link a note"));
+			this.nameInput.setAttribute("placeholder", this.texts.autoPlaceholder ?? T("mapModals.linkANote"));
 		}
 	}
 
@@ -492,8 +467,8 @@ class NameLinkFields {
 		if (file && file.extension === "md") {
 			const headings = this.app.metadataCache.getFileCache(file)?.headings ?? [];
 			if (headings.length)
-				new Setting(host).setName(T("Encabezado (opcional)", "Heading (optional)")).addDropdown((dd) => {
-					dd.addOption("", T("— Nota completa —", "— Whole note —"));
+				new Setting(host).setName(T("mapModals.headingOptional")).addDropdown((dd) => {
+					dd.addOption("", T("mapModals.wholeNote"));
 					for (const h of headings) dd.addOption(`#${h.heading}`, `${"  ".repeat(h.level - 1)}${h.heading}`);
 					dd.setValue(parseWikilink(item.link!).subpath);
 					dd.onChange((v) => {
@@ -502,7 +477,7 @@ class NameLinkFields {
 					});
 				});
 		} else if (item.link && !file) {
-			host.createDiv({ cls: "strakes-warning", text: T("⚠ No se encuentra esa nota.", "⚠ That note can't be found.") });
+			host.createDiv({ cls: "strakes-warning", text: T("mapModals.thatNoteCantBeFound") });
 		}
 	}
 }
@@ -538,19 +513,13 @@ export class ZoneModal extends Modal {
 		super(app);
 		this.zone = structuredClone(zone);
 		this.fields = new NameLinkFields(app, this.zone, sourcePath, {
-			autoTip: T(
-				"Nombre automático: el de la nota enlazada (o su encabezado o alias). Escribir un nombre la desmarca.",
-				"Automatic name: the linked note's (or its heading or alias). Typing a name unticks it.",
-			),
-			linkDesc: T(
-				"Opcional. Se guarda como wikilink, ej. [[Nota]] o [[Nota#Encabezado]]. Con la edición bloqueada, clic en la zona abre la nota (Ctrl/Cmd+clic: en pestaña nueva).",
-				"Optional. Saved as a wikilink, e.g. [[Note]] or [[Note#Heading]]. With editing locked, clicking the zone opens the note (Ctrl/Cmd+click: in a new tab).",
-			),
+			autoTip: T("mapModals.automaticNameTheLinkedNotes2"),
+			linkDesc: T("mapModals.optionalSavedAsAWikilink2"),
 		});
 	}
 
 	onOpen(): void {
-		this.titleEl.setText(this.isNew ? T("Nueva zona", "New zone") : T("Editar zona", "Edit zone"));
+		this.titleEl.setText(this.isNew ? T("mapModals.newZone") : T("mapModals.editZone"));
 		this.render();
 	}
 
@@ -562,23 +531,23 @@ export class ZoneModal extends Modal {
 		this.firstRender = false;
 
 		// Colores del relleno y del borde, en una fila.
-		const colors = new Setting(el).setName(T("Colores", "Colors"));
+		const colors = new Setting(el).setName(T("mapModals.colors"));
 		colors.controlEl.addClass("strakes-color-row");
 		const fill = colors.controlEl.createDiv("strakes-color-group");
-		fill.createSpan({ cls: "strakes-color-label", text: T("Relleno", "Fill") });
+		fill.createSpan({ cls: "strakes-color-label", text: T("mapModals.fill") });
 		new ColorComponent(fill).setValue(z.color).onChange((v) => (z.color = v));
 		const border = colors.controlEl.createDiv("strakes-color-group");
-		border.createSpan({ cls: "strakes-color-label", text: T("Borde", "Border") });
+		border.createSpan({ cls: "strakes-color-label", text: T("mapModals.border") });
 		new ColorComponent(border).setValue(z.borderColor).onChange((v) => (z.borderColor = v));
 
 		// Área: la escrita a mano tiene prioridad; vacía, la calculada con la escala.
 		const estimate = zoneArea(this.data, { ...z, area: undefined });
 		new Setting(el)
-			.setName(T(`Área (${this.data.unit || "sin unidad"}²)`, `Area (${this.data.unit || "no unit"}²)`))
+			.setName(T("mapModals.zoneAreaUnit", { unit: this.data.unit || T("mapModals.noUnit") }))
 			.setDesc(
 				this.data.scale
-					? T("Vacío = la calculada con la escala del mapa.", "Empty = calculated from the map scale.")
-					: T("El mapa no tiene escala: escribe el área real, o déjalo vacío para no mostrarla.", "The map has no scale: enter the real area, or leave it empty to hide it."),
+					? T("mapModals.emptyCalculatedFromTheMap")
+					: T("mapModals.theMapHasNoScale2"),
 			)
 			.addText((t) => {
 				decimalInput(t.inputEl);
@@ -590,20 +559,17 @@ export class ZoneModal extends Modal {
 				});
 			});
 
-		layerDropdown(this.app, new Setting(el).setName(T("Capa", "Layer")), this.data, this.newLayers, z.layerId, (id) => (z.layerId = id), () => this.render());
+		layerDropdown(this.app, new Setting(el).setName(T("mapModals.layer")), this.data, this.newLayers, z.layerId, (id) => (z.layerId = id), () => this.render());
 		new Setting(el)
-			.setName(T("Visible para los jugadores", "Visible to players"))
-			.setDesc(T("También tienen que estar visibles para los jugadores su tipo y su capa (iconos de pantalla del panel).", "Its type and layer must also be visible to players (screen icons in the panel)."))
+			.setName(T("mapModals.visibleToPlayers"))
+			.setDesc(T("mapModals.itsTypeAndLayerMust"))
 			.addToggle((t) => t.setValue(z.players === true).onChange((on) => (z.players = on || undefined)));
 		// Niebla (solo si el mapa la tiene activada).
 		if (this.data.fog?.enabled)
 			new Setting(el)
-				.setName(T("Niebla", "Fog"))
+				.setName(T("mapModals.fog"))
 				.setDesc(
-					T(
-						"Marcada, la zona entera queda cubierta y el pincel no la descubre. Sin marcar, la zona no cuenta: se ve lo que diga el pincel. Un clic de pincel sobre la zona también la marca o la desmarca.",
-						"Ticked, the whole zone is covered and the brush can't reveal it. Unticked, the zone doesn't count: you see what the brush says. A brush click on the zone also ticks or unticks it.",
-					),
+					T("mapModals.tickedTheWholeZoneIs"),
 				)
 				.addToggle((t) => t.setValue(z.fog === true).onChange((on) => (z.fog = on || undefined)));
 
@@ -611,14 +577,14 @@ export class ZoneModal extends Modal {
 		if (!this.isNew)
 			buttons.addButton((b) =>
 				b
-					.setButtonText(T("Eliminar", "Delete"))
+					.setButtonText(T("mapModals.delete"))
 					.setDestructive()
 					.onClick(() => this.finish("delete")),
 			);
-		buttons.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => this.close()));
+		buttons.addButton((b) => b.setButtonText(T("mapModals.cancel")).onClick(() => this.close()));
 		buttons.addButton((b) =>
 			b
-				.setButtonText(T("Guardar", "Save"))
+				.setButtonText(T("mapModals.save"))
 				.setCta()
 				.onClick(() => this.finish("save")),
 		);
@@ -654,19 +620,13 @@ export class RouteModal extends Modal {
 		super(app);
 		this.route = structuredClone(route);
 		this.fields = new NameLinkFields(app, this.route, sourcePath, {
-			autoTip: T(
-				"Nombre automático: el de la nota enlazada (o su encabezado o alias). Escribir un nombre la desmarca.",
-				"Automatic name: the linked note's (or its heading or alias). Typing a name unticks it.",
-			),
-			linkDesc: T(
-				"Opcional. Se guarda como wikilink, ej. [[Nota]] o [[Nota#Encabezado]]. Con la edición bloqueada, clic en la ruta abre la nota (Ctrl/Cmd+clic: en pestaña nueva).",
-				"Optional. Saved as a wikilink, e.g. [[Note]] or [[Note#Heading]]. With editing locked, clicking the route opens the note (Ctrl/Cmd+click: in a new tab).",
-			),
+			autoTip: T("mapModals.automaticNameTheLinkedNotes2"),
+			linkDesc: T("mapModals.optionalSavedAsAWikilink3"),
 		});
 	}
 
 	onOpen(): void {
-		this.titleEl.setText(T("Ruta", "Route"));
+		this.titleEl.setText(T("mapModals.route"));
 		this.render();
 	}
 
@@ -675,38 +635,35 @@ export class RouteModal extends Modal {
 		el.empty();
 		const r = this.route;
 		this.fields.render(el, false);
-		new Setting(el).setName(T("Color", "Color")).addColorPicker((c) => c.setValue(r.color).onChange((v) => (r.color = v)));
-		layerDropdown(this.app, new Setting(el).setName(T("Capa", "Layer")), this.data, this.newLayers, r.layerId, (id) => (r.layerId = id), () => this.render());
+		new Setting(el).setName(T("mapModals.color")).addColorPicker((c) => c.setValue(r.color).onChange((v) => (r.color = v)));
+		layerDropdown(this.app, new Setting(el).setName(T("mapModals.layer")), this.data, this.newLayers, r.layerId, (id) => (r.layerId = id), () => this.render());
 		new Setting(el)
-			.setName(T("Visible para los jugadores", "Visible to players"))
-			.setDesc(T("También tienen que estar visibles para los jugadores su tipo y su capa (iconos de pantalla del panel).", "Its type and layer must also be visible to players (screen icons in the panel)."))
+			.setName(T("mapModals.visibleToPlayers"))
+			.setDesc(T("mapModals.itsTypeAndLayerMust"))
 			.addToggle((t) => t.setValue(r.players === true).onChange((on) => (r.players = on || undefined)));
 		new Setting(el)
-			.setName(T("Curvas suaves", "Smooth curves"))
-			.setDesc(T("La línea pasa por los puntos de curva con una curva suave. Desactívalo para usar líneas quebradas.", "The line passes through the curve points with a smooth curve. Turn it off to use straight segments."))
+			.setName(T("mapModals.smoothCurves"))
+			.setDesc(T("mapModals.theLinePassesThroughThe"))
 			.addToggle((t) => t.setValue(r.smooth !== false).onChange((v) => (r.smooth = v)));
 
-		el.createEl("h4", { text: T("Tramos", "Segments") });
+		el.createEl("h4", { text: T("mapModals.segments") });
 		el.createDiv({
 			cls: "setting-item-description",
 			text:
 				(this.data.scale
-					? T("Distancia: vacío = la estimada por la escala del mapa. ", "Distance: empty = estimated from the map scale. ")
-					: T("Distancia: el mapa no tiene escala, escribe la distancia real de cada tramo. ", "Distance: the map has no scale, enter the real distance of each segment. ")) +
-				T(
-					"Tiempo: horas a paso normal (ej. 6, 6,5 o 6h 30m); vacío = se calcula desde la distancia. Los pasos lento y rápido se ajustan a partir de este tiempo.",
-					"Time: hours at normal pace (e.g. 6, 6.5 or 6h 30m); empty = calculated from the distance. Slow and fast paces are adjusted from this time.",
-				),
+					? T("mapModals.distanceEmptyEstimatedFromThe")
+					: T("mapModals.distanceTheMapHasNo")) +
+				T("mapModals.timeHoursAtNormalPace"),
 		});
 		const nodes = nodeMap(this.data);
 		const box = el.createDiv("strakes-seg-list");
 		r.times ??= [];
 		for (let i = 0; i < r.nodeIds.length - 1; i++) {
 			const est = segmentDistance(this.data, { ...r, segments: r.segments.map(() => null) }, i, nodes).value;
-			const row = new Setting(box).setName(T(`Tramo ${i + 1}`, `Segment ${i + 1}`));
+			const row = new Setting(box).setName(T("mapModals.segment2", { i: i + 1 }));
 			row.controlEl.addClass("strakes-seg-inputs");
 
-			row.controlEl.createSpan({ cls: "strakes-seg-input-label", text: this.data.unit || T("dist.", "dist.") });
+			row.controlEl.createSpan({ cls: "strakes-seg-input-label", text: this.data.unit || T("mapModals.dist") });
 			row.addText((t) => {
 				t.setPlaceholder(est !== null ? `≈ ${fieldNumber(est)}` : "?");
 				const manual = r.segments[i];
@@ -737,17 +694,17 @@ export class RouteModal extends Modal {
 		modalFooter(this)
 			.addButton((b) =>
 				b
-					.setButtonText(T("Eliminar ruta", "Delete route"))
+					.setButtonText(T("mapModals.deleteRoute"))
 					.setDestructive()
 					.onClick(() => {
 						this.onDone(null, true);
 						this.close();
 					}),
 			)
-			.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => this.close()))
+			.addButton((b) => b.setButtonText(T("mapModals.cancel")).onClick(() => this.close()))
 			.addButton((b) =>
 				b
-					.setButtonText(T("Guardar", "Save"))
+					.setButtonText(T("mapModals.save"))
 					.setCta()
 					.onClick(() => {
 						const negative = this.route.segments.flatMap((d, i) => (d !== null && d < 0 ? [i] : []));
@@ -789,10 +746,10 @@ export class MapPropsModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.titleEl.setText(T("Propiedades del mapa", "Map properties"));
+		this.titleEl.setText(T("mapModals.mapProperties"));
 		const el = this.contentEl;
 		const p = this.props;
-		new Setting(el).setName(T("Imagen", "Image")).addText((t) => {
+		new Setting(el).setName(T("mapModals.image")).addText((t) => {
 			t.setValue(p.image).onChange((v) => (p.image = v.trim()));
 			t.inputEl.addClass("strakes-wide-input");
 			// Obsidian enfoca el primer campo al abrir el diálogo: en este, eso abría la lista de imágenes.
@@ -811,12 +768,9 @@ export class MapPropsModal extends Modal {
 		// pasar por una unidad que no es de longitud (que solo cambia el nombre).
 		let base = { scale: p.scale, unit: p.unit };
 		new Setting(el)
-			.setName(T("Unidad de distancia", "Distance unit"))
+			.setName(T("mapModals.distanceUnit"))
 			.setDesc(
-				T(
-					"Cambiarla conserva el tamaño real: la escala y las distancias y áreas escritas a mano se convierten (5 ft pasan a 1,52 m). Con una unidad que no es de longitud (p. ej. «días»), solo cambia el nombre de la unidad.",
-					"Changing it keeps the real size: the scale and the distances and areas entered by hand are converted (5 ft become 1.52 m). With a unit that isn't a length (e.g. \"days\"), only the unit's name changes.",
-				),
+				T("mapModals.changingItKeepsTheReal"),
 			)
 			.addDropdown((dd) => {
 				const options = unitOptions();
@@ -833,8 +787,8 @@ export class MapPropsModal extends Modal {
 				});
 			});
 		new Setting(el)
-			.setName(T("Escala", "Scale"))
-			.setDesc(T("Unidades por píxel de la imagen. Vacío = mapa sin escala (solo distancias manuales por tramo).", "Units per image pixel. Empty = map without scale (only manual distances per segment)."))
+			.setName(T("mapModals.scale"))
+			.setDesc(T("mapModals.unitsPerImagePixelEmpty"))
 			.addText((t) => {
 				scaleText = t;
 				showScale();
@@ -849,27 +803,24 @@ export class MapPropsModal extends Modal {
 			.addButton((b) =>
 				// Lo cambiado en el diálogo (imagen, unidad…) se guarda antes de calibrar,
 				// para no perderlo al cerrarlo.
-				b.setButtonText(T("Calibrar en el mapa…", "Calibrate on the map…")).onClick(() => {
+				b.setButtonText(T("mapModals.calibrateOnTheMap")).onClick(() => {
 					this.onSave(this.props);
 					this.close();
 					this.onCalibrate();
 				}),
 			);
 		new Setting(el)
-			.setName(T("Niebla de guerra", "Fog of war"))
+			.setName(T("mapModals.fogOfWar"))
 			.setDesc(
-				T(
-					"Al activarla por primera vez, el mapa entero empieza cubierto; se descubre con el pincel de niebla de la barra. Para ti se ve semitransparente; para los jugadores, opaca. Desactivarla no borra lo descubierto.",
-					"When first turned on, the whole map starts covered; reveal it with the fog brush in the toolbar. You see it semi-transparent; the players see it opaque. Turning it off doesn't erase what was revealed.",
-				),
+				T("mapModals.whenFirstTurnedOnThe"),
 			)
 			.addColorPicker((c) => c.setValue(p.fogColor).onChange((v) => (p.fogColor = v)))
 			.addToggle((t) => t.setValue(p.fogEnabled).onChange((v) => (p.fogEnabled = v)));
 		modalFooter(this)
-			.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => this.close()))
+			.addButton((b) => b.setButtonText(T("mapModals.cancel")).onClick(() => this.close()))
 			.addButton((b) =>
 				b
-					.setButtonText(T("Guardar", "Save"))
+					.setButtonText(T("mapModals.save"))
 					.setCta()
 					.onClick(() => {
 						this.onSave(this.props);

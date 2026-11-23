@@ -54,8 +54,8 @@ export class IconPicker {
 	) {
 		const custom = customIconName(opts.icon ?? "");
 		new Setting(parent)
-			.setName(T("Icono", "Icon"))
-			.setDesc(T("Un emoji, una letra o el nombre de un icono de Lucide (ej. castle, skull, tent), o elige uno abajo.", "An emoji, a letter or a Lucide icon name (e.g. castle, skull, tent), or pick one below."))
+			.setName(T("iconPicker.icon"))
+			.setDesc(T("iconPicker.anEmojiALetterOr"))
 			.addText((t) => {
 				this.input = t.inputEl;
 				t.setPlaceholder(custom !== null ? `SVG: ${custom}` : (opts.placeholder ?? "📍"))
@@ -103,16 +103,16 @@ export class IconPicker {
 		// Lucide. Lucide está siempre, así que el desplegable se ve aunque no tengas subcarpetas.
 		const folders = lib.folders();
 		const select = filters.createEl("select", { cls: "dropdown" });
-		select.createEl("option", { value: "*", text: T("Todas las carpetas", "All folders") });
+		select.createEl("option", { value: "*", text: T("iconPicker.allFolders") });
 		if (folders.some((f) => f !== ""))
-			for (const f of folders) select.createEl("option", { value: f, text: f === "" ? T("(Carpeta principal)", "(Main folder)") : f });
+			for (const f of folders) select.createEl("option", { value: f, text: f === "" ? T("iconPicker.mainFolder") : f });
 		select.createEl("option", { value: LUCIDE_FOLDER, text: "Lucide" });
 		select.value = this.folder === LUCIDE_FOLDER || this.folder === "*" || folders.includes(this.folder) ? this.folder : "*";
 		select.onchange = () => {
 			this.folder = select.value;
 			this.renderTiles();
 		};
-		const search = filters.createEl("input", { type: "search", attr: { placeholder: T("Buscar icono…", "Search icons…") } });
+		const search = filters.createEl("input", { type: "search", attr: { placeholder: T("iconPicker.searchIcons") } });
 		search.value = this.query;
 		// Con muchos iconos, filtrar en cada tecla se nota: se espera a que deje de escribir.
 		search.oninput = () => {
@@ -127,7 +127,7 @@ export class IconPicker {
 			const reload = this.opts.reload;
 			const b = filters.createEl("button", { cls: "clickable-icon strakes-icon-reload" });
 			setIcon(b, "refresh-cw");
-			setTooltip(b, T("Recargar iconos de la carpeta", "Reload icons from the folder"));
+			setTooltip(b, T("iconPicker.reloadIconsFromTheFolder"));
 			b.onclick = () => void reload().then(() => this.buildGrid());
 		}
 		this.tilesEl = box.createDiv("strakes-icon-grid");
@@ -154,10 +154,7 @@ export class IconPicker {
 			grid.addClass("is-empty");
 			grid.createDiv({
 				cls: "setting-item-description",
-				text: T(
-					"Aún no tienes iconos SVG. Impórtalos desde los ajustes del plugin o cópialos (también en subcarpetas) en su carpeta de iconos y pulsa ↻.",
-					"You don't have any SVG icons yet. Import them from the plugin settings, or copy them (subfolders work too) into its icons folder and press ↻.",
-				),
+				text: T("iconPicker.youDontHaveAnySvg"),
 			});
 			return;
 		}
@@ -173,7 +170,7 @@ export class IconPicker {
 		});
 		if (!shown.length) {
 			grid.addClass("is-empty");
-			grid.createDiv({ cls: "setting-item-description", text: T("Ningún icono coincide con el filtro.", "No icons match the filter.") });
+			grid.createDiv({ cls: "setting-item-description", text: T("iconPicker.noIconsMatchTheFilter") });
 			return;
 		}
 		const color = this.opts.iconColor;
@@ -277,8 +274,8 @@ export class IconColorControl {
 		const check = label.createEl("input", { type: "checkbox" });
 		check.checked = native;
 		check.disabled = !canColor;
-		label.appendText(T("Color nativo", "Native color"));
-		if (!canColor) setTooltip(label, T("Los emojis tienen sus propios colores y no se pueden recolorear", "Emojis have their own colors and can't be recolored"));
+		label.appendText(T("iconPicker.nativeColor"));
+		if (!canColor) setTooltip(label, T("iconPicker.emojisHaveTheirOwnColors"));
 		check.onchange = () => {
 			// Al desmarcar se recupera el último color elegido.
 			this.opts.color = check.checked ? undefined : this.last;

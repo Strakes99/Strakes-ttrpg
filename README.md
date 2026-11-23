@@ -6,7 +6,7 @@ A toolkit for game masters who run tabletop RPGs from Obsidian:
 - **Player screen** — a separate window for your second monitor or projector that shows notes, sections, selections, images and maps to your players.
 - **Initiative tracker** — turns, rounds, hit points (including temporary HP), conditions with icons, and a portrait "cards" view for the player screen.
 
-> The interface is available in **English** and **Spanish** and follows Obsidian's display language: Spanish when Obsidian is set to Spanish, English for every other language.
+> The interface is available in **English** and **Spanish** and follows Obsidian's display language: Spanish when Obsidian is set to Spanish, English for every other language. Want it in your language? See [Translations](#translations).
 
 Desktop only (it uses a pop-out window for the player screen). Requires Obsidian 1.13.0 or later.
 
@@ -111,6 +111,18 @@ Opens in the right sidebar.
 - **Whole map**: right-click the fit button to show the players the whole map without moving your view (in live view, your view moves so the frame holds the whole map).
 - The fog always covers the whole map for the players, also while their view flies to a new place.
 - What the players can't see is shown semi-transparent in your editor (the transparency is a setting).
+
+## Translations
+
+The interface text lives in one file per language, in [`src/i18n/locales/`](src/i18n/locales). Adding a language doesn't require touching the code:
+
+1. Copy `en.json` to `<code>.json`, where `<code>` is Obsidian's language code in lowercase (`fr`, `de`, `pt-br`…). A file without a region code (`pt`) is used for every region.
+2. Translate the values. Keep the keys and anything between `{{` and `}}` exactly as they are: those are filled in by the plugin.
+3. Plurals: keys ending in `_one` and `_other` are the singular and plural forms of the same text. If your language needs more forms, add them with the [Unicode plural categories](https://cldr.unicode.org/index/cldr-spec/plural-rules) (`_zero`, `_two`, `_few`, `_many`).
+4. Register the file in [`src/i18n/index.ts`](src/i18n/index.ts): import it and add it to `LOCALES`.
+5. Run `npm test`. It checks that your file only uses existing keys and keeps the same `{{…}}` values.
+
+Anything you leave out is shown in English, so a partial translation works. The `srd.*` keys are the condition texts from the SRD 5.2: a translation of them is a derivative of that material and keeps its CC-BY-4.0 license (see [Attribution](#attribution)). A few words the plugin recognizes when you type them (unit names like `km` or `miles`, durations) are matched in English and Spanish only; they're in `src/map/mapData.ts` if you want to add yours.
 
 ## Data and files
 

@@ -183,8 +183,9 @@ export class InitiativeTracker {
 		Object.assign(c, patch);
 		// Bajar los PG a mano también es daño (avisos de tiradas de salvación).
 		if ("hp" in patch && oldHp !== null && c.hp !== null && c.hp < oldHp) this.damageSaves(c, oldHp - c.hp);
-		// Cambiar de bando (PJ ↔ enemigo) no «cura» nada: las automáticas que terminan por eso no dejan nada ni avisan.
-		this.followAutoChanges(c, before, "hp" in patch);
+		// Cambiar los PG (actuales o máximos) es un cambio natural: una automática que termina por eso deja
+		// lo suyo y avisa. Cambiar de bando (PJ ↔ enemigo) no «cura» nada: no deja nada ni avisa.
+		this.followAutoChanges(c, before, "hp" in patch || "maxHp" in patch);
 		this.checkEndings(c);
 		if (resort) this.sortInPlace();
 		this.changed();
@@ -250,7 +251,7 @@ export class InitiativeTracker {
 		const after = this.autoConditions(c);
 		for (const [id, a] of after)
 			if (!before.has(id) && a.info.rules.announce)
-				new Notice(T(`${c.name}: ${a.info.name} (${a.reason ?? ""}).`, `${c.name}: ${a.info.name} (${a.reason ?? ""}).`), 6000);
+				new Notice(T("tracker.autoConditionChange", { name: c.name, infoName: a.info.name, reason: a.reason ?? "" }), 6000);
 		if (!natural) return;
 		for (const [id, a] of before) {
 			if (after.has(id)) continue;
@@ -258,8 +259,8 @@ export class InitiativeTracker {
 			if (a.info.rules.announce)
 				new Notice(
 					left.length
-						? T(`${c.name}: termina ${a.info.name} (sigue ${left.join(", ")}).`, `${c.name}: ${a.info.name} ends (still ${left.join(", ")}).`)
-						: T(`${c.name}: termina ${a.info.name}.`, `${c.name}: ${a.info.name} ends.`),
+						? T("tracker.endsStill", { name: c.name, infoName: a.info.name, left: left.join(", ") })
+						: T("tracker.ends", { name: c.name, infoName: a.info.name }),
 					6000,
 				);
 		}
@@ -288,10 +289,7 @@ export class InitiativeTracker {
 			if (a.info.rules.endsAtZeroHp && c.hp !== null && c.hp <= 0) continue;
 			const dc = concentrationDC(damage);
 			new Notice(
-				T(
-					`${c.name} recibe ${damage} de daño: tirada de salvación de ${save.ability} CD ${dc} para mantener ${a.info.name}.`,
-					`${c.name} takes ${damage} damage: DC ${dc} ${save.ability} saving throw to maintain ${a.info.name}.`,
-				),
+				T("tracker.takesDamageDcSavingThrow", { name: c.name, damage, ability: save.ability, dc, infoName: a.info.name }),
 				8000,
 			);
 		}
@@ -306,7 +304,7 @@ export class InitiativeTracker {
 			const info = conditionById(e.id, this.plugin.settings);
 			if (!info) continue;
 			let reason = "";
-			if (info.rules.endsAtZeroHp && c.hp !== null && c.hp <= 0) reason = T("0 PG", "0 HP");
+			if (info.rules.endsAtZeroHp && c.hp !== null && c.hp <= 0) reason = T("tracker.n0Hp");
 			else if (info.rules.endsWith?.length) {
 				const ender = combatantConditions(c, this.plugin.settings).find((a) => a.info.id !== info.id && info.rules.endsWith!.includes(a.info.id));
 				if (ender) reason = ender.info.name;
@@ -314,7 +312,7 @@ export class InitiativeTracker {
 			if (!reason) continue;
 			c.conditions = c.conditions.filter((x) => x.id !== e.id);
 			this.leave(c, info.rules.leaves);
-			new Notice(T(`${c.name} pierde ${info.name} (${reason}).`, `${c.name} loses ${info.name} (${reason}).`), 6000);
+			new Notice(T("tracker.loses", { name: c.name, infoName: info.name, reason }), 6000);
 		}
 	}
 
@@ -328,8 +326,8 @@ export class InitiativeTracker {
 		const prev = c.tempHp ?? 0;
 		c.tempHp = amount > 0 ? amount : null;
 		if (prev > 0 && amount > 0)
-			new Notice(T(`${c.name}: los PG temporales no se acumulan. ${prev} → ${amount}.`, `${c.name}: temporary HP doesn't stack. ${prev} → ${amount}.`), 6000);
-		else if (prev > 0 && amount === 0) new Notice(T(`${c.name}: PG temporales quitados (${prev}).`, `${c.name}: temporary HP removed (${prev}).`));
+			new Notice(T("tracker.temporaryHpDoesntStack", { name: c.name, prev, amount }), 6000);
+		else if (prev > 0 && amount === 0) new Notice(T("tracker.temporaryHpRemoved", { name: c.name, prev }));
 		this.changed();
 	}
 
@@ -466,7 +464,7 @@ export class InitiativeTracker {
 	casterName(e: ConditionEntry): string {
 		if (!e.caster) return "";
 		if ("text" in e.caster) return e.caster.text;
-		return this.combatants.find((x) => x.id === (e.caster as { id: string }).id)?.name ?? T("(ya no está)", "(no longer present)");
+		return this.combatants.find((x) => x.id === (e.caster as { id: string }).id)?.name ?? T("tracker.noLongerPresent");
 	}
 
 	/**
@@ -479,6 +477,9 @@ export class InitiativeTracker {
 		const saves: { c: Combatant; e: ConditionEntry; s: EntrySave }[] = [];
 		for (const c of this.combatants) {
 			for (const e of c.conditions) {
+				// Una integrada oculta en los ajustes no cuenta para nada mientras lo esté: ni avanza su
+				// duración ni repite salvaciones. Si se vuelve a mostrar, sigue donde estaba.
+				if (this.isHiddenCondition(e.id)) continue;
 				const d = e.duration;
 				if (d && d.kind !== "concentration") {
 					const reason = this.tickDuration(c, e, d, fromId, toId, roundsPassed);
@@ -494,19 +495,25 @@ export class InitiativeTracker {
 		for (const x of saves) if (x.c.conditions.includes(x.e)) this.saveNotice(x.c, x.e, x.s);
 	}
 
+	/** ¿Es una integrada que el usuario ocultó en los ajustes? (las ocultas no cuentan para nada) */
+	private isHiddenCondition(id: string): boolean {
+		return conditionById(id, this.plugin.settings, true)?.hidden === true;
+	}
+
 	/** Avanza una duración por turnos o rondas. Devuelve el motivo si termina ahora. */
 	private tickDuration(c: Combatant, e: ConditionEntry, d: Exclude<EntryDuration, { kind: "concentration" }>, fromId: string | null, toId: string, roundsPassed: number): string | null {
 		if (d.kind === "rounds") {
 			const anchorAlive = d.anchorId !== null && this.combatants.some((x) => x.id === d.anchorId);
 			if (anchorAlive ? toId === d.anchorId : roundsPassed > 0) d.left -= anchorAlive ? 1 : roundsPassed;
-			return d.left <= 0 ? T(`${d.rounds} ronda${d.rounds === 1 ? "" : "s"}`, `${d.rounds} round${d.rounds === 1 ? "" : "s"}`) : null;
+			return d.left <= 0 ? T("tracker.rounds", { count: d.rounds }) : null;
 		}
-		const anchor = d.of === "target" ? c.id : this.casterId(e);
-		if (!anchor) return null;
+		// Si el lanzador ya no está en el combate, la duración pasa a contar con el turno del afectado.
+		const caster = this.casterId(e);
+		const anchor = d.of === "target" || !caster || !this.combatants.some((x) => x.id === caster) ? c.id : caster;
 		const whose = this.combatants.find((x) => x.id === anchor)?.name ?? "";
-		if (d.kind === "turn-start") return toId === anchor ? T(`inicio del turno de ${whose}`, `start of ${whose}'s turn`) : null;
+		if (d.kind === "turn-start") return toId === anchor ? T("tracker.startOfSTurn", { whose }) : null;
 		// turn-end: termina al acabar un turno de `anchor` que empezó después de aplicarla.
-		if (fromId === anchor && d.armed) return T(`final del turno de ${whose}`, `end of ${whose}'s turn`);
+		if (fromId === anchor && d.armed) return T("tracker.endOfSTurn", { whose });
 		if (toId === anchor) d.armed = true;
 		return null;
 	}
@@ -515,15 +522,13 @@ export class InitiativeTracker {
 	private saveNotice(c: Combatant, e: ConditionEntry, s: EntrySave): void {
 		const info = conditionById(e.id, this.plugin.settings);
 		if (!info) return;
-		const dc = s.dc ? ` CD ${s.dc}` : "";
+		const dc = s.dc ? T("tracker.repeatSaveDc", { dc: s.dc }) : "";
 		const frag = createFragment();
-		frag.createDiv({
-			text: T(`${c.name} repite la salvación de ${s.ability}${dc} contra ${info.name}.`, `${c.name} repeats the ${s.ability}${dc ? ` (DC ${s.dc})` : ""} save against ${info.name}.`),
-		});
+		frag.createDiv({ text: T("tracker.repeatsTheSave", { name: c.name, ability: s.ability, dc, condition: info.name }) });
 		const buttons = frag.createDiv({ cls: "strakes-notice-buttons" });
 		const notice = new Notice(frag, 0);
-		const success = buttons.createEl("button", { text: T("Superada: quitar", "Success: remove"), cls: "mod-cta" });
-		const fail = buttons.createEl("button", { text: T("Fallada", "Failure") });
+		const success = buttons.createEl("button", { text: T("tracker.successRemove"), cls: "mod-cta" });
+		const fail = buttons.createEl("button", { text: T("tracker.failure") });
 		success.onclick = (ev) => {
 			ev.stopPropagation();
 			notice.hide();
@@ -550,7 +555,7 @@ export class InitiativeTracker {
 			this.followAutoChanges(c, before, true);
 			this.checkEndings(c);
 			new Notice(
-				T(`${c.name}: ${info.name} baja a nivel ${entry.level} (${reason}).`, `${c.name}: ${info.name} drops to level ${entry.level} (${reason}).`),
+				T("tracker.dropsToLevel", { name: c.name, infoName: info.name, level: entry.level, reason }),
 				6000,
 			);
 			return;
@@ -562,8 +567,8 @@ export class InitiativeTracker {
 		const name = info?.name ?? condId;
 		new Notice(
 			left.length
-				? T(`${c.name}: termina ${name} (${reason}; sigue ${left.join(", ")}).`, `${c.name}: ${name} ends (${reason}; still ${left.join(", ")}).`)
-				: T(`${c.name}: termina ${name} (${reason}).`, `${c.name}: ${name} ends (${reason}).`),
+				? T("tracker.endsAndLeaves", { combatant: c.name, condition: name, reason, left: left.join(", ") })
+				: T("tracker.endsReason", { combatant: c.name, condition: name, reason }),
 			6000,
 		);
 	}
@@ -581,13 +586,13 @@ export class InitiativeTracker {
 		for (const c of this.combatants) {
 			for (const e of [...c.conditions]) {
 				const d = e.duration;
-				if (d?.kind !== "concentration") continue;
+				if (d?.kind !== "concentration" || this.isHiddenCondition(e.id)) continue;
 				const caster = this.combatants.find((x) => x.id === this.casterId(e));
 				const conc = caster ? this.concentrationEntry(caster) : null;
 				let reason = "";
-				if (!caster) reason = T("el lanzador ya no está", "the caster is no longer present");
-				else if (!conc) reason = T(`${caster.name} pierde la Concentración`, `${caster.name} loses Concentration`);
-				else if (d.focus !== undefined && conc.focus !== d.focus) reason = T(`${caster.name} cambia de hechizo`, `${caster.name} changes spell`);
+				if (!caster) reason = T("tracker.theCasterIsNoLonger");
+				else if (!conc) reason = T("tracker.losesConcentration", { name: caster.name });
+				else if (d.focus !== undefined && conc.focus !== d.focus) reason = T("tracker.changesSpell", { name: caster.name });
 				if (reason) this.endEntry(c, e.id, reason);
 			}
 		}
@@ -610,7 +615,7 @@ export class InitiativeTracker {
 		const needsCombatant = d && ((d.kind !== "rounds" && d.kind !== "concentration" && d.of === "caster") || d.kind === "concentration");
 		if (needsCombatant && !this.casterId(e)) {
 			delete e.duration;
-			new Notice(T("La duración dependía del lanzador y se ha quitado: elige otra.", "The duration depended on the caster and has been removed: choose another."));
+			new Notice(T("tracker.theDurationDependedOnThe"));
 		} else if (d && d.kind === "concentration") {
 			// Si no se puede aplicar la Concentración al lanzador (p. ej. está oculta), se quita
 			// solo la duración, como en setEntryDuration (si no, terminaría la condición entera).
@@ -650,12 +655,12 @@ export class InitiativeTracker {
 		if (!conc) {
 			const info = allConditions(this.plugin.settings).find((x) => x.rules.concentration);
 			if (!info) {
-				new Notice(T("No hay ninguna condición de concentración disponible (¿está oculta?).", "There's no concentration condition available (is it hidden?)."));
+				new Notice(T("tracker.theresNoConcentrationConditionAvailable"));
 				return false;
 			}
 			conc = { id: info.id };
 			caster.conditions.push(conc);
-			new Notice(T(`${caster.name} no tenía ${info.name}: se le ha aplicado.`, `${caster.name} didn't have ${info.name}: it has been applied.`), 6000);
+			new Notice(T("tracker.didntHaveItHasBeen", { name: caster.name, infoName: info.name }), 6000);
 		}
 		e.duration.focus = conc.focus;
 		return true;

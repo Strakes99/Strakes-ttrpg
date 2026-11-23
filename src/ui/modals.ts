@@ -25,17 +25,17 @@ class IconConflictModal extends Modal {
 	onOpen(): void {
 		const c = this.conflict;
 		const el = this.contentEl;
-		this.titleEl.setText(T(`Ya existe un icono «${c.name}»`, `An icon "${c.name}" already exists`));
+		this.titleEl.setText(T("modals.anIconAlreadyExists", { name: c.name }));
 		el.createEl("p", {
 			cls: "setting-item-description",
 			text: c.folder
-				? T(`En la carpeta «${c.folder}». Puedes reemplazarlo, guardar el nuevo con otro nombre u omitirlo.`, `In the "${c.folder}" folder. You can replace it, save the new one with another name or skip it.`)
-				: T("En la carpeta principal de iconos. Puedes reemplazarlo, guardar el nuevo con otro nombre u omitirlo.", "In the main icons folder. You can replace it, save the new one with another name or skip it."),
+				? T("modals.inTheFolderYouCan", { folder: c.folder })
+				: T("modals.inTheMainIconsFolder"),
 		});
 		let newName = c.suggested;
 		const error = el.createDiv({ cls: "strakes-warning" });
 		error.hide();
-		new Setting(el).setName(T("Nuevo nombre", "New name")).addText((t) => {
+		new Setting(el).setName(T("modals.newName")).addText((t) => {
 			t.setValue(newName).onChange((v) => {
 				newName = v;
 				error.hide();
@@ -45,30 +45,30 @@ class IconConflictModal extends Modal {
 		let applyToRest = false;
 		if (c.remaining > 0)
 			new Setting(el)
-				.setName(T("Hacer lo mismo con el resto", "Do the same for the rest"))
-				.setDesc(T("Para los siguientes iconos con nombre repetido (al guardar con otro nombre, se usa el primero libre).", "For the following icons with a repeated name (when saving with another name, the first free one is used)."))
+				.setName(T("modals.doTheSameForThe"))
+				.setDesc(T("modals.forTheFollowingIconsWith"))
 				.addToggle((t) => t.setValue(false).onChange((v) => (applyToRest = v)));
 		new Setting(el)
 			.addButton((b) =>
 				b
-					.setButtonText(T("Reemplazar", "Replace"))
+					.setButtonText(T("modals.replace"))
 					.setDestructive()
 					.onClick(() => this.done({ action: "replace", applyToRest })),
 			)
-			.addButton((b) => b.setButtonText(T("Omitir", "Skip")).onClick(() => this.done({ action: "skip", applyToRest })))
+			.addButton((b) => b.setButtonText(T("modals.skip")).onClick(() => this.done({ action: "skip", applyToRest })))
 			.addButton((b) =>
 				b
-					.setButtonText(T("Guardar con el nuevo nombre", "Save with the new name"))
+					.setButtonText(T("modals.saveWithTheNewName"))
 					.setCta()
 					.onClick(async () => {
 						const name = newName.trim();
 						if (!name) {
-							error.setText(T("Escribe un nombre.", "Enter a name."));
+							error.setText(T("modals.enterAName"));
 							error.show();
 							return;
 						}
 						if (await c.exists(name)) {
-							error.setText(T(`También existe «${name}». Elige otro nombre.`, `"${name}" also exists. Choose another name.`));
+							error.setText(T("modals.alsoExistsChooseAnotherName", { name }));
 							error.show();
 							return;
 						}
@@ -131,8 +131,8 @@ class PromptModal extends Modal {
 			}
 		});
 		new Setting(this.contentEl)
-			.addButton((b) => b.setButtonText(T("Aceptar", "OK")).setCta().onClick(() => this.submit()))
-			.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => this.close()));
+			.addButton((b) => b.setButtonText(T("modals.ok")).setCta().onClick(() => this.submit()))
+			.addButton((b) => b.setButtonText(T("modals.cancel")).onClick(() => this.close()));
 		window.setTimeout(() => {
 			input.focus();
 			input.select();
@@ -152,7 +152,7 @@ class PromptModal extends Modal {
 }
 
 /** Pide confirmación (sí/no). */
-export function confirmDialog(app: App, title: string, message: string, okText = T("Eliminar", "Delete")): Promise<boolean> {
+export function confirmDialog(app: App, title: string, message: string, okText = T("modals.delete")): Promise<boolean> {
 	return new Promise((resolve) => {
 		const m = new Modal(app);
 		let ok = false;
@@ -170,7 +170,7 @@ export function confirmDialog(app: App, title: string, message: string, okText =
 						m.close();
 					}),
 			)
-			.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => m.close()));
+			.addButton((b) => b.setButtonText(T("modals.cancel")).onClick(() => m.close()));
 		m.onClose = () => resolve(ok);
 		m.open();
 	});
@@ -189,7 +189,7 @@ export class ImagePickerModal extends FuzzySuggestModal<TFile> {
 	constructor(
 		app: App,
 		private onPick: (f: TFile) => void,
-		placeholder = T("Elige una imagen…", "Choose an image…"),
+		placeholder = T("modals.chooseAnImage"),
 		private initialQuery = "",
 	) {
 		super(app);

@@ -93,9 +93,9 @@ function pickPortraitImage(app: App, onPicked: (p: Portrait) => void, name = "")
 		(file) => {
 			void loadImageSize(app.vault.getResourcePath(file))
 				.then(({ width, height }) => onPicked(coverCrop(file.path, width, height)))
-				.catch(() => new Notice(T("No se pudo cargar la imagen", "Couldn't load the image")));
+				.catch(() => new Notice(T("portrait.couldntLoadTheImage")));
 		},
-		T("Elige la imagen del retrato…", "Choose the portrait image…"),
+		T("portrait.chooseThePortraitImage"),
 		splitName(name).base,
 	).open();
 }
@@ -133,10 +133,10 @@ class PortraitModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.titleEl.setText(T("Encuadrar retrato", "Frame portrait"));
+		this.titleEl.setText(T("portrait.framePortrait"));
 		this.modalEl.addClass("strakes-portrait-modal");
 		const el = this.contentEl;
-		el.createDiv({ cls: "setting-item-description", text: T("Arrastra para mover la imagen y usa la rueda (o la barra) para acercar o alejar. Lo que queda dentro del marco es el retrato.", "Drag to move the image and use the wheel (or the slider) to zoom in or out. Whatever stays inside the frame is the portrait.") });
+		el.createDiv({ cls: "setting-item-description", text: T("portrait.dragToMoveTheImage") });
 
 		const F = PortraitModal.FRAME;
 		const S = PortraitModal.STAGE;
@@ -169,7 +169,7 @@ class PortraitModal extends Modal {
 		// Zoom: barra a todo el ancho (escala logarítmica, muchos pasos) y porcentaje editable,
 		// sincronizados en tiempo real con la rueda y los botones.
 		const zoomRow = el.createDiv("strakes-portrait-zoom");
-		zoomRow.createSpan({ cls: "strakes-portrait-zoom-label", text: T("Zoom", "Zoom") });
+		zoomRow.createSpan({ cls: "strakes-portrait-zoom-label", text: T("portrait.zoom") });
 		const slider = zoomRow.createEl("input", { type: "range", cls: "slider strakes-portrait-zoom-slider" });
 		slider.min = String(PortraitModal.ZOOM_MIN_LOG);
 		slider.max = String(PortraitModal.ZOOM_MAX_LOG);
@@ -190,20 +190,20 @@ class PortraitModal extends Modal {
 		});
 
 		new Setting(el)
-			.addButton((b) => b.setButtonText(T("Cambiar imagen…", "Change image…")).onClick(() => pickPortraitImage(this.app, (np) => this.setImage(np), this.name)))
-			.addButton((b) => b.setButtonText(T("Encajar", "Fit")).setTooltip(T("Imagen completa dentro del marco", "Whole image inside the frame")).onClick(() => this.preset(fitCrop)))
-			.addButton((b) => b.setButtonText(T("Rellenar", "Fill")).setTooltip(T("La imagen cubre todo el marco", "The image covers the whole frame")).onClick(() => this.preset(coverCrop)));
+			.addButton((b) => b.setButtonText(T("portrait.changeImage")).onClick(() => pickPortraitImage(this.app, (np) => this.setImage(np), this.name)))
+			.addButton((b) => b.setButtonText(T("portrait.fit")).setTooltip(T("portrait.wholeImageInsideTheFrame")).onClick(() => this.preset(fitCrop)))
+			.addButton((b) => b.setButtonText(T("portrait.fill")).setTooltip(T("portrait.theImageCoversTheWhole")).onClick(() => this.preset(coverCrop)));
 		new Setting(el)
 			.addButton((b) =>
 				b
-					.setButtonText(T("Quitar retrato", "Remove portrait"))
+					.setButtonText(T("portrait.removePortrait"))
 					.setDestructive()
 					.onClick(() => this.finish(null)),
 			)
-			.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => this.close()))
+			.addButton((b) => b.setButtonText(T("portrait.cancel")).onClick(() => this.close()))
 			.addButton((b) =>
 				b
-					.setButtonText(T("Guardar", "Save"))
+					.setButtonText(T("portrait.save"))
 					.setCta()
 					.onClick(() => this.finish(this.p)),
 			);

@@ -1,3 +1,5 @@
+import en from "../src/i18n/locales/en.json";
+import es from "../src/i18n/locales/es.json";
 import { ConditionCatalog, CombatantState, activeConditions, allConditions, conditionById, BUILTIN_CONDITIONS, hpTriggerHolds, concentrationDC } from "../src/initiative/conditions";
 import { InitiativeTracker } from "../src/initiative/tracker";
 import type { ConditionEntry } from "../src/types";
@@ -6,7 +8,9 @@ const cat: ConditionCatalog = { customConditions: [], conditionOverrides: {} };
 const ids = (e: ConditionEntry[], c: ConditionCatalog = cat, who?: CombatantState) => activeConditions(e, c, who).map((a) => `${a.info.id}${a.auto ? "@" : a.explicit ? "" : "*"}${a.level ? ":" + a.level : ""}`);
 
 t("18 condiciones (con Muerto)", BUILTIN_CONDITIONS.length, 18);
-t("textos es/en completos", BUILTIN_CONDITIONS.every((b) => b.name.es && b.name.en && b.sections.every((s) => s.text.es && s.text.en)), true);
+// Los textos están en los archivos de idioma: nombre y texto de cada apartado, en los dos.
+const filled = (key: string) => [en, es].every((l) => typeof (l as Record<string, string>)[key] === "string" && (l as Record<string, string>)[key] !== "");
+t("textos es/en completos", BUILTIN_CONDITIONS.every((b) => filled(b.name) && b.sections.every((s) => filled(s.text))), true);
 const bloodiedTrigger = conditionById("bloodied", cat)!.rules.hpTriggers![0];
 const bloodied = (hp: number | null, maxHp: number | null) => hpTriggerHolds(bloodiedTrigger, { isPlayer: false, hp, maxHp });
 t("ensangrentado: mitad o menos", [bloodied(10, 20), bloodied(11, 20), bloodied(null, 20), bloodied(5, null)], [true, false, false, false]);

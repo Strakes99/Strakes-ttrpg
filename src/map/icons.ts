@@ -107,7 +107,7 @@ export class IconLibrary {
 		for (const [i, file] of list.entries()) {
 			const text = await file.text();
 			if (!sanitizeSvg(text)) {
-				new Notice(T(`«${file.name}» no es un SVG válido; se omitió.`, `"${file.name}" isn't a valid SVG; skipped.`));
+				new Notice(T("icons.isntAValidSvgSkipped", { name: file.name }));
 				continue;
 			}
 			let name = safeIconName(basename(file.name)) || "icono";
@@ -148,7 +148,7 @@ export class IconLibrary {
 			const electron = (window as unknown as { require: (m: string) => { shell: { openPath(p: string): Promise<string> } } }).require("electron");
 			void electron.shell.openPath(full);
 		} catch {
-			new Notice(T(`Carpeta de iconos: ${full}`, `Icons folder: ${full}`));
+			new Notice(T("icons.iconsFolder", { full }));
 		}
 	}
 

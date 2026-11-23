@@ -19,32 +19,30 @@ function describeDuration(tracker: InitiativeTracker, c: Combatant, e: Condition
 	const d = e.duration;
 	if (!d) return "";
 	if (d.kind === "rounds")
-		return d.left === 1 ? T("1 ronda más", "1 more round") : T(`${d.left} rondas más`, `${d.left} more rounds`);
+		return T("conditionDetails.moreRounds", { count: d.left });
 	if (d.kind === "concentration") {
 		const spell = d.focus ? ` (${d.focus})` : "";
-		return T(`mientras ${tracker.casterName(e)} mantenga la Concentración${spell}`, `while ${tracker.casterName(e)} keeps Concentration${spell}`);
+		return T("conditionDetails.whileKeepsConcentration", { caster: tracker.casterName(e), spell });
 	}
 	const who = d.of === "target" ? c.name : tracker.casterName(e);
 	return d.kind === "turn-end"
-		? T(`hasta el final del siguiente turno de ${who}`, `until the end of ${who}'s next turn`)
-		: T(`hasta el inicio del siguiente turno de ${who}`, `until the start of ${who}'s next turn`);
+		? T("conditionDetails.untilTheEndOfS", { who })
+		: T("conditionDetails.untilTheStartOfS", { who });
 }
 
 /** Salvación en palabras: «Sabiduría CD 13, al final de cada turno». */
 function describeSave(s: EntrySave): string {
-	const dc = s.dc ? ` CD ${s.dc}` : "";
-	return s.when === "end"
-		? T(`${s.ability}${dc}, al final de cada turno`, `${s.ability}${s.dc ? ` DC ${s.dc}` : ""}, at the end of each turn`)
-		: T(`${s.ability}${dc}, al inicio de cada turno`, `${s.ability}${s.dc ? ` DC ${s.dc}` : ""}, at the start of each turn`);
+	const dc = s.dc ? T("conditionDetails.saveDc", { dc: s.dc }) : "";
+	return T(s.when === "end" ? "conditionDetails.saveAtTurnEnd" : "conditionDetails.saveAtTurnStart", { ability: s.ability, dc });
 }
 
 /** Líneas extra del tooltip del icono (duración, lanzador, salvación, hechizo). */
 export function entryTooltipLines(tracker: InitiativeTracker, c: Combatant, e: ConditionEntry): string[] {
 	const lines: string[] = [];
-	if (e.focus) lines.push(T(`Hechizo: ${e.focus}`, `Spell: ${e.focus}`));
+	if (e.focus) lines.push(T("conditionDetails.spell", { focus: e.focus }));
 	if (e.duration) lines.push(describeDuration(tracker, c, e));
-	if (e.caster) lines.push(T(`Lanzador: ${tracker.casterName(e)}`, `Caster: ${tracker.casterName(e)}`));
-	if (e.save) lines.push(T(`Salvación: ${describeSave(e.save)}`, `Save: ${describeSave(e.save)}`));
+	if (e.caster) lines.push(T("conditionDetails.caster", { caster: tracker.casterName(e) }));
+	if (e.save) lines.push(T("conditionDetails.save", { save: describeSave(e.save) }));
 	return lines;
 }
 
@@ -68,26 +66,23 @@ export function renderEntryDetails(parent: HTMLElement, plugin: StrakesTTRPG, c:
 		line.createSpan({ cls: "strakes-cond-detail-text", text: value });
 		const pen = line.createEl("button", { cls: "clickable-icon" });
 		setIcon(pen, "pencil");
-		setTooltip(pen, T("Cambiar", "Change"));
+		setTooltip(pen, T("conditionDetails.change"));
 		pen.onclick = edit;
 		const x = line.createEl("button", { cls: "clickable-icon" });
 		setIcon(x, "x");
-		setTooltip(x, T("Quitar", "Remove"));
+		setTooltip(x, T("conditionDetails.remove"));
 		x.onclick = clear;
 	};
 	if (info.rules.concentration)
 		row(
 			"sparkles",
-			T("Hechizo", "Spell"),
-			e.focus ? T(`Hechizo: ${e.focus}`, `Spell: ${e.focus}`) : "",
+			T("conditionDetails.spell2"),
+			e.focus ? T("conditionDetails.spell", { focus: e.focus }) : "",
 			() =>
-				void promptText(app, T("¿En qué se concentra?", "What is it concentrating on?"), {
+				void promptText(app, T("conditionDetails.whatIsItConcentratingOn"), {
 					value: e.focus ?? "",
-					placeholder: T("Inmovilizar persona", "Hold Person"),
-					description: T(
-						"Si cambias de hechizo, terminan las condiciones que duraban mientras se mantuviera esta concentración.",
-						"If you change spell, the conditions that lasted while this concentration was kept will end.",
-					),
+					placeholder: T("conditionDetails.holdPerson"),
+					description: T("conditionDetails.ifYouChangeSpellThe"),
 				}).then((v) => {
 					if (v !== null) tracker.setFocus(c.id, e.id, v);
 				}),
@@ -95,22 +90,22 @@ export function renderEntryDetails(parent: HTMLElement, plugin: StrakesTTRPG, c:
 		);
 	row(
 		"hourglass",
-		T("Duración", "Duration"),
+		T("conditionDetails.duration"),
 		e.duration ? describeDuration(tracker, c, e) : "",
 		() => new DurationModal(app, plugin, c, e).open(),
 		() => tracker.setEntryDuration(c.id, e.id, null),
 	);
 	row(
 		"user",
-		T("Lanzador", "Caster"),
-		e.caster ? T(`Lanzador: ${tracker.casterName(e)}`, `Caster: ${tracker.casterName(e)}`) : "",
+		T("conditionDetails.caster2"),
+		e.caster ? T("conditionDetails.caster", { caster: tracker.casterName(e) }) : "",
 		() => pickCaster(app, plugin, (caster) => tracker.setEntryCaster(c.id, e.id, caster)),
 		() => tracker.setEntryCaster(c.id, e.id, null),
 	);
 	row(
 		"dices",
-		T("Salvación", "Save"),
-		e.save ? T(`Salvación: ${describeSave(e.save)}`, `Save: ${describeSave(e.save)}`) : "",
+		T("conditionDetails.save2"),
+		e.save ? T("conditionDetails.save", { save: describeSave(e.save) }) : "",
 		() => new SaveModal(app, plugin, c, e).open(),
 		() => tracker.setEntrySave(c.id, e.id, null),
 	);
@@ -135,7 +130,7 @@ class CasterPicker extends FuzzySuggestModal<CasterOption> {
 		private onPick: (caster: { id: string } | { text: string }) => void,
 	) {
 		super(app);
-		this.setPlaceholder(T("Elige el lanzador…", "Choose the caster…"));
+		this.setPlaceholder(T("conditionDetails.chooseTheCaster"));
 	}
 
 	getItems(): CasterOption[] {
@@ -146,19 +141,19 @@ class CasterPicker extends FuzzySuggestModal<CasterOption> {
 	}
 
 	getItemText(o: CasterOption): string {
-		return o.kind === "combatant" ? o.c.name : T("Otro…", "Other…");
+		return o.kind === "combatant" ? o.c.name : T("conditionDetails.other");
 	}
 
 	renderSuggestion(match: { item: CasterOption }, el: HTMLElement): void {
 		const o = match.item;
 		el.addClass("strakes-caster-option");
 		if (o.kind === "other") {
-			el.createSpan({ text: T("Otro… (trampa, entorno)", "Other… (trap, environment)") });
+			el.createSpan({ text: T("conditionDetails.otherTrapEnvironment") });
 			return;
 		}
 		el.createSpan({ text: o.c.name });
-		el.createSpan({ cls: `strakes-caster-tag ${o.c.isPlayer ? "is-player" : "is-enemy"}`, text: o.c.isPlayer ? T("PJ/aliado", "PC/ally") : T("Enemigo", "Enemy") });
-		if (o.current) el.createSpan({ cls: "strakes-caster-current", text: T("turno actual", "current turn") });
+		el.createSpan({ cls: `strakes-caster-tag ${o.c.isPlayer ? "is-player" : "is-enemy"}`, text: o.c.isPlayer ? T("conditionDetails.pcAlly") : T("conditionDetails.enemy") });
+		if (o.current) el.createSpan({ cls: "strakes-caster-current", text: T("conditionDetails.currentTurn") });
 	}
 
 	onChooseItem(o: CasterOption): void {
@@ -166,12 +161,9 @@ class CasterPicker extends FuzzySuggestModal<CasterOption> {
 			this.onPick({ id: o.c.id });
 			return;
 		}
-		void promptText(this.app, T("Lanzador", "Caster"), {
-			placeholder: T("Altar maldito", "Cursed altar"),
-			description: T(
-				"Solo informativo: no tiene turnos ni Concentración, así que no sirve para duraciones «del lanzador».",
-				"Informative only: it has no turns or Concentration, so it can't be used for \"caster\" durations.",
-			),
+		void promptText(this.app, T("conditionDetails.caster2"), {
+			placeholder: T("conditionDetails.cursedAltar"),
+			description: T("conditionDetails.informativeOnlyItHasNo"),
 		}).then((v) => {
 			if (v && v.trim()) this.onPick({ text: v.trim() });
 		});
@@ -210,20 +202,20 @@ class DurationModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.titleEl.setText(T("Duración", "Duration"));
+		this.titleEl.setText(T("conditionDetails.duration"));
 		this.render();
 	}
 
 	private render(): void {
 		const el = this.contentEl;
 		el.empty();
-		new Setting(el).setName(T("Termina", "Ends")).addDropdown((dd) =>
+		new Setting(el).setName(T("conditionDetails.ends")).addDropdown((dd) =>
 			dd
 				.addOptions({
-					"turn-end": T("Al final del siguiente turno", "At the end of the next turn"),
-					"turn-start": T("Al inicio del siguiente turno", "At the start of the next turn"),
-					rounds: T("Tras un número de rondas", "After a number of rounds"),
-					concentration: T("Cuando el lanzador pierda la Concentración", "When the caster loses Concentration"),
+					"turn-end": T("conditionDetails.atTheEndOfThe"),
+					"turn-start": T("conditionDetails.atTheStartOfThe"),
+					rounds: T("conditionDetails.afterANumberOfRounds"),
+					concentration: T("conditionDetails.whenTheCasterLosesConcentration"),
 				})
 				.setValue(this.kind)
 				.onChange((v) => {
@@ -232,9 +224,9 @@ class DurationModal extends Modal {
 				}),
 		);
 		if (this.kind === "turn-end" || this.kind === "turn-start")
-			new Setting(el).setName(T("Turno de", "Turn of")).addDropdown((dd) =>
+			new Setting(el).setName(T("conditionDetails.turnOf")).addDropdown((dd) =>
 				dd
-					.addOptions({ target: T(`${this.c.name} (el objetivo)`, `${this.c.name} (the target)`), caster: T("El lanzador", "The caster") })
+					.addOptions({ target: T("conditionDetails.theTarget", { name: this.c.name }), caster: T("conditionDetails.theCaster") })
 					.setValue(this.of)
 					.onChange((v) => {
 						this.of = v as "target" | "caster";
@@ -243,12 +235,9 @@ class DurationModal extends Modal {
 			);
 		if (this.kind === "rounds")
 			new Setting(el)
-				.setName(T("Rondas", "Rounds"))
+				.setName(T("conditionDetails.rounds"))
 				.setDesc(
-					T(
-						"Termina al empezar el turno de quien lo tiene ahora, tras ese número de rondas (1 minuto = 10 rondas).",
-						"It ends at the start of the turn of whoever has it now, after that many rounds (1 minute = 10 rounds).",
-					),
+					T("conditionDetails.itEndsAtTheStart"),
 				)
 				.addText((t) => {
 					t.inputEl.type = "number";
@@ -262,13 +251,13 @@ class DurationModal extends Modal {
 		// Lanzador: necesario para «turno del lanzador» y «concentración».
 		const needsCaster = this.kind === "concentration" || ((this.kind === "turn-end" || this.kind === "turn-start") && this.of === "caster");
 		if (needsCaster) {
-			const caster = new Setting(el).setName(T("Lanzador", "Caster"));
-			if (!this.e.caster) caster.setDesc(T("Aún no tiene: elígelo.", "None yet: choose one."));
+			const caster = new Setting(el).setName(T("conditionDetails.caster2"));
+			if (!this.e.caster) caster.setDesc(T("conditionDetails.noneYetChooseOne"));
 			else if (!this.casterIsCombatant())
-				caster.setDesc(T(`«${this.tracker.casterName(this.e)}» no es un combatiente: elige uno.`, `"${this.tracker.casterName(this.e)}" isn't a combatant: choose one.`));
+				caster.setDesc(T("conditionDetails.isntACombatantChooseOne", { caster: this.tracker.casterName(this.e) }));
 			else caster.setDesc(this.tracker.casterName(this.e));
 			caster.addButton((b) =>
-				b.setButtonText(this.e.caster ? T("Cambiar…", "Change…") : T("Elegir…", "Choose…")).onClick(() =>
+				b.setButtonText(this.e.caster ? T("conditionDetails.change2") : T("conditionDetails.choose")).onClick(() =>
 					pickCaster(this.app, this.plugin, (picked) => {
 						this.tracker.setEntryCaster(this.c.id, this.e.id, picked);
 						this.refreshEntry();
@@ -278,14 +267,14 @@ class DurationModal extends Modal {
 			);
 		}
 		new Setting(el)
-			.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => this.close()))
+			.addButton((b) => b.setButtonText(T("conditionDetails.cancel")).onClick(() => this.close()))
 			.addButton((b) =>
 				b
-					.setButtonText(T("Guardar", "Save"))
+					.setButtonText(T("conditionDetails.save3"))
 					.setCta()
 					.onClick(() => {
 						if (needsCaster && !this.casterIsCombatant()) {
-							new Notice(T("Esta duración necesita un lanzador que sea un combatiente.", "This duration needs a caster that is a combatant."));
+							new Notice(T("conditionDetails.thisDurationNeedsACaster"));
 							return;
 						}
 						const d =
@@ -327,22 +316,19 @@ class SaveModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.titleEl.setText(T("Tirada de salvación", "Saving throw"));
+		this.titleEl.setText(T("conditionDetails.savingThrow"));
 		const el = this.contentEl;
 		el.createEl("p", {
 			cls: "setting-item-description",
-			text: T(
-				`${this.c.name} repite la tirada en cada uno de sus turnos. Aparecerá un aviso con «Superada» (quita la condición) y «Fallada».`,
-				`${this.c.name} repeats the roll on each of their turns. A notice will show "Success" (removes the condition) and "Failure".`,
-			),
+			text: T("conditionDetails.repeatsTheRollOnEach", { name: this.c.name }),
 		});
-		new Setting(el).setName(T("Característica", "Ability")).addText((t) => {
-			t.setPlaceholder(T("Sabiduría", "Wisdom")).setValue(this.save.ability).onChange((v) => (this.save.ability = v));
+		new Setting(el).setName(T("conditionDetails.ability")).addText((t) => {
+			t.setPlaceholder(T("conditionDetails.wisdom")).setValue(this.save.ability).onChange((v) => (this.save.ability = v));
 			window.setTimeout(() => t.inputEl.focus(), 10);
 		});
 		new Setting(el)
-			.setName(T("CD", "DC"))
-			.setDesc(T("Opcional.", "Optional."))
+			.setName(T("conditionDetails.dc"))
+			.setDesc(T("conditionDetails.optional"))
 			.addText((t) => {
 				t.inputEl.type = "number";
 				t.inputEl.min = "1";
@@ -352,21 +338,21 @@ class SaveModal extends Modal {
 					this.save.dc = n >= 1 ? n : undefined;
 				});
 			});
-		new Setting(el).setName(T("Cuándo", "When")).addDropdown((dd) =>
+		new Setting(el).setName(T("conditionDetails.when")).addDropdown((dd) =>
 			dd
-				.addOptions({ end: T("Al final de cada turno", "At the end of each turn"), start: T("Al inicio de cada turno", "At the start of each turn") })
+				.addOptions({ end: T("conditionDetails.atTheEndOfEach"), start: T("conditionDetails.atTheStartOfEach") })
 				.setValue(this.save.when)
 				.onChange((v) => (this.save.when = v as EntrySave["when"])),
 		);
 		new Setting(el)
-			.addButton((b) => b.setButtonText(T("Cancelar", "Cancel")).onClick(() => this.close()))
+			.addButton((b) => b.setButtonText(T("conditionDetails.cancel")).onClick(() => this.close()))
 			.addButton((b) =>
 				b
-					.setButtonText(T("Guardar", "Save"))
+					.setButtonText(T("conditionDetails.save3"))
 					.setCta()
 					.onClick(() => {
 						if (!this.save.ability.trim()) {
-							new Notice(T("Escribe la característica de la tirada.", "Enter the ability for the roll."));
+							new Notice(T("conditionDetails.enterTheAbilityForThe"));
 							return;
 						}
 						this.plugin.tracker.setEntrySave(this.c.id, this.e.id, { ...this.save, ability: this.save.ability.trim() });

@@ -22,7 +22,7 @@ export class InitiativeView extends ItemView {
 		return VIEW_TYPE_INITIATIVE;
 	}
 	getDisplayText(): string {
-		return T("Iniciativa", "Initiative");
+		return T("initiativeView.initiative");
 	}
 	getIcon(): string {
 		return "swords";
@@ -98,20 +98,20 @@ export class InitiativeView extends ItemView {
 		const h = this.headerEl;
 		h.empty();
 		const top = h.createDiv("strakes-init-top");
-		top.createDiv({ cls: "strakes-init-round", text: T(`Ronda ${this.tracker.state.round}`, `Round ${this.tracker.state.round}`) });
+		top.createDiv({ cls: "strakes-init-round", text: T("initiativeView.round", { round: this.tracker.state.round }) });
 		const nav = top.createDiv("strakes-init-nav");
-		this.iconButton(nav, "chevron-left", T("Turno anterior", "Previous turn"), () => this.tracker.prev());
-		this.iconButton(nav, "chevron-right", T("Siguiente turno", "Next turn"), () => this.tracker.next(), "mod-cta");
-		this.iconButton(nav, "arrow-down-wide-narrow", T("Ordenar por iniciativa", "Sort by initiative"), () => this.tracker.sort());
-		this.iconButton(nav, "more-vertical", T("Más opciones", "More options"), (evt) => this.moreMenu(evt));
+		this.iconButton(nav, "chevron-left", T("initiativeView.previousTurn"), () => this.tracker.prev());
+		this.iconButton(nav, "chevron-right", T("initiativeView.nextTurn"), () => this.tracker.next(), "mod-cta");
+		this.iconButton(nav, "arrow-down-wide-narrow", T("initiativeView.sortByInitiative"), () => this.tracker.sort());
+		this.iconButton(nav, "more-vertical", T("initiativeView.moreOptions"), (evt) => this.moreMenu(evt));
 
 		const show = h.createDiv("strakes-init-show");
-		show.createSpan({ text: T("Jugadores:", "Players:") });
+		show.createSpan({ text: T("initiativeView.players") });
 		const seg = show.createDiv("strakes-segmented");
 		const modes: [InitiativeDisplay, string][] = [
-			["off", T("Oculto", "Hidden")],
-			["overlay", T("Lista", "List")],
-			["cards", T("Tarjetas", "Cards")],
+			["off", T("initiativeView.hidden")],
+			["overlay", T("initiativeView.list")],
+			["cards", T("initiativeView.cards")],
 		];
 		for (const [mode, label] of modes) {
 			const b = seg.createEl("button", { text: label });
@@ -124,26 +124,26 @@ export class InitiativeView extends ItemView {
 				if (mode !== "off") await this.plugin.openPlayerScreen(false);
 			};
 		}
-		this.iconButton(show, "monitor", T("Abrir pantalla de jugadores", "Open player screen"), () => this.plugin.openPlayerScreen(true));
+		this.iconButton(show, "monitor", T("initiativeView.openPlayerScreen"), () => this.plugin.openPlayerScreen(true));
 	}
 
 	private moreMenu(evt: MouseEvent): void {
 		const m = new Menu();
-		m.addItem((i) => i.setTitle(T("Reiniciar combate (ronda 1)", "Restart combat (round 1)")).setIcon("rotate-ccw").onClick(() => this.tracker.restart()));
+		m.addItem((i) => i.setTitle(T("initiativeView.restartCombatRound1")).setIcon("rotate-ccw").onClick(() => this.tracker.restart()));
 		m.addItem((i) =>
 			i
-				.setTitle(T("Quitar enemigos (conservar PJ y aliados)", "Remove enemies (keep PCs and allies)"))
+				.setTitle(T("initiativeView.removeEnemiesKeepPcsAnd"))
 				.setWarning(true)
 				.setIcon("user-minus")
 				.onClick(() => this.tracker.clearMonsters()),
 		);
 		m.addItem((i) =>
 			i
-				.setTitle(T("Vaciar todo", "Clear all"))
+				.setTitle(T("initiativeView.clearAll"))
 				.setWarning(true)
 				.setIcon("trash-2")
 				.onClick(async () => {
-					if (await confirmDialog(this.app, T("Vaciar iniciativa", "Clear initiative"), T("¿Eliminar a todos los combatientes?", "Remove all combatants?")))
+					if (await confirmDialog(this.app, T("initiativeView.clearInitiative"), T("initiativeView.removeAllCombatants")))
 						this.tracker.clearAll();
 				}),
 		);
@@ -157,7 +157,7 @@ export class InitiativeView extends ItemView {
 		list.empty();
 		const combatants = this.tracker.combatants;
 		if (!combatants.length) {
-			list.createDiv({ cls: "strakes-init-empty", text: T("Sin combatientes. Añade algunos abajo.", "No combatants. Add some below.") });
+			list.createDiv({ cls: "strakes-init-empty", text: T("initiativeView.noCombatantsAddSomeBelow") });
 			return;
 		}
 		for (const c of combatants) this.renderRow(list, c);
@@ -174,20 +174,20 @@ export class InitiativeView extends ItemView {
 		const line1 = row.createDiv("strakes-init-line");
 		const turn = line1.createDiv("strakes-init-turn");
 		setIcon(turn, isCurrent ? "play" : "circle");
-		setTooltip(turn, T("Marcar como turno actual", "Set as current turn"));
+		setTooltip(turn, T("initiativeView.setAsCurrentTurn"));
 		turn.onclick = () => this.tracker.setCurrent(c.id);
 
 		// Miniatura del retrato: clic para elegirlo o encuadrarlo.
 		const thumb = line1.createEl("button", { cls: "strakes-init-thumb" });
 		renderPortrait(this.app, thumb, c);
-		setTooltip(thumb, c.portrait ? T("Retrato (clic para encuadrarlo o cambiarlo)", "Portrait (click to frame or change it)") : T("Añadir retrato para el modo Tarjetas", "Add a portrait for Cards mode"));
+		setTooltip(thumb, c.portrait ? T("initiativeView.portraitClickToFrameOr") : T("initiativeView.addAPortraitForCards"));
 		thumb.onclick = () => editPortrait(this.app, c.portrait, (p) => this.tracker.setPortrait(c.id, p), c.name);
 
 		const init = line1.createEl("input", { type: "text", cls: "strakes-init-num", value: String(c.initiative) });
-		setTooltip(init, T("Iniciativa (número, +mod o dados como d20+2)", "Initiative (number, +mod or dice like d20+2)"));
+		setTooltip(init, T("initiativeView.initiativeNumberModOrDice"));
 		init.onchange = () => {
 			const r = parseInitiative(init.value);
-			if (!r) { new Notice(T("Iniciativa no válida", "Invalid initiative")); return; }
+			if (!r) { new Notice(T("initiativeView.invalidInitiative")); return; }
 			if (!/^-?\d+$/.test(init.value.trim())) new Notice(`${c.name}: ${r.detail}`);
 			this.tracker.update(c.id, { initiative: r.value }, true);
 		};
@@ -195,13 +195,13 @@ export class InitiativeView extends ItemView {
 		const name = line1.createEl("input", { type: "text", cls: "strakes-init-name", value: c.name });
 		name.onchange = () => this.tracker.update(c.id, { name: name.value.trim() || c.name });
 
-		this.iconButton(line1, "more-horizontal", T("Opciones", "Options"), (evt) => this.rowMenu(evt, c));
+		this.iconButton(line1, "more-horizontal", T("initiativeView.options"), (evt) => this.rowMenu(evt, c));
 
 		const line2 = row.createDiv("strakes-init-line strakes-init-stats");
 		// CA
 		const acWrap = line2.createDiv("strakes-init-ac");
 		setIcon(acWrap.createSpan("strakes-init-stat-icon"), "shield");
-		const ac = acWrap.createEl("input", { type: "text", value: c.ac === null ? "" : String(c.ac), attr: { placeholder: T("CA", "AC") } });
+		const ac = acWrap.createEl("input", { type: "text", value: c.ac === null ? "" : String(c.ac), attr: { placeholder: T("initiativeView.ac") } });
 		ac.onchange = () => {
 			const n = parseInt(ac.value, 10);
 			this.tracker.update(c.id, { ac: isNaN(n) ? null : n });
@@ -210,8 +210,8 @@ export class InitiativeView extends ItemView {
 		// PG: actuales (temporales) / máximos
 		const hpWrap = line2.createDiv("strakes-init-hp");
 		setIcon(hpWrap.createSpan("strakes-init-stat-icon"), "heart");
-		const hp = hpWrap.createEl("input", { type: "text", value: c.hp === null ? "" : String(c.hp), attr: { placeholder: T("PG", "HP") } });
-		setTooltip(hp, T("PG actuales. También puedes escribir -5 o +3 para aplicar daño o curación", "Current HP. You can also type -5 or +3 to apply damage or healing"));
+		const hp = hpWrap.createEl("input", { type: "text", value: c.hp === null ? "" : String(c.hp), attr: { placeholder: T("initiativeView.hp") } });
+		setTooltip(hp, T("initiativeView.currentHpYouCanAlso"));
 		hp.onchange = () => {
 			const v = hp.value.trim();
 			if (v === "") return this.tracker.update(c.id, { hp: null });
@@ -225,7 +225,7 @@ export class InitiativeView extends ItemView {
 		};
 		if (c.tempHp) {
 			const temp = hpWrap.createSpan({ cls: "strakes-init-temp", text: `(${c.tempHp})` });
-			setTooltip(temp, T("PG temporales: se gastan antes que los PG. Clic derecho para quitarlos", "Temporary HP: lost before HP. Right-click to remove them"));
+			setTooltip(temp, T("initiativeView.temporaryHpLostBeforeHp"));
 			temp.oncontextmenu = (e) => {
 				e.preventDefault();
 				this.tracker.setTempHp(c.id, 0);
@@ -235,7 +235,7 @@ export class InitiativeView extends ItemView {
 		const max = hpWrap.createEl("input", {
 			type: "text",
 			value: c.maxHp === null ? "" : String(c.maxHp),
-			attr: { placeholder: T("máx", "max") },
+			attr: { placeholder: T("initiativeView.max") },
 		});
 		max.onchange = () => {
 			const n = parseInt(max.value, 10);
@@ -245,11 +245,11 @@ export class InitiativeView extends ItemView {
 		// Cantidad + botones: curar (+ verde), dañar (− rojo), PG temporales (T azul).
 		const amountWrap = line2.createDiv("strakes-init-amount");
 		const amount = amountWrap.createEl("input", { type: "number", cls: "strakes-init-amount-input", attr: { min: "0", placeholder: "0" } });
-		setTooltip(amount, T("Cantidad para curar, dañar o dar PG temporales", "Amount to heal, damage or grant temporary HP"));
+		setTooltip(amount, T("initiativeView.amountToHealDamageOr"));
 		const apply = (fn: (n: number) => void) => {
 			const n = parseInt(amount.value, 10);
 			if (isNaN(n) || n <= 0) {
-				new Notice(T("Escribe una cantidad mayor que 0", "Enter an amount greater than 0"));
+				new Notice(T("initiativeView.enterAnAmountGreaterThan"));
 				amount.focus();
 				return;
 			}
@@ -261,15 +261,15 @@ export class InitiativeView extends ItemView {
 			setTooltip(b, tip);
 			b.onclick = () => apply(fn);
 		};
-		hpButton("is-heal", "+", T("Curar", "Heal"), (n) => this.tracker.heal(c.id, n));
-		hpButton("is-damage", "−", T("Dañar (se gastan antes los PG temporales)", "Damage (temporary HP is lost first)"), (n) => this.tracker.damage(c.id, n));
-		hpButton("is-temp", "T", T("PG temporales (no se acumulan: sustituyen a los actuales)", "Temporary HP (doesn't stack: replaces the current amount)"), (n) => this.tracker.setTempHp(c.id, n));
+		hpButton("is-heal", "+", T("initiativeView.heal"), (n) => this.tracker.heal(c.id, n));
+		hpButton("is-damage", "−", T("initiativeView.damageTemporaryHpIsLost"), (n) => this.tracker.damage(c.id, n));
+		hpButton("is-temp", "T", T("initiativeView.temporaryHpDoesntStackReplaces"), (n) => this.tracker.setTempHp(c.id, n));
 
 		const keyed: Record<string, HTMLInputElement> = { init, name, hp, max, ac, amount };
 		for (const [k, el] of Object.entries(keyed)) el.dataset.focusKey = `${c.id}:${k}`;
 
 		line2.createDiv("strakes-init-spacer");
-		const eye = this.iconButton(line2, c.hidden ? "eye-off" : "eye", c.hidden ? T("Oculto a los jugadores", "Hidden from players") : T("Visible para los jugadores", "Visible to players"), () =>
+		const eye = this.iconButton(line2, c.hidden ? "eye-off" : "eye", c.hidden ? T("initiativeView.hiddenFromPlayers") : T("initiativeView.visibleToPlayers"), () =>
 			this.tracker.update(c.id, { hidden: !c.hidden }),
 		);
 		eye.toggleClass("is-off", c.hidden);
@@ -277,45 +277,45 @@ export class InitiativeView extends ItemView {
 		// Condiciones: iconos (cursor = nombre, clic = descripción, clic derecho = quitar) y «+».
 		const line3 = row.createDiv("strakes-init-line strakes-init-conds");
 		renderConditionChips(line3, c, { interactive: true, plugin: this.plugin });
-		const add = this.iconButton(line3, "plus", T("Añadir o quitar condiciones", "Add or remove conditions"), (evt) => showConditionMenu(evt, c, this.plugin));
+		const add = this.iconButton(line3, "plus", T("initiativeView.addOrRemoveConditions"), (evt) => showConditionMenu(evt, c, this.plugin));
 		add.addClass("strakes-cond-add");
-		if (!c.conditions.length) add.createSpan({ cls: "strakes-cond-add-label", text: T("Condiciones", "Conditions") });
+		if (!c.conditions.length) add.createSpan({ cls: "strakes-cond-add-label", text: T("initiativeView.conditions") });
 	}
 
 	private rowMenu(evt: MouseEvent, c: Combatant): void {
 		const m = new Menu();
-		m.addItem((i) => i.setTitle(T("Turno actual", "Current turn")).setIcon("play").onClick(() => this.tracker.setCurrent(c.id)));
+		m.addItem((i) => i.setTitle(T("initiativeView.currentTurn")).setIcon("play").onClick(() => this.tracker.setCurrent(c.id)));
 		m.addItem((i) =>
 			i
-				.setTitle(c.portrait ? T("Encuadrar o cambiar retrato…", "Frame or change portrait…") : T("Añadir retrato…", "Add portrait…"))
+				.setTitle(c.portrait ? T("initiativeView.frameOrChangePortrait") : T("initiativeView.addPortrait"))
 				.setIcon("image")
 				.onClick(() => editPortrait(this.app, c.portrait, (p) => this.tracker.setPortrait(c.id, p), c.name)),
 		);
 		m.addItem((i) =>
 			i
-				.setTitle(c.isPlayer ? T("Marcar como enemigo", "Mark as enemy") : T("Marcar como PJ/aliado", "Mark as PC/ally"))
+				.setTitle(c.isPlayer ? T("initiativeView.markAsEnemy") : T("initiativeView.markAsPcAlly"))
 				.setIcon("user")
 				.onClick(() => this.tracker.update(c.id, { isPlayer: !c.isPlayer })),
 		);
 		m.addItem((i) =>
 			i
-				.setTitle(c.hidden ? T("Mostrar a los jugadores", "Show to players") : T("Ocultar a los jugadores", "Hide from players"))
+				.setTitle(c.hidden ? T("initiativeView.showToPlayers") : T("initiativeView.hideFromPlayers"))
 				.setIcon(c.hidden ? "eye" : "eye-off")
 				.onClick(() => this.tracker.update(c.id, { hidden: !c.hidden })),
 		);
 		m.addItem((i) =>
 			i
-				.setTitle(T("Duplicar", "Duplicate"))
+				.setTitle(T("initiativeView.duplicate"))
 				.setIcon("copy")
 				.onClick(() => {
 					this.tracker.duplicate(c.id);
 				}),
 		);
 		m.addSeparator();
-		m.addItem((i) => i.setTitle(T("Subir", "Move up")).setIcon("arrow-up").onClick(() => this.tracker.move(c.id, -1)));
-		m.addItem((i) => i.setTitle(T("Bajar", "Move down")).setIcon("arrow-down").onClick(() => this.tracker.move(c.id, 1)));
+		m.addItem((i) => i.setTitle(T("initiativeView.moveUp")).setIcon("arrow-up").onClick(() => this.tracker.move(c.id, -1)));
+		m.addItem((i) => i.setTitle(T("initiativeView.moveDown")).setIcon("arrow-down").onClick(() => this.tracker.move(c.id, 1)));
 		m.addSeparator();
-		m.addItem((i) => i.setTitle(T("Eliminar", "Remove")).setWarning(true).setIcon("trash-2").onClick(() => this.tracker.remove(c.id)));
+		m.addItem((i) => i.setTitle(T("initiativeView.remove")).setWarning(true).setIcon("trash-2").onClick(() => this.tracker.remove(c.id)));
 		m.showAtMouseEvent(evt);
 	}
 
@@ -324,18 +324,18 @@ export class InitiativeView extends ItemView {
 	private buildAddForm(form: HTMLElement): void {
 		// Título + deshacer / rehacer (solo afectan a las altas de combatientes).
 		const title = form.createDiv("strakes-init-add-title");
-		title.createSpan({ text: T("Añadir combatiente", "Add combatant") });
+		title.createSpan({ text: T("initiativeView.addCombatant") });
 		const history = title.createDiv("strakes-init-add-history");
 		const describe = (list: Combatant[]) =>
-			list.length === 1 ? T(`«${list[0].name}»`, `"${list[0].name}"`) : T(`${list.length} combatientes`, `${list.length} combatants`);
-		this.undoAddBtn = this.iconButton(history, "undo-2", T("Deshacer la última alta", "Undo last addition"), () => {
+			list.length === 1 ? T("initiativeView.quotedName", { name: list[0].name }) : T("initiativeView.combatants", { n: list.length });
+		this.undoAddBtn = this.iconButton(history, "undo-2", T("initiativeView.undoLastAddition"), () => {
 			const removed = this.tracker.undoAdd();
 			if (removed.length)
-				new Notice(T(`Deshecho: ${describe(removed)} quitado${removed.length > 1 ? "s" : ""}.`, `Undone: ${describe(removed)} removed.`));
+				new Notice(T("initiativeView.undoneRemoved", { names: describe(removed), count: removed.length }));
 		});
-		this.redoAddBtn = this.iconButton(history, "redo-2", T("Rehacer la alta deshecha", "Redo undone addition"), () => {
+		this.redoAddBtn = this.iconButton(history, "redo-2", T("initiativeView.redoUndoneAddition"), () => {
 			const restored = this.tracker.redoAdd();
-			if (restored.length) new Notice(T(`Rehecho: ${describe(restored)} de nuevo en la iniciativa.`, `Redone: ${describe(restored)} back in the initiative.`));
+			if (restored.length) new Notice(T("initiativeView.redoneBackInTheInitiative", { names: describe(restored) }));
 		});
 		this.updateHistoryButtons();
 		const r1 = form.createDiv("strakes-init-line");
@@ -356,13 +356,13 @@ export class InitiativeView extends ItemView {
 				setTooltip(
 					thumb,
 					formPortrait
-						? T("Retrato elegido (clic para cambiarlo)", "Chosen portrait (click to change it)")
-						: T(`Retrato recordado para «${base}» (clic para cambiarlo)`, `Remembered portrait for "${base}" (click to change it)`),
+						? T("initiativeView.chosenPortraitClickToChange")
+						: T("initiativeView.rememberedPortraitForClickTo", { base }),
 				);
 			} else {
 				thumb.removeClass("strakes-portrait", "is-ally", "is-enemy");
 				setIcon(thumb, "image-plus");
-				setTooltip(thumb, T("Retrato para el modo Tarjetas", "Portrait for Cards mode"));
+				setTooltip(thumb, T("initiativeView.portraitForCardsMode"));
 			}
 		};
 		thumb.onclick = () => {
@@ -378,38 +378,38 @@ export class InitiativeView extends ItemView {
 				base,
 			);
 		};
-		const name = r1.createEl("input", { type: "text", cls: "strakes-init-name", attr: { placeholder: T("Nombre (Goblin x3)", "Name (Goblin x3)") } });
+		const name = r1.createEl("input", { type: "text", cls: "strakes-init-name", attr: { placeholder: T("initiativeView.nameGoblinX3") } });
 		name.addEventListener("change", refreshThumb);
 		const init = r1.createEl("input", { type: "text", cls: "strakes-init-num", attr: { placeholder: "Init" } });
-		setTooltip(init, T("Número, +mod (tira 1d20+mod) o dados (d20+2). Vacío = 1d20", "Number, +mod (rolls 1d20+mod) or dice (d20+2). Empty = 1d20"));
+		setTooltip(init, T("initiativeView.numberModRolls1d20Mod"));
 		const r2 = form.createDiv("strakes-init-line");
 		// Mismo orden que en la lista de combatientes: CA y después PG.
-		const ac = r2.createEl("input", { type: "text", attr: { placeholder: T("CA", "AC") } });
-		const hp = r2.createEl("input", { type: "text", attr: { placeholder: T("PG", "HP") } });
+		const ac = r2.createEl("input", { type: "text", attr: { placeholder: T("initiativeView.ac") } });
+		const hp = r2.createEl("input", { type: "text", attr: { placeholder: T("initiativeView.hp") } });
 		const pjLabel = r2.createEl("label", { cls: "strakes-init-check" });
 		const pj = pjLabel.createEl("input", { type: "checkbox" });
-		pjLabel.appendText(T("PJ/Aliado", "PC/Ally"));
+		pjLabel.appendText(T("initiativeView.pcAlly"));
 		const hidLabel = r2.createEl("label", { cls: "strakes-init-check" });
 		const hid = hidLabel.createEl("input", { type: "checkbox" });
-		hidLabel.appendText(T("Oculto", "Hidden"));
-		const addBtn = r2.createEl("button", { text: T("Añadir", "Add"), cls: "mod-cta" });
+		hidLabel.appendText(T("initiativeView.hidden"));
+		const addBtn = r2.createEl("button", { text: T("initiativeView.add"), cls: "mod-cta" });
 		pj.addEventListener("change", refreshThumb);
 		refreshThumb();
 
 		const submit = () => {
-			if (!name.value.trim()) { new Notice(T("Escribe un nombre", "Enter a name")); return; }
+			if (!name.value.trim()) { new Notice(T("initiativeView.enterAName")); return; }
 			const group = splitGroup(name.value);
 			const base = group.base;
 			// «Goblin x0»: avisar y no tocar el formulario (antes no añadía nada y lo vaciaba).
 			if (group.count === 0) {
-				new Notice(T("Un grupo necesita al menos 1 combatiente (p. ej. Goblin x3)", "A group needs at least 1 combatant (e.g. Goblin x3)"));
+				new Notice(T("initiativeView.aGroupNeedsAtLeast"));
 				return;
 			}
 			const count = group.count === null ? 1 : Math.min(group.count, 30);
 			const hpN = parseInt(hp.value, 10);
 			const acN = parseInt(ac.value, 10);
 			// Validar antes de añadir nada, para no dejar un grupo a medias.
-			if (!parseInitiative(init.value)) { new Notice(T("Iniciativa no válida", "Invalid initiative")); return; }
+			if (!parseInitiative(init.value)) { new Notice(T("initiativeView.invalidInitiative")); return; }
 			const rolls: string[] = [];
 			const added: Combatant[] = [];
 			for (let k = 1; k <= count; k++) {
