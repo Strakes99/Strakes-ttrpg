@@ -1,9 +1,11 @@
-import { App, Component, MarkdownRenderer, Menu, Modal, Notice, Setting, setIcon, setTooltip } from "obsidian";
-import { T } from "../i18n";
+import { App, Component, MarkdownRenderer, Modal, Notice, Setting, setIcon, setTooltip } from "obsidian";
+import { currentLanguage, T } from "../i18n";
 import type StrakesTTRPG from "../main";
 import { renderPinIconInto } from "../map/render";
 import { Combatant, ConditionOverride, ConditionRules, CustomCondition, HpTrigger, RuleTarget, uid } from "../types";
 import { IconColorControl, IconPicker } from "../ui/iconPicker";
+import { confirmDialog, modalFooter } from "../ui/modals";
+import { GridMenuItem, showGridMenu } from "../ui/gridMenu";
 import { ActiveCondition, allConditions, BUILTIN_CONDITIONS, builtinInfo, combatantConditions, ConditionInfo } from "./conditions";
 import { entryTooltipLines, renderEntryDetails } from "./conditionDetails";
 
@@ -162,51 +164,44 @@ function toggleConditionCard(anchor: HTMLElement, a: ActiveCondition, plugin: St
 
 // ---------- Desplegable para añadir / quitar ----------
 
-/** Menú con todas las condiciones (menos las ocultas): las activas, marcadas. Clic = añadir o quitar. */
+/**
+ * Menú con todas las condiciones (menos las ocultas): las activas, marcadas. Clic = añadir o quitar.
+ * En orden alfabético (integradas y personalizadas juntas) y en columnas de 10 como máximo, para que no
+ * se haga tan largo (1.4); «Nueva condición personalizada…», aparte, debajo.
+ */
 export function showConditionMenu(evt: MouseEvent, c: Combatant, plugin: StrakesTTRPG): void {
 	const tracker = plugin.tracker;
 	const active = new Map(c.conditions.map((e) => [e.id, e]));
 	const effective = combatantConditions(c, plugin.settings);
 	const implied = new Set(effective.filter((a) => !a.explicit && !a.auto).map((a) => a.info.id));
 	const autoIds = new Set(effective.filter((a) => a.auto).map((a) => a.info.id));
-	const m = new Menu();
-	const item = (info: ConditionInfo) =>
-		m.addItem((i) => {
-			const entry = active.get(info.id);
-			let title = info.name;
-			if (info.maxLevel)
-				title += entry ? T("conditionUi.level3", { level: entry.level ?? 1, maxLevel: Math.min(info.maxLevel, (entry.level ?? 1) + 1) }) : "";
-			else if (!entry && autoIds.has(info.id)) title += T("conditionUi.automatic3");
-			else if (!entry && implied.has(info.id)) title += T("conditionUi.applied");
-			i.setTitle(title).setChecked(!!entry);
-			const iconEl = (i as unknown as { iconEl?: HTMLElement }).iconEl;
-			if (iconEl) {
-				iconEl.empty();
-				renderConditionIcon(iconEl, info);
-			}
-			i.onClick(() => {
-				// Acumulativas: cada elección sube un nivel. Las demás: alternar.
+	const item = (info: ConditionInfo): GridMenuItem => {
+		const entry = active.get(info.id);
+		let title = info.name;
+		if (info.maxLevel)
+			title += entry ? T("conditionUi.level3", { level: entry.level ?? 1, maxLevel: Math.min(info.maxLevel, (entry.level ?? 1) + 1) }) : "";
+		else if (!entry && autoIds.has(info.id)) title += T("conditionUi.automatic3");
+		else if (!entry && implied.has(info.id)) title += T("conditionUi.applied");
+		return {
+			title,
+			checked: !!entry,
+			renderIcon: (el) => renderConditionIcon(el, info),
+			// Acumulativas: cada elección sube un nivel. Las demás: alternar.
+			onClick: () => {
 				if (info.maxLevel || !entry) tracker.addCondition(c.id, info.id, info.maxLevel);
 				else tracker.removeCondition(c.id, info.id);
-			});
-		});
-	const all = allConditions(plugin.settings);
-	for (const info of all.filter((x) => !x.custom)) item(info);
-	const customs = all.filter((x) => x.custom);
-	if (customs.length) {
-		m.addSeparator();
-		for (const info of customs) item(info);
-	}
-	m.addSeparator();
-	m.addItem((i) =>
-		i
-			.setTitle(T("conditionUi.newCustomCondition"))
-			.setIcon("plus")
-			.onClick(() =>
-				new ConditionModal(plugin.app, plugin, { kind: "custom", cond: null }, (created) => tracker.addCondition(c.id, created.id)).open(),
-			),
-	);
-	m.showAtMouseEvent(evt);
+			},
+		};
+	};
+	const collator = new Intl.Collator(currentLanguage());
+	const all = [...allConditions(plugin.settings)].sort((a, b) => collator.compare(a.name, b.name));
+	showGridMenu(evt, all.map(item), [
+		{
+			title: T("conditionUi.newCustomCondition"),
+			icon: "plus",
+			onClick: () => new ConditionModal(plugin.app, plugin, { kind: "custom", cond: null }, (created) => tracker.addCondition(c.id, created.id)).open(),
+		},
+	]);
 }
 
 // ---------- Diálogo de condición (personalizada o integrada) ----------
@@ -300,6 +295,17 @@ export class ConditionModal extends Modal {
 		}
 	}
 
+	/** Eliminar (personalizada ya guardada): pide confirmación, la quita y cierra el diálogo. */
+	private async deleteThis(): Promise<void> {
+		if (await deleteCustomCondition(this.plugin, this.customId)) this.close();
+	}
+
+	/** Ocultar o mostrar (integrada): guarda lo que haya en el diálogo con la visibilidad cambiada. */
+	private async toggleHidden(): Promise<void> {
+		this.draft.hidden = !this.draft.hidden;
+		await this.saveBuiltin(false);
+	}
+
 	/** Las demás condiciones que se pueden elegir en este diálogo (ni ella misma ni las ocultas). */
 	private others(): ConditionInfo[] {
 		return allConditions(this.plugin.settings).filter((x) => x.id !== this.customId);
@@ -317,12 +323,6 @@ export class ConditionModal extends Modal {
 				cls: "setting-item-description strakes-cond-builtin-note",
 				text: T("conditionUi.basicRulesConditionYouCan"),
 			});
-			new Setting(el)
-				.setName(T("conditionUi.hidden"))
-				.setDesc(
-					T("conditionUi.itDoesntAppearInAny"),
-				)
-				.addToggle((t) => t.setValue(d.hidden).onChange((v) => (d.hidden = v)));
 		}
 
 		new Setting(el).setName(T("conditionUi.name")).addText((t) => {
@@ -403,7 +403,18 @@ export class ConditionModal extends Modal {
 		this.rulesEl = el.createDiv("strakes-cond-rules");
 		this.renderRules();
 
-		const buttons = new Setting(el);
+		// Pie siempre visible, como en los diálogos de los mapas. En una integrada, «Ocultar» (o «Mostrar» si
+		// ya lo está) ocupa el sitio de «Eliminar», con su mismo aspecto: una integrada no se puede borrar.
+		const buttons = modalFooter(this);
+		if (builtin)
+			buttons.addButton((b) => {
+				b.setButtonText(d.hidden ? T("conditionUi.show") : T("conditionUi.hide"))
+					.setDestructive()
+					.setTooltip(d.hidden ? T("conditionUi.showTip") : T("conditionUi.itDoesntAppearInAny"))
+					.onClick(() => void this.toggleHidden());
+			});
+		else if (!isNew)
+			buttons.addButton((b) => b.setButtonText(T("conditionUi.delete")).setDestructive().onClick(() => void this.deleteThis()));
 		if (builtin) buttons.addButton((b) => b.setButtonText(T("conditionUi.reset")).onClick(() => void this.saveBuiltin(true)));
 		buttons.addButton((b) => b.setButtonText(T("conditionUi.cancel")).onClick(() => this.close()));
 		buttons.addButton((b) =>
@@ -656,4 +667,22 @@ export class ConditionModal extends Modal {
 	onClose(): void {
 		this.contentEl.empty();
 	}
+}
+
+/**
+ * Elimina una condición personalizada, tras confirmarlo: de la lista y de los combatientes que la
+ * tengan. Devuelve true si se eliminó. Lo usan la papelera de los ajustes y el botón del diálogo.
+ */
+export async function deleteCustomCondition(plugin: StrakesTTRPG, id: string): Promise<boolean> {
+	const s = plugin.settings;
+	const cond = s.customConditions.find((x) => x.id === id);
+	if (!cond) return false;
+	const ok = await confirmDialog(plugin.app, T("settings.deleteCondition"), T("settings.deleteItWillAlsoBe", { name: cond.name }));
+	if (!ok) return false;
+	s.customConditions = s.customConditions.filter((x) => x.id !== id);
+	for (const c of s.combat.combatants) c.conditions = c.conditions.filter((e) => e.id !== id);
+	await plugin.saveSettings();
+	plugin.events.trigger("combat");
+	plugin.settingTab.update();
+	return true;
 }

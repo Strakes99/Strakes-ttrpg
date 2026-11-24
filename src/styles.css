@@ -567,14 +567,12 @@ input.strakes-portrait-zoom-num {
 }
 .strakes-init-name { flex: 1; }
 .strakes-init-stats { font-size: var(--font-ui-smaller); }
-.strakes-init-hp,
-.strakes-init-ac {
+.strakes-init-hp {
 	display: flex;
 	align-items: center;
 	gap: 2px;
 }
 .strakes-init-hp input { width: 3em; text-align: center; }
-.strakes-init-ac input { width: 2.6em; text-align: center; }
 .strakes-init-stats { flex-wrap: wrap; row-gap: 4px; }
 /* PG temporales junto a los actuales: «30 (18) / 45» */
 .strakes-init-temp {
@@ -867,14 +865,6 @@ input.strakes-portrait-zoom-num {
 	border-top: 1px solid var(--background-modifier-border);
 	color: var(--text-faint);
 	font-size: var(--font-ui-smaller);
-}
-.strakes-srd-attribution {
-	margin: 0 0 12px;
-	padding: 8px 10px;
-	border-left: 3px solid var(--background-modifier-border);
-	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
-	line-height: 1.4;
 }
 .strakes-cond-textarea {
 	width: 100%;
@@ -1822,4 +1812,251 @@ input[type="number"].strakes-fog-size-number {
 	transform: rotate(var(--strakes-arrow-angle));
 	transform-origin: 50% 0;
 	filter: drop-shadow(0 0 1.5px rgb(0 0 0 / 0.9));
+}
+
+/* Menú en columnas (añadir condiciones, 1.4): con el aspecto del de Obsidian (sus clases), pero con
+   las opciones repartidas en columnas de hasta 10, de arriba abajo. */
+.menu.strakes-grid-menu {
+	position: fixed;
+	padding: var(--size-4-1);
+}
+.strakes-grid-menu-grid {
+	display: grid;
+	grid-auto-flow: column;
+	grid-template-rows: repeat(var(--strakes-grid-rows), auto);
+	gap: 0 var(--size-4-2);
+}
+.strakes-grid-menu .menu-item { white-space: nowrap; }
+
+/* Statblocks (1.4): bloque strakes-statblock en una nota sin la propiedad statblock. */
+.strakes-statblock-empty {
+	color: var(--text-muted);
+	font-style: italic;
+}
+
+/* Statblocks (1.4): botones bajo el statblock dibujado (Editar, Copiar a nuevo statblock). */
+.strakes-statblock-actions {
+	display: flex;
+	justify-content: center;
+	gap: var(--size-4-1);
+	margin-top: calc(var(--size-4-1) * -1);
+}
+
+/* Formulario de statblock: el formulario a la izquierda y la vista previa a la derecha; uno debajo de
+   otro si la pestaña es estrecha. */
+.strakes-sb-editor {
+	display: flex;
+	gap: var(--size-4-4);
+	padding: 0;
+}
+.strakes-sb-editor > .strakes-sb-form {
+	flex: 1 1 32em;
+	min-width: 0;
+	overflow-y: auto;
+	padding: var(--size-4-3);
+}
+.strakes-sb-editor > .strakes-sb-preview {
+	flex: 1 1 28em;
+	min-width: 0;
+	overflow-y: auto;
+	padding: var(--size-4-3);
+	border-left: 1px solid var(--background-modifier-border);
+}
+@container (max-width: 50em) {
+	.strakes-sb-editor {
+		flex-direction: column;
+	}
+}
+.workspace-leaf-content[data-type="strakes-statblock-editor"] {
+	container-type: inline-size;
+}
+@media (max-width: 800px) {
+	.strakes-sb-editor {
+		flex-direction: column;
+	}
+	.strakes-sb-editor > .strakes-sb-preview {
+		border-left: none;
+		border-top: 1px solid var(--background-modifier-border);
+	}
+}
+.strakes-sb-section {
+	margin-bottom: var(--size-4-3);
+	border-bottom: 1px solid var(--background-modifier-border);
+	padding-bottom: var(--size-4-2);
+}
+.strakes-sb-section > summary {
+	cursor: pointer;
+	font-weight: var(--font-semibold);
+	font-size: var(--font-ui-medium);
+	padding: var(--size-4-1) 0;
+}
+.strakes-sb-section-body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	padding: var(--size-4-1) 0;
+}
+.strakes-sb-field {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--size-4-2);
+}
+.strakes-sb-field.is-block {
+	flex-direction: column;
+	align-items: stretch;
+}
+.strakes-sb-label {
+	min-width: 8em;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+.strakes-sb-input.is-wide {
+	flex: 1 1 12em;
+}
+.strakes-sb-input.is-short {
+	width: 5.5em;
+}
+.strakes-sb-input.is-invalid {
+	border-color: var(--text-error);
+}
+.strakes-sb-textarea {
+	width: 100%;
+	min-height: 4.5em;
+	resize: vertical;
+	font-family: var(--font-text);
+}
+.strakes-sb-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(15em, 1fr));
+	gap: var(--size-4-2);
+}
+.strakes-sb-check {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-4-1);
+	cursor: pointer;
+}
+.strakes-sb-hint {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+}
+.strakes-sb-warning {
+	color: var(--text-warning);
+	font-size: var(--font-ui-smaller);
+}
+.strakes-sb-subfield {
+	padding-left: var(--size-4-4);
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+}
+.strakes-sb-subfield.is-hidden,
+.strakes-sb-warning.is-hidden {
+	display: none;
+}
+.strakes-sb-toggles {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-4-1);
+}
+.strakes-sb-toggle {
+	font-size: var(--font-ui-smaller);
+	padding: var(--size-2-1) var(--size-4-2);
+	height: auto;
+}
+.strakes-sb-toggle.is-active {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+.strakes-sb-tags {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--size-4-1);
+	flex: 1 1 12em;
+}
+.strakes-sb-tag-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-4-1);
+}
+.strakes-sb-tag-list:empty {
+	display: none;
+}
+.strakes-sb-tag {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-1);
+	padding: var(--size-2-1) var(--size-4-2);
+	border-radius: var(--radius-s);
+	background-color: var(--background-modifier-hover);
+	font-size: var(--font-ui-smaller);
+}
+.strakes-sb-tag-remove {
+	display: inline-flex;
+	cursor: pointer;
+	color: var(--text-faint);
+	--icon-size: var(--icon-xs);
+}
+.strakes-sb-tag-remove:hover {
+	color: var(--text-normal);
+}
+.strakes-sb-tag-input {
+	flex: 1 1 10em;
+}
+.strakes-sb-abilities {
+	display: grid;
+	grid-template-columns: repeat(6, minmax(5.5em, 1fr));
+	gap: var(--size-4-2);
+}
+.strakes-sb-ability {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--size-4-1);
+}
+.strakes-sb-ability-name {
+	font-weight: var(--font-semibold);
+}
+.strakes-sb-computed {
+	color: var(--text-muted);
+}
+.strakes-sb-skill-groups {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(17em, 1fr));
+	gap: var(--size-4-3);
+}
+.strakes-sb-skill-ability {
+	font-weight: var(--font-semibold);
+	margin-bottom: var(--size-4-1);
+}
+.strakes-sb-skill {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-1);
+}
+.strakes-sb-skill-name {
+	flex: 1 1 auto;
+}
+.strakes-sb-card {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	padding: var(--size-4-2);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+}
+.strakes-sb-card-top {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--size-4-2);
+}
+.strakes-sb-card-buttons {
+	display: flex;
+	margin-left: auto;
+}
+.strakes-sb-add {
+	align-self: flex-start;
 }

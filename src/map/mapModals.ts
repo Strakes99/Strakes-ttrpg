@@ -1,7 +1,7 @@
 import { App, ColorComponent, Modal, Notice, Setting, TextComponent } from "obsidian";
 import { T } from "../i18n";
 import { uid } from "../types";
-import { FileInputSuggest, isImageFile, promptText } from "../ui/modals";
+import { FileInputSuggest, isImageFile, modalFooter, promptText } from "../ui/modals";
 import { decimalInput, parseDecimal } from "../ui/dom";
 import { IconColorControl, IconPicker } from "../ui/iconPicker";
 import { autoPinName, nameFromLink } from "./autoName";
@@ -155,20 +155,6 @@ export interface PinModalResult {
 export interface PinIconActions {
 	/** Vuelve a leer la carpeta de iconos. */
 	reload(): Promise<void>;
-}
-
-/**
- * Fila de botones de un diálogo (Eliminar | Cancelar | Guardar) en un pie fuera del contenido:
- * siempre visible aunque el contenido obligue a desplazarse (accesibilidad; pedido del
- * desarrollador). El contenido se desplaza en su propio hueco (ver .strakes-has-footer en
- * styles.css). Se vacía y se reutiliza en cada render() del diálogo.
- */
-function modalFooter(modal: Modal): Setting {
-	modal.modalEl.addClass("strakes-has-footer");
-	let footer = modal.modalEl.querySelector<HTMLElement>(":scope > .strakes-modal-footer");
-	if (footer) footer.empty();
-	else footer = modal.modalEl.createDiv("strakes-modal-footer");
-	return new Setting(footer);
 }
 
 export class PinModal extends Modal {

@@ -256,3 +256,18 @@ export function loadImageSize(src: string): Promise<{ width: number; height: num
 		img.src = src;
 	});
 }
+
+/**
+ * Fila de botones de un diálogo (Eliminar | Cancelar | Guardar) en un pie fuera del contenido:
+ * siempre visible aunque el contenido obligue a desplazarse (accesibilidad; pedido del
+ * desarrollador). El contenido se desplaza en su propio hueco (ver .strakes-has-footer en
+ * styles.css). Se vacía y se reutiliza en cada render() del diálogo. Lo usan los diálogos de
+ * los mapas y el de las condiciones.
+ */
+export function modalFooter(modal: Modal): Setting {
+	modal.modalEl.addClass("strakes-has-footer");
+	let footer = modal.modalEl.querySelector<HTMLElement>(":scope > .strakes-modal-footer");
+	if (footer) footer.empty();
+	else footer = modal.modalEl.createDiv("strakes-modal-footer");
+	return new Setting(footer);
+}

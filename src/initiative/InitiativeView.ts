@@ -198,15 +198,6 @@ export class InitiativeView extends ItemView {
 		this.iconButton(line1, "more-horizontal", T("initiativeView.options"), (evt) => this.rowMenu(evt, c));
 
 		const line2 = row.createDiv("strakes-init-line strakes-init-stats");
-		// CA
-		const acWrap = line2.createDiv("strakes-init-ac");
-		setIcon(acWrap.createSpan("strakes-init-stat-icon"), "shield");
-		const ac = acWrap.createEl("input", { type: "text", value: c.ac === null ? "" : String(c.ac), attr: { placeholder: T("initiativeView.ac") } });
-		ac.onchange = () => {
-			const n = parseInt(ac.value, 10);
-			this.tracker.update(c.id, { ac: isNaN(n) ? null : n });
-		};
-
 		// PG: actuales (temporales) / máximos
 		const hpWrap = line2.createDiv("strakes-init-hp");
 		setIcon(hpWrap.createSpan("strakes-init-stat-icon"), "heart");
@@ -265,7 +256,7 @@ export class InitiativeView extends ItemView {
 		hpButton("is-damage", "−", T("initiativeView.damageTemporaryHpIsLost"), (n) => this.tracker.damage(c.id, n));
 		hpButton("is-temp", "T", T("initiativeView.temporaryHpDoesntStackReplaces"), (n) => this.tracker.setTempHp(c.id, n));
 
-		const keyed: Record<string, HTMLInputElement> = { init, name, hp, max, ac, amount };
+		const keyed: Record<string, HTMLInputElement> = { init, name, hp, max, amount };
 		for (const [k, el] of Object.entries(keyed)) el.dataset.focusKey = `${c.id}:${k}`;
 
 		line2.createDiv("strakes-init-spacer");
@@ -383,8 +374,6 @@ export class InitiativeView extends ItemView {
 		const init = r1.createEl("input", { type: "text", cls: "strakes-init-num", attr: { placeholder: "Init" } });
 		setTooltip(init, T("initiativeView.numberModRolls1d20Mod"));
 		const r2 = form.createDiv("strakes-init-line");
-		// Mismo orden que en la lista de combatientes: CA y después PG.
-		const ac = r2.createEl("input", { type: "text", attr: { placeholder: T("initiativeView.ac") } });
 		const hp = r2.createEl("input", { type: "text", attr: { placeholder: T("initiativeView.hp") } });
 		const pjLabel = r2.createEl("label", { cls: "strakes-init-check" });
 		const pj = pjLabel.createEl("input", { type: "checkbox" });
@@ -407,7 +396,6 @@ export class InitiativeView extends ItemView {
 			}
 			const count = group.count === null ? 1 : Math.min(group.count, 30);
 			const hpN = parseInt(hp.value, 10);
-			const acN = parseInt(ac.value, 10);
 			// Validar antes de añadir nada, para no dejar un grupo a medias.
 			if (!parseInitiative(init.value)) { new Notice(T("initiativeView.invalidInitiative")); return; }
 			const rolls: string[] = [];
@@ -420,7 +408,6 @@ export class InitiativeView extends ItemView {
 					initiative: r.value,
 					hp: isNaN(hpN) ? null : hpN,
 					maxHp: isNaN(hpN) ? null : hpN,
-					ac: isNaN(acN) ? null : acN,
 					isPlayer: pj.checked,
 					hidden: hid.checked,
 					// Sin retrato elegido: el tracker usa el último recordado para ese nombre,
@@ -438,7 +425,6 @@ export class InitiativeView extends ItemView {
 			name.value = "";
 			init.value = "";
 			hp.value = "";
-			ac.value = "";
 			// PJ/Aliado se desmarca solo tras cada alta (Oculto no, para evitar sorpresas).
 			pj.checked = false;
 			formPortrait = undefined;
@@ -447,7 +433,7 @@ export class InitiativeView extends ItemView {
 			name.focus();
 		};
 		addBtn.onclick = submit;
-		for (const el of [name, init, hp, ac])
+		for (const el of [name, init, hp])
 			el.addEventListener("keydown", (e) => {
 				if (e.key === "Enter") submit();
 			});

@@ -18,12 +18,12 @@ t("nombre que acaba en número sin espacio", nextNumberedName("T-Rex2", ["T-Rex2
 const plugin = fakePlugin();
 const tr = new InitiativeTracker(plugin);
 const names = () => tr.state.combatants.map((c) => c.name).sort();
-const g1 = tr.add({ name: "Goblin 1", initiative: 12, hp: 7, maxHp: 7, ac: 15 });
-tr.add({ name: "Goblin 2", initiative: 10, hp: 7, maxHp: 7, ac: 15 });
+const g1 = tr.add({ name: "Goblin 1", initiative: 12, hp: 7, maxHp: 7 });
+tr.add({ name: "Goblin 2", initiative: 10, hp: 7, maxHp: 7 });
 tr.addCondition(g1.id, "poisoned");
 const copy = tr.duplicate(g1.id);
 t("la copia se llama Goblin 3", copy?.name, "Goblin 3");
-t("copia PG, CA e iniciativa, pero no las condiciones", copy && [copy.hp, copy.maxHp, copy.ac, copy.initiative, copy.conditions.map((e) => e.id)], [7, 7, 15, 12, []]);
+t("copia PG e iniciativa, pero no las condiciones", copy && [copy.hp, copy.maxHp, copy.initiative, copy.conditions.map((e) => e.id)], [7, 7, 12, []]);
 t("la copia tiene otro id", copy !== null && copy.id !== g1.id, true);
 t("se puede deshacer", tr.canUndoAdd, true);
 tr.undoAdd();

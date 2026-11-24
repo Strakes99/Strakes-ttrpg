@@ -36,7 +36,7 @@ Opens in the right sidebar.
   - **Undo / redo** buttons revert or restore the last batch of added combatants.
   - The *PC/Ally* checkbox clears itself after each addition.
   - The *Hidden* checkbox (or the eye on each row) hides a combatant from the player screen.
-  - *Duplicate* adds a copy with the next free number (Goblin 7), full HP, the same AC and initiative, and no conditions.
+  - *Duplicate* adds a copy with the next free number (Goblin 7), full HP, the same initiative and no conditions.
 - **Turns**:
   - Next/previous turn and a round counter.
   - Defeated enemies (*Dead*) are skipped automatically; PCs and allies are never skipped.

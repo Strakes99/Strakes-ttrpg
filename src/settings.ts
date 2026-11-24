@@ -1,9 +1,8 @@
 import { App, PluginSettingTab, Setting, SettingDefinitionItem, setIcon, setTooltip } from "obsidian";
 import { T } from "./i18n";
 import type StrakesTTRPG from "./main";
-import { ConditionModal, renderConditionIcon } from "./initiative/conditionUi";
+import { ConditionModal, deleteCustomCondition, renderConditionIcon } from "./initiative/conditionUi";
 import { allConditions, CC_BY_URL, customInfo, SRD_URL } from "./initiative/conditions";
-import { confirmDialog } from "./ui/modals";
 import { decimalInput, parseDecimal } from "./ui/dom";
 import { unitOptions } from "./map/mapData";
 import { StrakesSettings } from "./types";
@@ -34,7 +33,7 @@ export class StrakesSettingTab extends PluginSettingTab {
 	 * iniciativa, mapas) para que se actualicen al momento.
 	 */
 	async setControlValue(key: string, value: unknown): Promise<void> {
-		if (key === "mapFolder" && typeof value === "string") value = value.trim().replace(/\/+$/, "");
+		if ((key === "mapFolder" || key === "statblockFolder") && typeof value === "string") value = value.trim().replace(/\/+$/, "");
 		(this.plugin.settings as unknown as Record<string, unknown>)[key] = value;
 		await this.save();
 	}
@@ -54,23 +53,27 @@ export class StrakesSettingTab extends PluginSettingTab {
 			validate: (v: number) =>
 				!Number.isInteger(v) || v < min || v > max ? T("settings.aWholeNumberBetweenAnd", { min, max }) : undefined,
 		});
+		// Cada sección es una página de los ajustes (1.4): la API de Obsidian no tiene secciones plegables, y
+		// así la lista no queda tan agrupada. La atribución del SRD va al final de todo, fuera de las páginas.
 		return [
 			{
-				type: "group",
-				heading: T("settings.playerScreen"),
-				items: [
+				type: "page",
+				name: T("settings.playerScreen"),
+				desc: T("settings.playerScreenPageDesc"),
+				items: [{ type: "group", items: [
 					{ name: T("settings.backgroundColor"), control: { type: "color", key: "playerBackground" } },
 					{
 						name: T("settings.fontSize"),
 						desc: T("settings.baseTextSizeOfThe"),
 						control: { type: "slider", key: "playerFontSize", min: 12, max: 48, step: 1 },
 					},
-				],
+				] }],
 			},
 			{
-				type: "group",
-				heading: T("settings.initiative"),
-				items: [
+				type: "page",
+				name: T("settings.initiative"),
+				desc: T("settings.initiativePageDesc"),
+				items: [{ type: "group", items: [
 					{
 						name: T("settings.cardSize"),
 						desc: T("settings.cardsModeWidthAndHeight"),
@@ -109,6 +112,13 @@ export class StrakesSettingTab extends PluginSettingTab {
 						desc: T("settings.playersSeeTheHitPoints2"),
 						control: { type: "toggle", key: "showNpcHp" },
 					},
+				] }],
+			},
+			{
+				type: "page",
+				name: T("settings.conditions"),
+				desc: T("settings.conditionsPageDesc"),
+				items: [{ type: "group", items: [
 					{
 						name: T("settings.basicRulesConditions"),
 						desc: T("settings.clickOneToFullyEdit"),
@@ -126,36 +136,37 @@ export class StrakesSettingTab extends PluginSettingTab {
 							);
 						},
 					},
-				],
+				] },
+				// Una fila por condición personalizada: editar con el lápiz, eliminar con la papelera de la lista.
+				{
+					type: "list",
+					visible: () => this.plugin.settings.customConditions.length > 0,
+					onDelete: (index) => void this.deleteCustomCondition(index),
+					items: this.plugin.settings.customConditions.map((cond) => ({
+						name: cond.name,
+						desc: firstLine(cond.description),
+						render: (setting: Setting) => {
+							setting.settingEl.addClass("strakes-custom-cond-row");
+							// La fila puede reutilizarse en update(): sin duplicar el icono.
+							setting.nameEl.querySelector(".strakes-custom-cond-icon")?.remove();
+							const iconEl = createSpan({ cls: "strakes-custom-cond-icon" });
+							renderConditionIcon(iconEl, customInfo(cond));
+							setting.nameEl.prepend(iconEl);
+							setting.addExtraButton((b) =>
+								b
+									.setIcon("pencil")
+									.setTooltip(T("settings.edit"))
+									.onClick(() => new ConditionModal(this.app, this.plugin, { kind: "custom", cond }).open()),
+							);
+						},
+					})),
+				}],
 			},
-			// Una fila por condición personalizada: editar con el lápiz, eliminar con la papelera de la lista.
 			{
-				type: "list",
-				visible: () => this.plugin.settings.customConditions.length > 0,
-				onDelete: (index) => void this.deleteCustomCondition(index),
-				items: this.plugin.settings.customConditions.map((cond) => ({
-					name: cond.name,
-					desc: firstLine(cond.description),
-					render: (setting: Setting) => {
-						setting.settingEl.addClass("strakes-custom-cond-row");
-						// La fila puede reutilizarse en update(): sin duplicar el icono.
-						setting.nameEl.querySelector(".strakes-custom-cond-icon")?.remove();
-						const iconEl = createSpan({ cls: "strakes-custom-cond-icon" });
-						renderConditionIcon(iconEl, customInfo(cond));
-						setting.nameEl.prepend(iconEl);
-						setting.addExtraButton((b) =>
-							b
-								.setIcon("pencil")
-								.setTooltip(T("settings.edit"))
-								.onClick(() => new ConditionModal(this.app, this.plugin, { kind: "custom", cond }).open()),
-						);
-					},
-				})),
-			},
-			{
-				type: "group",
-				heading: T("settings.maps"),
-				items: [
+				type: "page",
+				name: T("settings.maps"),
+				desc: T("settings.mapsPageDesc"),
+				items: [{ type: "group", items: [
 					{
 						name: T("settings.unitForNewMaps"),
 						desc: T("settings.newMapsAreCreatedWith"),
@@ -236,8 +247,38 @@ export class StrakesSettingTab extends PluginSettingTab {
 						desc: T("settings.emptyTheSameFolderAs"),
 						control: { type: "text", key: "mapFolder", placeholder: T("settings.maps") },
 					},
-				],
+				] }],
 			},
+			{
+				type: "page",
+				name: T("settings.statblocks"),
+				desc: T("settings.statblocksPageDesc"),
+				items: [{ type: "group", items: [
+					{ name: T("settings.statblockTheme"), desc: T("settings.statblockThemeDesc") },
+					{
+						name: T("settings.statblockFolder"),
+						desc: T("settings.statblockFolderDesc"),
+						control: { type: "text", key: "statblockFolder", placeholder: "Statblocks" },
+					},
+					{
+						name: T("settings.statblockPrefix"),
+						desc: T("settings.statblockPrefixDesc"),
+						control: { type: "text", key: "statblockPrefix", placeholder: "ST-" },
+					},
+					{
+						name: T("settings.statblockSuffix"),
+						desc: T("settings.statblockSuffixDesc"),
+						control: { type: "text", key: "statblockSuffix" },
+					},
+					{
+						name: T("settings.statblockMetric"),
+						desc: T("settings.statblockMetricDesc"),
+						control: { type: "toggle", key: "statblockMetric" },
+					},
+				] }],
+			},
+			// Atribución del SRD 5.2 (exigida por su licencia), al final de todo: habrá más datos del SRD.
+			{ type: "group", heading: T("settings.srdAttribution"), items: [{ name: "SRD 5.2", desc: srdAttribution() }] },
 		];
 	}
 
@@ -280,24 +321,15 @@ export class StrakesSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Atribución del SRD (exigida por su licencia) y cuadrícula de condiciones integradas, bajo
-	 * su fila. Obsidian reutiliza la fila al llamar a `update()` y vuelve a ejecutar este
-	 * `render`: el bloque anterior se quita primero (y al desmontar la fila), para no duplicarlo.
+	 * Cuadrícula de condiciones integradas, bajo su fila. Obsidian reutiliza la fila al llamar a
+	 * `update()` y vuelve a ejecutar este `render`: el bloque anterior se quita primero (y al
+	 * desmontar la fila), para no duplicarlo.
 	 */
 	private renderBuiltinConditions(setting: Setting): () => void {
 		const s = this.plugin.settings;
 		setting.settingEl.addClass("strakes-setting-wide");
 		for (const old of Array.from(setting.settingEl.querySelectorAll(":scope > .strakes-setting-block"))) old.remove();
 		const block = setting.settingEl.createDiv("strakes-setting-block");
-		// Atribución exigida por la licencia CC-BY-4.0 del SRD 5.2 (texto oficial, en inglés).
-		const attribution = block.createDiv("strakes-srd-attribution");
-		attribution.appendText(
-			"This work includes material from the System Reference Document 5.2 (“SRD 5.2”) by Wizards of the Coast LLC, available at ",
-		);
-		attribution.createEl("a", { text: SRD_URL, href: SRD_URL });
-		attribution.appendText(". The SRD 5.2 is licensed under the Creative Commons Attribution 4.0 International License, available at ");
-		attribution.createEl("a", { text: CC_BY_URL, href: CC_BY_URL });
-		attribution.appendText(".");
 		const grid = block.createDiv("strakes-builtin-cond-grid");
 		// También las ocultas (atenuadas): es el único sitio desde el que se vuelven a mostrar.
 		for (const info of allConditions(s, { includeHidden: true }).filter((x) => !x.custom)) {
@@ -317,21 +349,19 @@ export class StrakesSettingTab extends PluginSettingTab {
 
 	/** Papelera de la lista de condiciones personalizadas: pide confirmación y la quita también de los combatientes. */
 	private async deleteCustomCondition(index: number): Promise<void> {
-		const s = this.plugin.settings;
-		const cond = s.customConditions[index];
-		if (!cond) return;
-		const ok = await confirmDialog(
-			this.app,
-			T("settings.deleteCondition"),
-			T("settings.deleteItWillAlsoBe", { name: cond.name }),
-		);
-		if (ok) {
-			s.customConditions = s.customConditions.filter((x) => x.id !== cond.id);
-			for (const c of s.combat.combatants) c.conditions = c.conditions.filter((e) => e.id !== cond.id);
-			await this.plugin.saveSettings();
-			this.plugin.events.trigger("combat");
-		}
-		// Se redibuja siempre: si se canceló, la fila vuelve a aparecer.
-		this.update();
+		const cond = this.plugin.settings.customConditions[index];
+		// Si se eliminó, la función ya redibuja la pestaña; si se canceló, se redibuja para que la fila vuelva.
+		if (!cond || !(await deleteCustomCondition(this.plugin, cond.id))) this.update();
 	}
+}
+
+/** Atribución exigida por la licencia CC-BY-4.0 del SRD 5.2 (texto oficial, en inglés), con sus enlaces. */
+function srdAttribution(): DocumentFragment {
+	const frag = createFragment();
+	frag.appendText("This work includes material from the System Reference Document 5.2 (“SRD 5.2”) by Wizards of the Coast LLC, available at ");
+	frag.createEl("a", { text: SRD_URL, href: SRD_URL });
+	frag.appendText(". The SRD 5.2 is licensed under the Creative Commons Attribution 4.0 International License, available at ");
+	frag.createEl("a", { text: CC_BY_URL, href: CC_BY_URL });
+	frag.appendText(".");
+	return frag;
 }

@@ -12,6 +12,7 @@ import { MapView } from "./map/MapView";
 import { PlayerScreenView } from "./player/PlayerScreenView";
 import { StrakesSettingTab } from "./settings";
 import {
+	Combatant,
 	DEFAULT_SETTINGS,
 	IMAGE_EXTENSIONS,
 	LabelState,
@@ -24,6 +25,9 @@ import {
 	VIEW_TYPE_PLAYER,
 } from "./types";
 import { askIconConflict, ImagePickerModal, isImageFile, loadImageSize } from "./ui/modals";
+import { registerStatblockBlock } from "./statblock/processor";
+import { newStatblock, statblockFrontmatter } from "./statblock/actions";
+import { openStatblockEditor, StatblockEditorView, VIEW_TYPE_STATBLOCK } from "./statblock/StatblockEditorView";
 
 export default class StrakesTTRPG extends Plugin {
 	settings!: StrakesSettings;
@@ -95,8 +99,10 @@ export default class StrakesTTRPG extends Plugin {
 		this.registerView(VIEW_TYPE_PLAYER, (leaf) => new PlayerScreenView(leaf, this));
 		this.registerView(VIEW_TYPE_INITIATIVE, (leaf) => new InitiativeView(leaf, this));
 		this.registerView(VIEW_TYPE_MAP, (leaf) => new MapView(leaf, this));
+		this.registerView(VIEW_TYPE_STATBLOCK, (leaf) => new StatblockEditorView(leaf, this));
 		this.registerExtensions([MAP_EXTENSION], VIEW_TYPE_MAP);
 		this.registerMapEmbeds();
+		registerStatblockBlock(this);
 		this.registerHoverLinkSource("strakes-ttrpg", { display: T("main.strakesTtrpgMaps"), defaultMod: true });
 
 		this.addRibbonIcon("monitor", T("main.openPlayerScreen"), () => this.openPlayerScreen(true));
@@ -131,7 +137,8 @@ export default class StrakesTTRPG extends Plugin {
 		if (!unitOptions().some((o) => o.value === this.settings.displayUnit)) this.settings.displayUnit = "km";
 		this.settings.portraitMemory = loaded.portraitMemory && typeof loaded.portraitMemory === "object" ? { ...loaded.portraitMemory } : {};
 		// Condiciones de los combatientes: lista de { id, level }. Lo que no lo sea se descarta.
-		this.settings.combat.combatants = (this.settings.combat.combatants ?? []).map((c) => ({
+		// La CA se quitó del tracker en la 1.4 (se ve en el statblock): la de los combates guardados se descarta.
+		this.settings.combat.combatants = (this.settings.combat.combatants ?? []).map(({ ac: _ac, ...c }: Combatant & { ac?: unknown }) => ({
 			...c,
 			// Las entradas con `auto` eran la Inconsciente que guardaba el plugin hasta la 1.0.x:
 			// ahora las automáticas se calculan, así que se descartan.
@@ -213,11 +220,31 @@ export default class StrakesTTRPG extends Plugin {
 			},
 		});
 		this.addCommand({ id: "create-map", name: T("main.createNewMapFromAn"), callback: () => this.pickImageForMap() });
+		this.addCommand({ id: "create-statblock", name: T("main.createStatblock"), callback: () => void newStatblock(this) });
+		this.addCommand({
+			id: "edit-statblock",
+			name: T("main.editStatblock"),
+			checkCallback: (checking) => {
+				const file = this.app.workspace.getActiveFile();
+				if (!file || !statblockFrontmatter(this, file)) return false;
+				// En la pestaña de la nota, que queda sustituida por el formulario.
+				if (!checking) void openStatblockEditor(this, file, this.app.workspace.getActiveViewOfType(MarkdownView)?.leaf ?? "tab");
+				return true;
+			},
+		});
 	}
 
 	private registerMenus(): void {
 		this.registerEvent(
 			this.app.workspace.on("file-menu", (menu: Menu, file: TAbstractFile) => {
+				if (file instanceof TFolder)
+					menu.addItem((i) =>
+						i
+							.setTitle(T("main.newStatblock"))
+							.setIcon("scroll-text")
+							.setSection("action")
+							.onClick(() => void newStatblock(this, file.path)),
+					);
 				if (!(file instanceof TFile)) return;
 				const content = this.contentForFile(file);
 				if (content)

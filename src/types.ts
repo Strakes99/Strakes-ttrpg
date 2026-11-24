@@ -15,7 +15,6 @@ export interface Combatant {
 	tempHp: number | null;
 	/** Retrato para el modo Tarjetas (imagen de la bóveda + encuadre). */
 	portrait?: Portrait | null;
-	ac: number | null;
 	isPlayer: boolean;
 	/** Oculto para los jugadores (no aparece en su pantalla). */
 	hidden: boolean;
@@ -268,6 +267,14 @@ export interface StrakesSettings {
 	/** Secciones plegadas del panel lateral del mapa ("layers", "pins", "routes", "zones"). */
 	collapsedMapSections: string[];
 	combat: CombatState;
+
+	/** Statblocks (1.4): prefijo y sufijo del nombre de sus notas («ST-Goblin»); el nombre sin ellos es el de la criatura. */
+	statblockPrefix: string;
+	statblockSuffix: string;
+	/** Statblocks: carpeta de las notas nuevas (se crea si no existe). Vacío = la raíz de la bóveda. */
+	statblockFolder: string;
+	/** Statblocks: velocidad y sentidos también en metros, entre paréntesis. */
+	statblockMetric: boolean;
 }
 
 export const DEFAULT_SETTINGS: StrakesSettings = {
@@ -303,6 +310,10 @@ export const DEFAULT_SETTINGS: StrakesSettings = {
 	conditionOverrides: {},
 	travelPace: "normal",
 	combat: { combatants: [], currentId: null, round: 1 },
+	statblockPrefix: "ST-",
+	statblockSuffix: "",
+	statblockFolder: "Statblocks",
+	statblockMetric: false,
 };
 
 export const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif"];

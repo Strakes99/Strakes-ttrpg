@@ -115,7 +115,6 @@ export class InitiativeTracker {
 			initiative: c.initiative,
 			hp,
 			maxHp: c.maxHp,
-			ac: c.ac,
 			isPlayer: c.isPlayer,
 			hidden: c.hidden,
 		});
@@ -157,7 +156,6 @@ export class InitiativeTracker {
 			hp: null,
 			maxHp: null,
 			tempHp: null,
-			ac: null,
 			isPlayer: false,
 			hidden: false,
 			conditions: [],
