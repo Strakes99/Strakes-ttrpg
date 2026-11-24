@@ -1,16 +1,16 @@
-import { Component, FileView, Keymap, MarkdownPostProcessorContext, MarkdownRenderChild, MarkdownRenderer, setIcon, TFile, WorkspaceLeaf } from "obsidian";
+import { Component, FileView, Keymap, MarkdownPostProcessorContext, MarkdownRenderChild, setIcon, TFile, WorkspaceLeaf } from "obsidian";
 import { T } from "../i18n";
 import type StrakesTTRPG from "../main";
-import { isStatblock, nameFromNote, readStatblock, STATBLOCK_BLOCK } from "./data";
 import { copyStatblock } from "./actions";
-import { statblockMarkdown } from "./markdown";
+import { isStatblock, nameFromNote, readStatblock, STATBLOCK_BLOCK } from "./data";
+import { statblockLayout } from "./layout";
+import { renderStatblock, statblockColumns } from "./render";
 import { openStatblockEditor } from "./StatblockEditorView";
 
 /**
  * Bloque ` ```strakes-statblock``` `: dibuja el statblock guardado en las propiedades de la nota que lo
- * contiene, como un callout `[!statblocks]` de ITS Theme (ver `markdown.ts`). Funciona en modo lectura,
- * en Live Preview, en notas incrustadas y en las vistas previas (en todas ellas `ctx.sourcePath` es la
- * nota del bloque).
+ * contiene (maqueta en `layout.ts`, dibujo en `render.ts`). Funciona en modo lectura, en Live Preview,
+ * en notas incrustadas y en las vistas previas (en todas ellas `ctx.sourcePath` es la nota del bloque).
  */
 export function registerStatblockBlock(plugin: StrakesTTRPG): void {
 	plugin.registerMarkdownCodeBlockProcessor(STATBLOCK_BLOCK, (_source, el, ctx) => {
@@ -20,12 +20,12 @@ export function registerStatblockBlock(plugin: StrakesTTRPG): void {
 
 /**
  * Un statblock dibujado. Se vuelve a dibujar cuando cambian las propiedades de su nota (Obsidian no
- * repite el procesador si el bloque no cambia), los ajustes (metros) o las condiciones (nombres de
- * las inmunidades).
+ * repite el procesador si el bloque no cambia), los ajustes (metros, columnas) o las condiciones
+ * (nombres de las inmunidades).
  */
 class StatblockRender extends MarkdownRenderChild {
 	/** Para no redibujar si lo que sale es igual (el evento de las condiciones salta con cada cambio del combate). */
-	private lastMarkdown: string | null = null;
+	private lastKey: string | null = null;
 	/** Dueño de lo que crea cada render (enlaces, incrustados): se descarga al redibujar. */
 	private content: Component | null = null;
 
@@ -53,31 +53,28 @@ class StatblockRender extends MarkdownRenderChild {
 		const { app, settings } = this.plugin;
 		const file = app.vault.getAbstractFileByPath(this.ctx.sourcePath);
 		const fm: unknown = file instanceof TFile ? app.metadataCache.getFileCache(file)?.frontmatter : undefined;
-		let markdown: string | null = null;
-		let isStatblockMarkdown = false;
-		if (file instanceof TFile && fm && isStatblock(fm)) {
-			const sb = readStatblock(fm as Record<string, unknown>, nameFromNote(file.basename, settings.statblockPrefix, settings.statblockSuffix));
-			isStatblockMarkdown = /^dnd5e(-|$)/i.test(sb.system);
-			if (isStatblockMarkdown) markdown = statblockMarkdown(sb, { metric: settings.statblockMetric, catalog: settings });
-			else markdown = `> [!warning]\n> ${T("statblock.unsupportedSystem", { system: sb.system })}`;
-		}
-		if (markdown !== null && markdown === this.lastMarkdown) return;
-		this.lastMarkdown = markdown;
+		const sb = file instanceof TFile && fm && isStatblock(fm) ? readStatblock(fm as Record<string, unknown>, nameFromNote(file.basename, settings.statblockPrefix, settings.statblockSuffix)) : null;
+		const supported = !!sb && /^dnd5e(-|$)/i.test(sb.system);
+		const layout = sb && supported ? statblockLayout(sb, { metric: settings.statblockMetric, catalog: settings }) : null;
+		const columns = sb ? statblockColumns(sb, settings.statblockColumns) : 1;
+		const key = JSON.stringify({ system: sb?.system ?? null, layout, columns });
+		if (key === this.lastKey) return;
+		this.lastKey = key;
 		this.containerEl.empty();
 		if (this.content) this.removeChild(this.content);
 		this.content = this.addChild(new Component());
-		if (markdown === null) {
+		if (!sb) {
 			this.containerEl.createDiv({ cls: "strakes-statblock-empty", text: T("statblock.noData") });
 			return;
 		}
-		await MarkdownRenderer.render(app, markdown, this.containerEl, this.ctx.sourcePath, this.content);
-		if (file instanceof TFile && isStatblockMarkdown) this.addActions(file);
+		if (!layout) {
+			this.containerEl.createDiv({ cls: "strakes-statblock-empty", text: T("statblock.unsupportedSystem", { system: sb.system }) });
+			return;
+		}
+		const wrap = await renderStatblock(app, this.containerEl, layout, this.ctx.sourcePath, this.content, columns);
+		if (file instanceof TFile) this.addActions(wrap, file);
 	}
 
-	/**
-	 * Botones bajo el statblock: Editar (abre el formulario) y Copiar a nuevo statblock. En Live Preview,
-	 * un clic en el bloque entraría a editar su código: se para el evento.
-	 */
 	/**
 	 * La pestaña de la nota de este statblock, si es la que lo muestra. Si está incrustado en otra nota
 	 * (la pestaña muestra otro archivo) o en una vista previa flotante, null: el formulario va a una
@@ -91,8 +88,13 @@ class StatblockRender extends MarkdownRenderChild {
 		return found;
 	}
 
-	private addActions(file: TFile): void {
-		const bar = this.containerEl.createDiv("strakes-statblock-actions");
+	/**
+	 * Botones bajo el statblock: Editar (abre el formulario) y Copiar a nuevo statblock. En Live Preview,
+	 * un clic en el bloque entraría a editar su código: se para el evento. En un statblock incrustado en
+	 * otra nota ni en la vista previa flotante no se ven (CSS: `.internal-embed` y `.hover-popover`).
+	 */
+	private addActions(wrap: HTMLElement, file: TFile): void {
+		const bar = wrap.createDiv("strakes-statblock-actions");
 		const button = (icon: string, label: string, run: (e: MouseEvent) => void) => {
 			const b = bar.createEl("button", { cls: "clickable-icon", attr: { "aria-label": label } });
 			setIcon(b, icon);

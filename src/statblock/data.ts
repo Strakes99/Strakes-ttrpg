@@ -177,6 +177,8 @@ export interface Statblock {
 	mythic_header: string;
 	short_name: string;
 	named: boolean;
+	/** Columnas de este statblock; sin valor, las de los ajustes. */
+	columns?: 1 | 2;
 }
 
 // ---------------------------------------------------------------- lectura
@@ -342,5 +344,6 @@ export function readStatblock(fm: Raw, fallbackName: string): Statblock {
 		mythic_header: typeof fm.mythic_header === "string" ? fm.mythic_header.trim() : "",
 		short_name: str(fm.short_name),
 		named: bool(fm.named),
+		columns: num(fm.columns) === 1 ? 1 : num(fm.columns) === 2 ? 2 : undefined,
 	};
 }

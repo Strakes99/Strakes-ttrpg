@@ -1,7 +1,7 @@
 // 1.4: formulario de statblocks. Limpieza del borrador, orden de las propiedades al guardar, nombres de
 // nota libres y el alineamiento escrito en el formulario.
 import type StrakesTTRPG from "../src/main";
-import { alignmentFromInput } from "../src/statblock/markdown";
+import { alignmentFromInput } from "../src/statblock/layout";
 import { cleanDraft, cleanValue, draftFromFrontmatter, freeNotePath, writeDraft } from "../src/statblock/notes";
 import { setLocale, t } from "./helpers";
 

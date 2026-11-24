@@ -275,6 +275,8 @@ export interface StrakesSettings {
 	statblockFolder: string;
 	/** Statblocks: velocidad y sentidos también en metros, entre paréntesis. */
 	statblockMetric: boolean;
+	/** Statblocks: columnas por defecto ("1": la mitad del ancho; "2": todo el ancho, en dos columnas). */
+	statblockColumns: "1" | "2";
 }
 
 export const DEFAULT_SETTINGS: StrakesSettings = {
@@ -314,6 +316,7 @@ export const DEFAULT_SETTINGS: StrakesSettings = {
 	statblockSuffix: "",
 	statblockFolder: "Statblocks",
 	statblockMetric: false,
+	statblockColumns: "1",
 };
 
 export const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif"];

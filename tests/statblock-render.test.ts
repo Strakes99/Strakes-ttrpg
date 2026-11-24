@@ -1,13 +1,17 @@
-// 1.4: statblocks. Lectura de las propiedades, cálculos y Markdown del callout [!statblocks] de ITS.
+// 1.4: statblocks. Lectura de las propiedades, cálculos y maqueta (layout.ts) del statblock dibujado.
 import { abilityMod, averageHp, derive, lairXpForCr, pbForCr, xpForCr } from "../src/statblock/compute";
 import { nameFromNote, readStatblock } from "../src/statblock/data";
-import { alignmentName, creatureRef, headerLine, speedLine, statblockMarkdown } from "../src/statblock/markdown";
+import { alignmentName, creatureRef, headerLine, speedLine, StatblockLayout, statblockLayout } from "../src/statblock/layout";
 import { setLocale, t } from "./helpers";
 
 const catalog = { customConditions: [], conditionOverrides: {} };
 const opts = { metric: false, catalog };
 const sb = (fm: Record<string, unknown>, name = "Criatura") => readStatblock({ statblock: "dnd5e-2024", ...fm }, name);
-const md = (fm: Record<string, unknown>, metric = false) => statblockMarkdown(sb(fm), { ...opts, metric });
+const lay = (fm: Record<string, unknown>, metric = false) => statblockLayout(sb(fm), { ...opts, metric });
+/** El valor de una línea («Habilidades», «Sentidos»…), o undefined si no está. */
+const line = (l: StatblockLayout, label: string) => l.lines.find((x) => x.label === label)?.value;
+/** Todas las entradas (Markdown) de las secciones, juntas. */
+const entries = (l: StatblockLayout) => l.sections.flatMap((x) => (x.intro ? [x.intro, ...x.entries] : x.entries)).join("\n");
 const has = (text: string, part: string) => text.includes(part);
 
 /** El Aboleth de 2024, como lo guardaría el plugin. */
@@ -98,55 +102,59 @@ t("es: velocidad en texto, tal cual", speedLine(sb({ speed: { walk: "30 ft. (onl
 
 // ---------- Callout completo ----------
 {
-	const text = md(aboleth);
-	const lines = text.split("\n");
-	t("es: todas las líneas dentro del callout", lines.every((l) => l.startsWith(">")), true);
-	t("es: empieza por [!statblocks] y el nombre en #", lines.slice(0, 2), ["> [!statblocks]", "> # Aboleth"]);
-	t("es: línea de tipo en una cita", has(text, "> > Aberración Grande, Legal Malvada"), true);
-	t("es: CA, iniciativa con puntuación y VD", has(text, "| **CA** | 17 | **Iniciativa** | +3 (13) | **VD** | 10 |"), true);
-	t("es: PG con fórmula y BC", has(text, "| **PG** | 150 (20d10 + 40) |  |  | **BC** | +4 |"), true);
-	t("es: velocidad en una línea aparte bajo la tabla, antes de la raya", has(text, "| **PG** | 150 (20d10 + 40) |  |  | **BC** | +4 |\n>\n> **Velocidad**: 10 pies, Nadar 40 pies\n>\n> ---"), true);
-	t("es: la tabla ya no tiene fila de velocidad", has(text, "| **Velocidad**"), false);
-	t("es: tabla de características", has(text, "| FUE | DES | CON | INT | SAB | CAR |  |"), true);
-	t("es: modificadores con el signo menos tipográfico", has(text, "| +5 | −1 | +2 | +4 | +2 | +4 | **Mod** |"), true);
-	t("es: salvaciones", has(text, "| +5 | +3 | +6 | +8 | +6 | +4 | **Salv.** |"), true);
-	t("es: habilidades en orden alfabético", has(text, "**Habilidades**: Historia +12, Percepción +10"), true);
-	t("es: sentidos con la Percepción pasiva", has(text, "**Sentidos**: Visión en la oscuridad 120 pies; Percepción pasiva 20"), true);
-	t("es: idiomas", has(text, "**Idiomas**: Deep Speech, telepathy 120 ft."), true);
-	t("es: PX con la guarida", has(text, "**PX**: 5900, o 7200 en su guarida"), true);
-	t("es: sin líneas vacías de vulnerabilidades, resistencias, inmunidades ni equipo", ["Vulnerabilidades", "Resistencias", "Inmunidades", "Equipo"].some((w) => has(text, w)), false);
-	t("es: usos en la guarida", has(text, "**Legendary Resistance (3/día, o 4/día en su guarida)**: If the aboleth"), true);
-	t("es: recarga", has(text, "**Consume Memories (Recarga 5–6)**: Wisdom Saving Throw."), true);
-	t("es: encabezados de sección", ["#### Rasgos", "#### Acciones", "#### Acciones Legendarias"].every((h) => has(text, h)), true);
+	const l = lay(aboleth);
+	t("es: nombre y línea de tipo", [l.name, l.subtitle], ["Aboleth", "Aberración Grande, Legal Malvada"]);
+	t(
+		"es: bloque superior: CA | Iniciativa; PG | BC (el BC bajo la iniciativa)",
+		l.top,
+		[
+			[{ label: "CA", value: "17" }, { label: "Iniciativa", value: "+3 (13)" }],
+			[{ label: "PG", value: "150 (20d10 + 40)" }, { label: "BC", value: "+4" }],
+		],
+	);
+	t("es: velocidad aparte, a lo ancho", l.speed, "10 pies, Nadar 40 pies");
+	t("es: características (abreviaturas, puntuación, mod. con signo menos tipográfico y salvación)", l.abilities?.[1], { label: "Des", score: "9", mod: "\u22121", save: "+3" });
+	t("es: salvaciones", l.abilities?.map((a) => a.save), ["+5", "+3", "+6", "+8", "+6", "+4"]);
+	t("es: habilidades en orden alfabético", line(l, "Habilidades"), "Historia +12, Percepción +10");
+	t("es: sentidos con la Percepción pasiva", line(l, "Sentidos"), "Visión en la oscuridad 120 pies; Percepción pasiva 20");
+	t("es: idiomas", line(l, "Idiomas"), "Deep Speech, telepathy 120 ft.");
+	t("es: VD con los PX y la guarida, al final y sin el BC", l.lines[l.lines.length - 1], { label: "VD", value: "10 (PX 5900, o 7200 en su guarida)" });
+	t("es: sin líneas vacías de vulnerabilidades, resistencias, inmunidades ni equipo", ["Vulnerabilidades", "Resistencias", "Inmunidades", "Equipo"].some((w) => line(l, w) !== undefined), false);
+	t("es: orden de las líneas", l.lines.map((x) => x.label), ["Habilidades", "Sentidos", "Idiomas", "VD"]);
+	const text = entries(l);
+	t("es: entrada en negrita y cursiva con dos puntos, usos en la guarida", has(text, "***Legendary Resistance (3/día, o 4/día en su guarida):*** If the aboleth"), true);
+	t("es: recarga", has(text, "***Consume Memories (Recarga 5–6):*** Wisdom Saving Throw."), true);
+	t("es: secciones en orden", l.sections.map((x) => x.title), ["Rasgos", "Acciones", "Acciones Legendarias"]);
 	t(
 		"es: introducción generada de las acciones legendarias",
-		has(text, "Usos de acción legendaria: 3 (4 en su guarida). Inmediatamente después del turno de otra criatura, el aboleth puede gastar un uso para realizar una de las siguientes acciones. El aboleth recupera todos"),
+		has(l.sections[2].intro ?? "", "Usos de acción legendaria: 3 (4 en su guarida). Inmediatamente después del turno de otra criatura, el aboleth puede gastar un uso para realizar una de las siguientes acciones. El aboleth recupera todos"),
 		true,
 	);
-	t("es: sin secciones vacías", ["Reacciones", "Míticas", "Adicionales", "Lanzamiento"].some((w) => has(text, w)), false);
-	t("es: líneas seguidas con salto forzado (dos espacios)", has(text, "> **Habilidades**: Historia +12, Percepción +10  \n> **Sentidos**"), true);
 }
-t("es: sin idiomas, «Idiomas —»", has(md({ str: 10 }), "**Idiomas**: —"), true);
-t("es: sin nada, solo el nombre y los idiomas", md({}, false).split("\n"), ["> [!statblocks]", "> # Criatura", ">", "> **Idiomas**: —"]);
-t("es: sentidos en metros", has(md({ senses: { blindsight: 60 }, wis: 10 }, true), "Vista ciega 60 pies (18 m); Percepción pasiva 10"), true);
-t("es: CA con nota conocida, traducida", has(md({ ac: 13, ac_note: "chain shirt" }), "| **CA** | 13 (camisote de mallas) |"), true);
-t("es: nota de CA con varias partes, sin distinguir mayúsculas", has(md({ ac: 20, ac_note: "Plate Armor, shield" }), "| **CA** | 20 (armadura de placas, escudo) |"), true);
-t("es: nota de CA desconocida, tal cual", has(md({ ac: 15, ac_note: "15 with Mage Armor" }), "| **CA** | 15 (15 with Mage Armor) |"), true);
-t("es: sentidos de texto conocidos, traducidos", has(md({ senses: { blindsight: 30 }, senses_other: ["echolocation", "smells fear"] }), "**Sentidos**: Vista ciega 30 pies, ecolocalización, smells fear"), true);
-t("es: solo velocidad, sin tabla: línea y raya antes de las características", has(md({ speed: { walk: 30 }, str: 10 }), "> **Velocidad**: 30 pies\n>\n> ---\n>\n> | FUE"), true);
-t(
-	"es: inmunidades de daño y condiciones juntas, con «;»",
-	has(md({ immunities: ["fire", "poison"], condition_immunities: ["charmed", "Mi condición"] }), "**Inmunidades**: Fuego, Veneno; Hechizado, Mi condición"),
-	true,
-);
-t("es: resistencias en texto (2014), tal cual", has(md({ resistances: ["cold", "bludgeoning from nonmagical attacks"] }), "**Resistencias**: Frío, bludgeoning from nonmagical attacks"), true);
-t("es: el paréntesis propio del nombre se junta con «;»", has(md({ actions: [{ name: "Fell Glare (Fiend Only)", text: "x", recharge: "long" }] }), "**Fell Glare (Fiend Only; Se recarga tras un descanso largo)**: x"), true);
-t("es: marcas de 5etools que queden, como texto", has(md({ actions: [{ name: "Garra", text: "El objetivo queda {@condition Grappled|XPHB}." }] }), "El objetivo queda Grappled."), true);
+t("es: sin idiomas, «Idiomas —»", line(lay({ str: 10 }), "Idiomas"), "—");
+{
+	const l = lay({});
+	t("es: sin nada, solo el nombre y los idiomas", [l.name, l.subtitle, l.top, l.speed, l.abilities, l.lines, l.sections], ["Criatura", "", [], "", null, [{ label: "Idiomas", value: "—" }], []]);
+}
+t("es: sin CA, la iniciativa sigue en su columna", lay({ dex: 14 }).top, [[null, { label: "Iniciativa", value: "+2 (12)" }]]);
+t("es: sin VD, solo los PX escritos", lay({ xp: 50 }).lines.at(-1), { label: "PX", value: "50" });
+t("es: VD sin PX (texto)", lay({ cr: "especial" }).lines.at(-1), { label: "VD", value: "especial" });
+t("es: sentidos en metros", line(lay({ senses: { blindsight: 60 }, wis: 10 }, true), "Sentidos"), "Vista ciega 60 pies (18 m); Percepción pasiva 10");
+t("es: CA con nota conocida, traducida", lay({ ac: 13, ac_note: "chain shirt" }).top[0][0], { label: "CA", value: "13 (camisote de mallas)" });
+t("es: nota de CA con varias partes, sin distinguir mayúsculas", lay({ ac: 20, ac_note: "Plate Armor, shield" }).top[0][0]?.value, "20 (armadura de placas, escudo)");
+t("es: nota de CA desconocida, tal cual", lay({ ac: 15, ac_note: "15 with Mage Armor" }).top[0][0]?.value, "15 (15 with Mage Armor)");
+t("es: sentidos de texto conocidos, traducidos", line(lay({ senses: { blindsight: 30 }, senses_other: ["echolocation", "smells fear"] }), "Sentidos"), "Vista ciega 30 pies, ecolocalización, smells fear");
+t("es: inmunidades de daño y condiciones juntas, con «;»", line(lay({ immunities: ["fire", "poison"], condition_immunities: ["charmed", "Mi condición"] }), "Inmunidades"), "Fuego, Veneno; Hechizado, Mi condición");
+t("es: resistencias en texto (2014), tal cual", line(lay({ resistances: ["cold", "bludgeoning from nonmagical attacks"] }), "Resistencias"), "Frío, bludgeoning from nonmagical attacks");
+t("es: el paréntesis propio del nombre se junta con «;»", entries(lay({ actions: [{ name: "Fell Glare (Fiend Only)", text: "x", recharge: "long" }] })), "***Fell Glare (Fiend Only; Se recarga tras un descanso largo):*** x");
+t("es: marcas de 5etools que queden, como texto", has(entries(lay({ actions: [{ name: "Garra", text: "El objetivo queda {@condition Grappled|XPHB}." }] })), "El objetivo queda Grappled."), true);
+t("es: entrada de varios párrafos, con salto forzado", entries(lay({ reactions: [{ name: "A", text: "Uno.\n\nDos." }] })), "***A:*** Uno.  \n  \nDos.");
 t("es: Nombre propio, sin artículo", creatureRef(sb({ name: "Strahd", named: true })), "Strahd");
 t("es: nombre en el texto con su artículo", [creatureRef(sb({ name: "Arpía", short_name: "la arpía" })), creatureRef(sb({ name: "Goblin Jefe", short_name: "goblin" }))], ["la arpía", "el goblin"]);
-t("es: encabezado legendario escrito, en lugar del generado", has(md({ legendary_header: "Cabecera propia.", legendary_actions: [{ name: "A", text: "b" }] }), "> Cabecera propia."), true);
+t("es: encabezado legendario escrito, en lugar del generado", lay({ legendary_header: "Cabecera propia.", legendary_actions: [{ name: "A", text: "b" }] }).sections[0].intro, "Cabecera propia.");
+t("es: columnas del statblock (1, 2 o las de los ajustes)", [sb({ columns: 2 }).columns, sb({ columns: "1" }).columns, sb({ columns: 3 }).columns, sb({}).columns], [2, 1, undefined, undefined]);
 {
-	const text = md({
+	const l = lay({
 		cha: 16,
 		cr: "5",
 		spellcasting: [
@@ -162,24 +170,26 @@ t("es: encabezado legendario escrito, en lugar del generado", has(md({ legendary
 			{ name: "Counterspell (2/Day)", use: "reaction", ability: "cha", text: "x", per_day: { uses: 2, spells: ["Counterspell"] } },
 		],
 	});
-	t("es: sección de conjuros entre Rasgos y Acciones", has(text, "#### Lanzamiento de Conjuros"), true);
-	t("es: CD y ataque en una línea nueva tras el texto", has(text, "**Spellcasting**: The creature casts one of the following spells.  \n> CD de salvación de conjuros 14, +6 al ataque con conjuros"), true);
+	const text = entries(l);
+	t("es: sección de conjuros", l.sections.map((x) => x.title), ["Lanzamiento de Conjuros"]);
+	t("es: CD y ataque en una línea nueva tras el texto", has(text, "***Spellcasting:*** The creature casts one of the following spells.  \nCD de salvación de conjuros 14, +6 al ataque con conjuros"), true);
 	t("es: a voluntad, al día cada uno y por niveles (trucos primero)", ["**A voluntad:** *Mage Hand*, *Prestidigitation*", "**1/día cada uno:** *Fireball*, *Fly*", "**Trucos:** *Light*", "**Nivel 1 (4 espacios):** *Shield*"].every((p) => has(text, p)), true);
-	t("es: tipo de uso en el paréntesis del nombre", has(text, "**Counterspell (2/Day; reacción)**: x"), true);
-	t("es: texto final", has(text, "> Pie."), true);
+	t("es: tipo de uso en el paréntesis del nombre", has(text, "***Counterspell (2/Day; reacción):*** x"), true);
+	t("es: texto final", has(text, "\nPie."), true);
 }
 {
-	const text = md({ all_skills: true, str: 10, dex: 14, con: 10, int: 10, wis: 12, cha: 10, cr: "1", skill_proficiencies: { stealth: "proficient" } });
-	t("es: mostrar todas las habilidades: tabla de cuatro columnas", has(text, "| Habilidad | Mod | Habilidad | Mod |"), true);
-	t("es: con todas, no hay línea de Habilidades", has(text, "**Habilidades**"), false);
-	t("es: tabla de habilidades en orden alfabético, de arriba abajo", has(text, "| Acrobacias | +2 | Medicina | +1 |"), true);
-	t("es: con competencia, el BC", has(text, "| Sigilo | +4 |"), true);
+	const l = lay({ all_skills: true, str: 10, dex: 14, con: 10, int: 10, wis: 12, cha: 10, cr: "1", skill_proficiencies: { stealth: "proficient" } });
+	t("es: mostrar todas las habilidades: las 18", l.allSkills?.length, 18);
+	t("es: con todas, no hay línea de Habilidades", line(l, "Habilidades"), undefined);
+	t("es: habilidades en orden alfabético", l.allSkills?.slice(0, 2), [{ label: "Acrobacias", value: "+2" }, { label: "Atletismo", value: "+0" }]);
+	t("es: con competencia, el BC", l.allSkills?.find((x) => x.label === "Sigilo")?.value, "+4");
 }
 setLocale("en");
 {
-	const text = md(aboleth);
-	t("en: XP with lair, number format", has(text, "**XP**: 5,900, or 7,200 in Lair"), true);
-	t("en: generated legendary intro", has(text, "Legendary Action Uses: 3 (4 in Lair). Immediately after another creature's turn, the aboleth can expend a use"), true);
-	t("en: uses", has(text, "**Legendary Resistance (3/Day, or 4/Day in Lair)**"), true);
+	const l = lay(aboleth);
+	t("en: CR line with XP and lair, number format", l.lines.at(-1), { label: "CR", value: "10 (XP 5,900, or 7,200 in Lair)" });
+	t("en: generated legendary intro", has(l.sections[2].intro ?? "", "Legendary Action Uses: 3 (4 in Lair). Immediately after another creature's turn, the aboleth can expend a use"), true);
+	t("en: uses", has(entries(l), "***Legendary Resistance (3/Day, or 4/Day in Lair):***"), true);
+	t("en: ability abbreviations", l.abilities?.map((a) => a.label), ["Str", "Dex", "Con", "Int", "Wis", "Cha"]);
 }
 setLocale("es");

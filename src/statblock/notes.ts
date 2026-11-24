@@ -12,6 +12,7 @@ export const DEFAULT_SYSTEM = "dnd5e-2024";
  */
 export const STATBLOCK_KEYS = [
 	"statblock",
+	"columns",
 	"name",
 	"short_name",
 	"named",

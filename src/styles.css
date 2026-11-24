@@ -1834,12 +1834,109 @@ input[type="number"].strakes-fog-size-number {
 	font-style: italic;
 }
 
-/* Statblocks (1.4): botones bajo el statblock dibujado (Editar, Copiar a nuevo statblock). */
+/* Statblocks (1.4): maqueta propia con la disposición de los de 2024 (render.ts). Sin colores, rayas,
+   tamaños ni fuentes propios: los de los encabezados y el texto del tema. Una columna = la mitad del
+   ancho disponible; dos = todo el ancho, en dos columnas. Con poco sitio, una sola a todo el ancho. */
+.strakes-stat-wrap {
+	container-type: inline-size;
+}
+.strakes-statblock {
+	width: 50%;
+	margin-inline: auto;
+	line-height: var(--line-height-normal);
+}
+.strakes-statblock.is-cols-2 {
+	width: 100%;
+	column-count: 2;
+	column-gap: var(--size-4-8);
+}
+@container (max-width: 40em) {
+	.strakes-statblock,
+	.strakes-statblock.is-cols-2 {
+		width: 100%;
+		column-count: 1;
+	}
+}
+.strakes-stat-head,
+.strakes-stat-entry,
+.strakes-stat-line,
+.strakes-stat-all-skills {
+	break-inside: avoid;
+}
+.strakes-stat-name {
+	font-family: var(--h2-font);
+	font-size: var(--h2-size);
+	font-weight: var(--h2-weight);
+	color: var(--h2-color);
+	font-variant: small-caps;
+	line-height: var(--line-height-tight);
+}
+.strakes-stat-subtitle {
+	font-style: italic;
+	margin-bottom: var(--size-4-2);
+}
+.strakes-stat-key,
+.strakes-stat-ability-label {
+	font-weight: var(--bold-weight);
+}
+.strakes-stat-top {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	column-gap: var(--size-4-4);
+}
+.strakes-stat-top-cell.is-wide {
+	grid-column: 1 / -1;
+}
+.strakes-stat-abilities {
+	display: grid;
+	grid-template-columns: repeat(6, 1fr) auto;
+	text-align: center;
+	margin: var(--size-4-2) 0;
+}
+.strakes-stat-ability-label,
+.strakes-stat-row-label,
+.strakes-stat-section-title {
+	font-variant: small-caps;
+}
+.strakes-stat-row-label {
+	color: var(--text-muted);
+	text-align: start;
+}
+.strakes-stat-all-skills {
+	display: grid;
+	grid-template-columns: 1fr auto 1fr auto;
+	column-gap: var(--size-4-3);
+	margin-bottom: var(--size-4-2);
+}
+.strakes-stat-lines {
+	margin-bottom: var(--size-4-2);
+}
+.strakes-stat-section-title {
+	font-family: var(--h4-font);
+	font-size: var(--h4-size);
+	font-weight: var(--h4-weight);
+	color: var(--h4-color);
+	margin: var(--size-4-3) 0 var(--size-4-1);
+	break-after: avoid;
+}
+.strakes-stat-entry > p:first-child {
+	margin-top: 0;
+}
+.strakes-stat-entry > p:last-child {
+	margin-bottom: var(--size-4-2);
+}
+
+/* Botones bajo el statblock dibujado (Editar, Copiar a nuevo statblock), centrados como el statblock.
+   En los statblocks incrustados en otra nota y en la vista previa flotante no se muestran (pedido del
+   desarrollador). */
 .strakes-statblock-actions {
 	display: flex;
 	justify-content: center;
 	gap: var(--size-4-1);
-	margin-top: calc(var(--size-4-1) * -1);
+}
+.internal-embed .strakes-statblock-actions,
+.hover-popover .strakes-statblock-actions {
+	display: none;
 }
 
 /* Formulario de statblock: el formulario a la izquierda y la vista previa a la derecha; uno debajo de

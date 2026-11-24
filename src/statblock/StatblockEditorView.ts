@@ -1,9 +1,10 @@
-import { Component, getFrontMatterInfo, ItemView, Keymap, MarkdownRenderer, PaneType, parseYaml, TFile, ViewStateResult, WorkspaceLeaf } from "obsidian";
+import { Component, getFrontMatterInfo, ItemView, Keymap, PaneType, parseYaml, TFile, ViewStateResult, WorkspaceLeaf } from "obsidian";
 import { T } from "../i18n";
 import type StrakesTTRPG from "../main";
 import { nameFromNote, readStatblock } from "./data";
 import { buildForm } from "./form";
-import { statblockMarkdown } from "./markdown";
+import { renderStatblock, statblockColumns } from "./render";
+import { statblockLayout } from "./layout";
 import { cleanDraft, Draft, draftFromFrontmatter, writeDraft } from "./notes";
 
 export const VIEW_TYPE_STATBLOCK = "strakes-statblock-editor";
@@ -260,12 +261,13 @@ export class StatblockEditorView extends ItemView {
 	private async renderPreview(): Promise<void> {
 		if (!this.file) return;
 		const s = this.plugin.settings;
-		const md = statblockMarkdown(readStatblock(this.draft, this.fallbackName()), { metric: s.statblockMetric, catalog: s });
+		const sb = readStatblock(this.draft, this.fallbackName());
+		const layout = statblockLayout(sb, { metric: s.statblockMetric, catalog: s });
 		this.previewComponent?.unload();
 		this.previewComponent = new Component();
 		this.previewComponent.load();
 		this.previewEl.empty();
-		await MarkdownRenderer.render(this.app, md, this.previewEl, this.file.path, this.previewComponent);
+		await renderStatblock(this.app, this.previewEl, layout, this.file.path, this.previewComponent, statblockColumns(sb, s.statblockColumns));
 	}
 }
 

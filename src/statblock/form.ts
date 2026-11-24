@@ -16,7 +16,7 @@ import {
 	SPEEDS,
 	Statblock,
 } from "./data";
-import { ALIGNMENTS, alignmentFromInput, alignmentName, creatureRef, legendaryIntro } from "./markdown";
+import { ALIGNMENTS, alignmentFromInput, alignmentName, creatureRef, legendaryIntro } from "./layout";
 import { Draft } from "./notes";
 
 /**
@@ -294,6 +294,16 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 		const named = row(body);
 		boolCheck(named, T("sbForm.named"), draft, "named");
 		named.createSpan({ cls: "strakes-sb-hint", text: T("sbForm.namedHint") });
+		select(
+			row(body, T("sbForm.columns")),
+			[
+				["", T("sbForm.columnsDefault")],
+				["1", T("settings.oneColumn")],
+				["2", T("settings.twoColumns")],
+			],
+			() => display(draft.columns),
+			(v) => (v ? (draft.columns = Number(v)) : delete draft.columns),
+		);
 
 		const size = row(body, T("sbForm.size"));
 		const sizeLabels = (s: string) => tk(`statblock.size.${s}`);

@@ -16,10 +16,11 @@ import {
 } from "./data";
 
 /**
- * Dibujo de un statblock (1.4): genera el Markdown de un callout `[!statblocks]` de ITS Theme, con la
- * maqueta de la nota de ejemplo de ITS (nombre en `#`, línea de tipo en una cita, tablas, `####` por
- * sección). `processor.ts` lo pasa a `MarkdownRenderer`, así que Obsidian crea un callout de verdad y
- * ITS lo pinta como los suyos. Todo lo que se ve sale en el idioma de la interfaz.
+ * Maqueta de un statblock (1.4): qué se muestra, con qué texto y en qué orden, sin DOM (`render.ts` lo
+ * dibuja). Sigue la disposición de los statblocks oficiales de 2024, con estos cambios del desarrollador
+ * (2026-11-23): el BC va debajo de la iniciativa (no junto al VD y los PX), y las características van en
+ * una tabla a todo el ancho (puntuación, Mod y Salv.). Todo lo que se ve sale en el idioma de la interfaz.
+ * Hasta el 2026-11-23 se generaba un callout `[!statblocks]` de ITS Theme.
  *
  * Regla de los campos vacíos: lo que no tiene valor no se dibuja, ni su etiqueta ni su puntuación
  * (nunca «Dragón (), Legal bueno»). La única excepción son los idiomas: «Idiomas —».
@@ -101,8 +102,6 @@ export function knownPhrases(text: string, dict: Record<string, string>, prefix:
 		.join(",");
 }
 
-/** Una celda de tabla: sin `|` sueltas ni saltos de línea, que romperían la tabla. */
-const cell = (s: string) => s.replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ");
 
 // ---------------------------------------------------------------- cabecera
 
@@ -210,40 +209,64 @@ export function speedLine(sb: Statblock, metric: boolean): string {
 	return parts.join(", ");
 }
 
-/**
- * Tabla de defensa: CA | Iniciativa | VD; PG | — | BC. La velocidad va en una línea aparte debajo
- * (`speedBlock`): en la tabla ensanchaba la segunda columna y el callout de ITS (42 caracteres de
- * ancho) mostraba una barra de desplazamiento horizontal (opción A, 2026-11-23).
- */
-function defenseTable(sb: Statblock, d: Derived): string[] {
-	const label = (k: string) => `**${tk(k)}**`;
-	const pair = (k: string, v: string | undefined): [string, string] => (v ? [label(k), v] : ["", ""]);
+/** Un par etiqueta + valor del bloque superior (CA, Iniciativa, PG, BC). */
+export interface LabelValue {
+	label: string;
+	value: string;
+}
+
+/** Una característica: abreviatura, puntuación, modificador y salvación («—» si falta). */
+export interface AbilityCell {
+	label: string;
+	score: string;
+	mod: string;
+	save: string;
+}
+
+/** Una sección (Rasgos, Acciones…): título, introducción opcional (Markdown) y entradas (Markdown). */
+export interface LayoutSection {
+	title: string;
+	intro?: string;
+	entries: string[];
+}
+
+export interface StatblockLayout {
+	name: string;
+	/** «Aberración Grande, Legal Malvada». */
+	subtitle: string;
+	/** Filas de dos casillas: [CA, Iniciativa] y [PG, BC]. Una casilla vacía es null (para no mover la otra). */
+	top: (LabelValue | null)[][];
+	/** «10 pies, Nadar 40 pies», a lo ancho bajo el bloque superior. */
+	speed: string;
+	abilities: AbilityCell[] | null;
+	/** Con «Mostrar todas las habilidades», la tabla de las 18 (si no, null y van en una línea). */
+	allSkills: LabelValue[] | null;
+	/** Líneas «**Etiqueta** valor»: Habilidades… Idiomas y, al final, el VD con los PX. */
+	lines: LabelValue[];
+	sections: LayoutSection[];
+}
+
+function topBlock(sb: Statblock, d: Derived): (LabelValue | null)[][] {
+	const cellOf = (key: string, value: string | undefined): LabelValue | null => (value ? { label: tk(key), value } : null);
 	const ac = sb.ac !== undefined ? `${val(sb.ac)}${sb.ac_note ? ` (${knownPhrases(sb.ac_note, ARMOR, "statblock.armor")})` : ""}` : undefined;
 	const init = d.initiative === undefined ? undefined : typeof d.initiative === "number" ? `${signed(d.initiative)} (${10 + d.initiative})` : d.initiative;
 	const hp = d.hp !== undefined ? `${val(d.hp)}${sb.hp_formula ? ` (${sb.hp_formula})` : ""}` : sb.hp_formula ? `(${sb.hp_formula})` : undefined;
 	const pb = d.pb !== undefined ? signedValue(d.pb) : undefined;
-	const rows = [
-		[...pair("statblock.ac", ac), ...pair("statblock.initiative", init), ...pair("statblock.cr", sb.cr || undefined)],
-		[...pair("statblock.hp", hp), "", "", ...pair("statblock.pb", pb)],
+	return [
+		[cellOf("statblock.ac", ac), cellOf("statblock.initiative", init)],
+		[cellOf("statblock.hp", hp), cellOf("statblock.pb", pb)],
 	].filter((r) => r.some(Boolean));
-	if (!rows.length) return [];
-	return ["|  |  |  |  |  |  |", "|:---|:---|:---|:---|:---|:---|", ...rows.map((r) => `| ${r.map(cell).join(" | ")} |`)];
 }
 
-function abilityTable(sb: Statblock, d: Derived): string[] {
-	const hasScores = ABILITIES.some((a) => sb.scores[a] !== undefined || sb.saves[a] !== undefined);
-	if (!hasScores) return [];
+function abilityCells(sb: Statblock, d: Derived): AbilityCell[] | null {
+	if (!ABILITIES.some((a) => sb.scores[a] !== undefined || sb.saves[a] !== undefined)) return null;
 	const none = tk("statblock.none");
-	const scores = ABILITIES.map((a) => (sb.scores[a] !== undefined ? fmt(sb.scores[a]) : none));
-	const mods = ABILITIES.map((a) => (d.mods[a] !== undefined ? signed(d.mods[a]) : none));
-	const saves = ABILITIES.map((a) => (d.saves[a] !== undefined ? signedValue(d.saves[a]) : none));
-	return [
-		`| ${ABILITIES.map((a) => tk(`statblock.ability.${a}`)).join(" | ")} |  |`,
-		"|:---:|:---:|:---:|:---:|:---:|:---:|:---|",
-		`| ${scores.join(" | ")} |  |`,
-		`| ${mods.join(" | ")} | **${tk("statblock.mod")}** |`,
-		`| ${saves.map(cell).join(" | ")} | **${tk("statblock.save")}** |`,
-	];
+	return ABILITIES.map((a) => ({
+		label: tk(`statblock.ability.${a}`),
+		score: sb.scores[a] !== undefined ? fmt(sb.scores[a]) : none,
+		mod: d.mods[a] !== undefined ? signed(d.mods[a]) : none,
+		save: d.saves[a] !== undefined ? signedValue(d.saves[a]) : none,
+	}));
 }
 
 // ---------------------------------------------------------------- competencias y defensas
@@ -255,19 +278,6 @@ function skillNames(d: Derived): { name: string; value: string }[] {
 		.sort((a, b) => collator.compare(a.name, b.name));
 }
 
-/** Tabla de las 18 habilidades en cuatro columnas (Habilidad | Mod. | Habilidad | Mod.), de arriba abajo. */
-function allSkillsTable(d: Derived): string[] {
-	const skills = skillNames(d);
-	if (!skills.length) return [];
-	const half = Math.ceil(skills.length / 2);
-	const head = `| ${tk("statblock.skillHeader")} | ${tk("statblock.mod")} | ${tk("statblock.skillHeader")} | ${tk("statblock.mod")} |`;
-	const rows = Array.from({ length: half }, (_, i) => {
-		const a = skills[i];
-		const b = skills[i + half];
-		return `| ${cell(a.name)} | ${cell(a.value)} | ${b ? cell(b.name) : ""} | ${b ? cell(b.value) : ""} |`;
-	});
-	return [head, "|:---|:---|:---|:---|", ...rows];
-}
 
 const damageList = (xs: string[]) => xs.map((x) => (known(DAMAGE_TYPES, x) ? tk(`statblock.damage.${x.toLowerCase()}`) : plainTags(x)));
 
@@ -282,10 +292,10 @@ function sensesLine(sb: Statblock, d: Derived, metric: boolean): string {
 	return list && passive ? `${list}; ${passive}` : list || passive;
 }
 
-function infoLines(sb: Statblock, d: Derived, opts: StatblockOptions): string[] {
-	const lines: string[] = [];
+function infoLines(sb: Statblock, d: Derived, opts: StatblockOptions): LabelValue[] {
+	const lines: LabelValue[] = [];
 	const add = (key: string, text: string) => {
-		if (text) lines.push(`**${tk(key)}**: ${text}`);
+		if (text) lines.push({ label: tk(key), value: text });
 	};
 	if (!sb.all_skills) add("statblock.skills", skillNames(d).map((s) => `${s.name} ${s.value}`).join(", "));
 	add("statblock.vulnerabilities", damageList(sb.vulnerabilities).join(", "));
@@ -296,7 +306,10 @@ function infoLines(sb: Statblock, d: Derived, opts: StatblockOptions): string[] 
 	add("statblock.gear", sb.gear.map(plainTags).join(", "));
 	add("statblock.senses", sensesLine(sb, d, opts.metric));
 	add("statblock.languages", sb.languages.map(plainTags).join(", ") || tk("statblock.none"));
-	if (d.xp !== undefined) add("statblock.xp", d.xpLair !== undefined ? tk("statblock.xpLair", { xp: val(d.xp), lair: val(d.xpLair) }) : val(d.xp));
+	const xp = d.xp === undefined ? "" : d.xpLair !== undefined ? tk("statblock.xpLair", { xp: val(d.xp), lair: val(d.xpLair) }) : val(d.xp);
+	// «VD 10 (PX 5900, o 7200 en su guarida)»; sin VD, «PX 5900».
+	if (sb.cr) add("statblock.cr", xp ? `${sb.cr} (${tk("statblock.xp")} ${xp})` : sb.cr);
+	else add("statblock.xp", xp);
 	return lines;
 }
 
@@ -324,11 +337,14 @@ function rechargeText(e: StatEntry): string {
 	return r >= 6 ? tk("statblock.recharge6") : tk("statblock.recharge", { n: r });
 }
 
-/** «**Nombre (2/día; …)**», con el paréntesis generado y el propio del nombre juntos. */
+/**
+ * «***Nombre (2/día; …):***», en negrita y cursiva como en 2024 pero con dos puntos (decisión del
+ * desarrollador), con el paréntesis generado y el propio del nombre juntos.
+ */
 function entryTitle(name: string, extra: string[]): string {
 	const { base, own } = splitName(plainTags(name));
 	const paren = [own, ...extra].filter(Boolean).join("; ");
-	return `**${base}${paren ? ` (${paren})` : ""}**`;
+	return `***${base}${paren ? ` (${paren})` : ""}:***`;
 }
 
 /** El título y el texto: el primer párrafo va en la misma línea que el título. */
@@ -336,7 +352,7 @@ function entryLines(title: string, text: string): string[] {
 	const body = plainTags(text).trim();
 	if (!body) return [title];
 	const [first, ...rest] = body.split("\n");
-	return [`${title}: ${first}`, ...rest];
+	return [`${title} ${first}`, ...rest];
 }
 
 function entryBlock(e: StatEntry): string[] {
@@ -393,39 +409,15 @@ export function legendaryIntro(sb: Statblock): string {
 
 // ---------------------------------------------------------------- todo junto
 
-/** Une bloques de líneas con una línea en blanco entre ellos (párrafos aparte). */
-function paragraphs(blocks: string[][]): string[] {
-	const out: string[] = [];
-	for (const b of blocks.filter((x) => x.length)) {
-		if (out.length) out.push("");
-		out.push(...b);
-	}
-	return out;
-}
-
 /** Líneas seguidas con salto de línea forzado (dos espacios al final), aunque esté activo «Saltos de línea estrictos». */
-const hardBreaks = (lines: string[]) => lines.map((l, i) => (i < lines.length - 1 ? `${l}  ` : l));
+const hardBreaks = (lines: string[]) => lines.map((l, i) => (i < lines.length - 1 ? `${l}  ` : l)).join("\n");
 
-/** Markdown del callout `[!statblocks]` completo. */
-export function statblockMarkdown(sb: Statblock, opts: StatblockOptions): string {
+/** La maqueta completa de un statblock. */
+export function statblockLayout(sb: Statblock, opts: StatblockOptions): StatblockLayout {
 	const d = derive(sb, sb.all_skills);
-	const header = headerLine(sb);
-	const body: string[][] = [[`# ${sb.name}`, ...(header ? [`> ${header}`] : [])]];
-	const defense = defenseTable(sb, d);
-	const speed = speedLine(sb, opts.metric);
-	const abilities = abilityTable(sb, d);
-	body.push(defense);
-	if (speed) body.push([`**${tk("statblock.speed")}**: ${speed}`]);
-	if ((defense.length || speed) && abilities.length) body.push(["---"]);
-	body.push(abilities);
-	if (sb.all_skills) body.push(allSkillsTable(d));
-	body.push(hardBreaks(infoLines(sb, d, opts)));
-
-	const section = (key: string, blocks: string[][], intro?: string) => {
-		if (!blocks.length) return;
-		body.push([`#### ${tk(key)}`]);
-		if (intro) body.push([intro]);
-		body.push(...blocks.map(hardBreaks));
+	const sections: LayoutSection[] = [];
+	const section = (key: string, entries: string[][], intro?: string) => {
+		if (entries.length) sections.push({ title: tk(key), ...(intro ? { intro } : {}), entries: entries.map(hardBreaks) });
 	};
 	const entries = (s: EntrySection) => sb.entries[s].map(entryBlock);
 	section("statblock.section.traits", entries("traits"));
@@ -435,7 +427,14 @@ export function statblockMarkdown(sb: Statblock, opts: StatblockOptions): string
 	section("statblock.section.reactions", entries("reactions"));
 	section("statblock.section.legendary_actions", entries("legendary_actions"), sb.entries.legendary_actions.length ? legendaryIntro(sb) : undefined);
 	section("statblock.section.mythic_actions", entries("mythic_actions"), sb.mythic_header ? plainTags(sb.mythic_header) : undefined);
-
-	const lines = ["[!statblocks]", ...paragraphs(body)];
-	return lines.map((l) => (l ? `> ${l}` : ">")).join("\n");
+	return {
+		name: sb.name,
+		subtitle: headerLine(sb),
+		top: topBlock(sb, d),
+		speed: speedLine(sb, opts.metric),
+		abilities: abilityCells(sb, d),
+		allSkills: sb.all_skills ? skillNames(d).map((x) => ({ label: x.name, value: x.value })) : null,
+		lines: infoLines(sb, d, opts),
+		sections,
+	};
 }

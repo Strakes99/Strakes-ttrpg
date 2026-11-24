@@ -254,7 +254,6 @@ export class StrakesSettingTab extends PluginSettingTab {
 				name: T("settings.statblocks"),
 				desc: T("settings.statblocksPageDesc"),
 				items: [{ type: "group", items: [
-					{ name: T("settings.statblockTheme"), desc: T("settings.statblockThemeDesc") },
 					{
 						name: T("settings.statblockFolder"),
 						desc: T("settings.statblockFolderDesc"),
@@ -269,6 +268,11 @@ export class StrakesSettingTab extends PluginSettingTab {
 						name: T("settings.statblockSuffix"),
 						desc: T("settings.statblockSuffixDesc"),
 						control: { type: "text", key: "statblockSuffix" },
+					},
+					{
+						name: T("settings.statblockColumns"),
+						desc: T("settings.statblockColumnsDesc"),
+						control: { type: "dropdown", key: "statblockColumns", options: { "1": T("settings.oneColumn"), "2": T("settings.twoColumns") } },
 					},
 					{
 						name: T("settings.statblockMetric"),
