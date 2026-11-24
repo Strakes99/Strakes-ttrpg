@@ -1887,6 +1887,10 @@ input[type="number"].strakes-fog-size-number {
 .strakes-stat-top-cell.is-wide {
 	grid-column: 1 / -1;
 }
+/* CD de salvación y bonificador de ataque de un bloque de conjuros, como CA e Iniciativa. */
+.strakes-stat-spell-stats {
+	margin-bottom: var(--size-2-2);
+}
 .strakes-stat-abilities {
 	display: grid;
 	grid-template-columns: repeat(6, 1fr) auto;
@@ -1924,6 +1928,22 @@ input[type="number"].strakes-fog-size-number {
 }
 .strakes-stat-entry > p:last-child {
 	margin-bottom: var(--size-4-2);
+}
+
+/* Casillas de usos (paso 4): tras el nombre de la entrada, la etiqueta de una lista o un conjuro. Las de
+   la guarida, más tenues y con borde discontinuo. */
+.strakes-stat-boxes {
+	display: inline-flex;
+	gap: var(--size-2-1);
+	margin-inline: var(--size-2-2);
+	vertical-align: middle;
+}
+.strakes-stat-box {
+	margin: 0;
+}
+.strakes-stat-box.is-lair {
+	opacity: 0.6;
+	border-style: dashed;
 }
 
 /* Botones bajo el statblock dibujado (Editar, Copiar a nuevo statblock), centrados como el statblock.
@@ -2002,6 +2022,31 @@ input[type="number"].strakes-fog-size-number {
 .strakes-sb-field.is-block {
 	flex-direction: column;
 	align-items: stretch;
+}
+/* En una fila vertical, lo que crece a lo ancho (etiquetas, campos anchos) no debe crecer a lo alto: con
+   `flex: 1 1 12em` dejaba 12em de hueco (Vulnerabilidades, Resistencias, Inmunidades, listas de conjuros). */
+.strakes-sb-field.is-block > * {
+	flex: none;
+}
+/* Defensa: CA | Iniciativa; PG | BC, como en el statblock; en un formulario estrecho, uno debajo de otro. */
+.strakes-sb-form {
+	container-type: inline-size;
+}
+.strakes-sb-pairs {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: var(--size-4-3);
+}
+.strakes-sb-pair,
+.strakes-sb-subgroup {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+}
+@container (max-width: 34em) {
+	.strakes-sb-pairs {
+		grid-template-columns: 1fr;
+	}
 }
 .strakes-sb-label {
 	min-width: 8em;
@@ -2156,4 +2201,17 @@ input[type="number"].strakes-fog-size-number {
 }
 .strakes-sb-add {
 	align-self: flex-start;
+}
+/* Vista previa del formulario: cada parte lleva a su campo con un clic. El campo se resalta un momento. */
+.strakes-sb-preview [data-sb-target] {
+	cursor: pointer;
+	border-radius: var(--radius-s);
+}
+.strakes-sb-preview [data-sb-target]:hover {
+	background-color: var(--background-modifier-hover);
+}
+.strakes-sb-flash {
+	border-radius: var(--radius-s);
+	box-shadow: 0 0 0 2px var(--interactive-accent);
+	transition: box-shadow 0.3s;
 }

@@ -131,8 +131,15 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 
 	// ------------------------------------------------------------ piezas
 
-	const section = (key: string): HTMLElement => {
-		const det = container.createEl("details", { cls: "strakes-sb-section" });
+	/** Campos de texto de cada propiedad (para los que salen dos veces). */
+	const peers = new WeakMap<Obj, Map<string, HTMLInputElement[]>>();
+	/** Marca un campo con el destino de los clics de la vista previa (`data-sb-target`). */
+	const mark = <E extends HTMLElement>(el: E, target: string): E => {
+		el.setAttr("data-sb-target", target);
+		return el;
+	};
+	const section = (key: string, target: string): HTMLElement => {
+		const det = mark(container.createEl("details", { cls: "strakes-sb-section" }), `section:${target}`);
 		det.open = true;
 		det.createEl("summary", { text: tk(key) });
 		return det.createDiv("strakes-sb-section-body");
@@ -156,7 +163,14 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 		const el = parent.createEl("input", { type: "text", cls: `strakes-sb-input ${opts.cls ?? ""}`.trim() });
 		el.value = display(obj[key]);
 		if (opts.placeholder) el.placeholder = opts.placeholder;
+		// Si el mismo campo sale en dos sitios (el BC, arriba y junto al VD), lo escrito en uno pasa al otro.
+		let byKey = peers.get(obj);
+		if (!byKey) peers.set(obj, (byKey = new Map<string, HTMLInputElement[]>()));
+		const same = byKey.get(key) ?? [];
+		byKey.set(key, same);
+		same.push(el);
 		el.addEventListener("input", () => {
+			for (const other of same) if (other !== el) other.value = el.value;
 			const text = el.value;
 			const kind = opts.kind ?? "text";
 			el.removeClass("is-invalid");
@@ -287,8 +301,8 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 	// ------------------------------------------------------------ 1. Cabecera
 
 	{
-		const body = section("sbForm.section.header");
-		input(row(body, T("sbForm.name")), draft, "name", { placeholder: ctx.fallbackName, cls: "is-wide" });
+		const body = section("sbForm.section.header", "header");
+		input(mark(row(body, T("sbForm.name")), "name"), draft, "name", { placeholder: ctx.fallbackName, cls: "is-wide" });
 		const sn = row(body, T("sbForm.shortName"));
 		input(sn, draft, "short_name", { computed: (sb) => creatureRef({ ...sb, short_name: "" }), cls: "is-wide" });
 		const named = row(body);
@@ -305,16 +319,20 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 			(v) => (v ? (draft.columns = Number(v)) : delete draft.columns),
 		);
 
-		const size = row(body, T("sbForm.size"));
+		// Tamaño, tipo, subtipos, enjambre y alineamiento: lo que forma la línea de tipo del statblock. Un clic
+		// en esa línea de la vista previa resalta el grupo entero (sin poner el cursor en ninguno).
+		const sub = mark(body.createDiv("strakes-sb-subgroup"), "subtitle");
+		sub.setAttr("data-sb-nofocus", "");
+		const size = row(sub, T("sbForm.size"));
 		const sizeLabels = (s: string) => tk(`statblock.size.${s}`);
 		toggles(size, () => stringsAt(draft, "size"), (l) => (draft.size = l), SIZES.map((s) => [s, sizeLabels(s)]));
-		const type = row(body, T("sbForm.type"));
+		const type = row(sub, T("sbForm.type"));
 		toggles(type, () => stringsAt(draft, "type"), (l) => (draft.type = l), CREATURE_TYPES.map((t) => [t, tk(`statblock.type.${t}`)]));
-		tags(row(body, T("sbForm.subtype")), draft, "subtype");
+		tags(row(sub, T("sbForm.subtype")), draft, "subtype");
 
 		// Enjambre: la casilla muestra el tamaño de sus criaturas; al desmarcarla, se borra.
-		const swarmRow = row(body);
-		const swarmBox = body.createDiv("strakes-sb-subfield");
+		const swarmRow = row(sub);
+		const swarmBox = sub.createDiv("strakes-sb-subfield");
 		const warn = swarmBox.createDiv({ cls: "strakes-sb-warning" });
 		let swarmOn = stringsAt(draft, "swarm_creature_size").length > 0;
 		const showSwarm = () => swarmBox.toggleClass("is-hidden", !swarmOn);
@@ -341,7 +359,7 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 		showSwarm();
 
 		// Alineamiento: se escribe; las frases conocidas se sugieren traducidas y se guardan en inglés.
-		const al = row(body, T("sbForm.alignment"));
+		const al = row(sub, T("sbForm.alignment"));
 		const alInput = al.createEl("input", { type: "text", cls: "strakes-sb-input is-wide" });
 		const gender = () => {
 			const sb = readStatblock(draft, ctx.fallbackName);
@@ -364,58 +382,56 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 		);
 	}
 
-	// ------------------------------------------------------------ 2. Defensa y desafío
+	// ------------------------------------------------------------ 2. Defensa
+	// En el orden y la posición del statblock (pedido del desarrollador): CA | Iniciativa; PG | BC; Velocidad.
 
 	{
-		const body = section("sbForm.section.defense");
-		const grid = body.createDiv("strakes-sb-grid");
-		input(row(grid, tk("statblock.ac")), draft, "ac", { kind: "numOrText" });
-		input(row(grid, T("sbForm.acNote")), draft, "ac_note", { placeholder: T("sbForm.acNotePlaceholder") });
-		input(row(grid, tk("statblock.hp")), draft, "hp", {
+		const body = section("sbForm.section.defense", "defense");
+		const pairs = body.createDiv("strakes-sb-pairs");
+		const ac = mark(pairs.createDiv("strakes-sb-pair"), "ac");
+		input(row(ac, tk("statblock.ac")), draft, "ac", { kind: "numOrText", cls: "is-short" });
+		input(row(ac, T("sbForm.acNote")), draft, "ac_note", { placeholder: T("sbForm.acNotePlaceholder"), cls: "is-wide" });
+
+		const init = mark(pairs.createDiv("strakes-sb-pair"), "initiative");
+		input(row(init, tk("statblock.initiative")), draft, "initiative", {
 			kind: "numOrText",
+			cls: "is-short",
+			computed: (_sb, d) => (typeof d.initiative === "number" ? signed(d.initiative) : ""),
+		});
+		const profRow = row(init);
+		const prof = () => (typeof draft.initiative_proficiency === "string" ? draft.initiative_proficiency : "none");
+		const setProf = (v: string) => (v === "none" ? delete draft.initiative_proficiency : (draft.initiative_proficiency = v));
+		const ip = check(profRow, T("sbForm.proficient"), () => prof() !== "none", (v) => setProf(v ? "proficient" : "none"), () => (ie.checked = prof() === "expertise"));
+		const ie = check(profRow, T("sbForm.expertise"), () => prof() === "expertise", (v) => setProf(v ? "expertise" : ip.checked ? "proficient" : "none"), () => (ip.checked = prof() !== "none"));
+
+		const hp = mark(pairs.createDiv("strakes-sb-pair"), "hp");
+		input(row(hp, tk("statblock.hp")), draft, "hp", {
+			kind: "numOrText",
+			cls: "is-short",
 			computed: (sb) => {
 				const avg = sb.hp_formula ? averageHp(sb.hp_formula) : undefined;
 				return avg !== undefined ? String(avg) : "";
 			},
 		});
-		input(row(grid, T("sbForm.hpFormula")), draft, "hp_formula", { placeholder: "2d8 + 2" });
+		input(row(hp, T("sbForm.hpFormula")), draft, "hp_formula", { placeholder: "2d8 + 2", cls: "is-wide" });
 
-		const init = row(body, tk("statblock.initiative"));
-		const prof = () => (typeof draft.initiative_proficiency === "string" ? draft.initiative_proficiency : "none");
-		const setProf = (v: string) => (v === "none" ? delete draft.initiative_proficiency : (draft.initiative_proficiency = v));
-		const ip = check(init, T("sbForm.proficient"), () => prof() !== "none", (v) => setProf(v ? "proficient" : "none"), () => (ie.checked = prof() === "expertise"));
-		const ie = check(init, T("sbForm.expertise"), () => prof() === "expertise", (v) => setProf(v ? "expertise" : ip.checked ? "proficient" : "none"), () => (ip.checked = prof() !== "none"));
-		input(init, draft, "initiative", { kind: "numOrText", cls: "is-short", computed: (_sb, d) => (typeof d.initiative === "number" ? signed(d.initiative) : "") });
+		const pb = mark(pairs.createDiv("strakes-sb-pair"), "pb");
+		input(row(pb, tk("statblock.pb")), draft, "pb", { kind: "numOrText", cls: "is-short", computed: (_s, d) => (d.pb !== undefined ? signedValue(d.pb) : "") });
 
 		const speed = objAt(draft, "speed");
-		const sp = body.createDiv("strakes-sb-grid");
+		const sp = mark(body.createDiv("strakes-sb-grid"), "speed");
 		for (const s of SPEEDS) input(row(sp, s === "walk" ? T("sbForm.walk") : tk(`statblock.speed.${s}`)), speed, s, { kind: "numOrText", cls: "is-short", placeholder: T("sbForm.feet") });
 		boolCheck(row(body), T("sbForm.hover"), draft, "hover");
-
-		const cr = body.createDiv("strakes-sb-grid");
-		const crInput = input(row(cr, tk("statblock.cr")), draft, "cr", { cls: "is-short" });
-		new OptionSuggest(app, crInput, () => CR_OPTIONS.map((c) => ({ value: c, label: c })), (v) => {
-			draft.cr = v;
-			changed();
-		});
-		input(row(cr, tk("statblock.xp")), draft, "xp", { kind: "numOrText", cls: "is-short", computed: (_s, d) => (d.xp !== undefined ? display(d.xp) : "") });
-		input(row(cr, tk("statblock.pb")), draft, "pb", { kind: "numOrText", cls: "is-short", computed: (_s, d) => (d.pb !== undefined ? signedValue(d.pb) : "") });
-		const lairRow = row(body);
-		const lairBox = body.createDiv("strakes-sb-subfield");
-		const showLair = () => lairBox.toggleClass("is-hidden", draft.lair !== true);
-		boolCheck(lairRow, T("sbForm.lair"), draft, "lair", showLair);
-		input(row(lairBox, T("sbForm.xpLair")), draft, "xp_lair", { kind: "numOrText", cls: "is-short", computed: (_s, d) => (d.xpLair !== undefined ? display(d.xpLair) : "") });
-		showLair();
 	}
 
 	// ------------------------------------------------------------ 3. Características y salvaciones
 
 	{
-		const body = section("sbForm.section.abilities");
+		const body = section("sbForm.section.abilities", "abilities");
 		const table = body.createDiv("strakes-sb-abilities");
 		const saves = objAt(draft, "saves");
 		for (const a of ABILITIES) {
-			const col = table.createDiv("strakes-sb-ability");
+			const col = mark(table.createDiv("strakes-sb-ability"), `ability:${a}`);
 			col.createDiv({ cls: "strakes-sb-ability-name", text: tk(`statblock.ability.${a}`) });
 			input(col, draft, a, { kind: "int", cls: "is-short", placeholder: "10" });
 			const mod = col.createDiv({ cls: "strakes-sb-computed" });
@@ -434,13 +450,15 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 	}
 
 	// ------------------------------------------------------------ 4. Competencias y defensas
+	// En el orden de las líneas del statblock: Habilidades, Vulnerabilidades, Resistencias, Inmunidades,
+	// Equipo, Sentidos e Idiomas.
 
 	{
-		const body = section("sbForm.section.proficiencies");
+		const body = section("sbForm.section.proficiencies", "proficiencies");
 		boolCheck(row(body), T("sbForm.allSkills"), draft, "all_skills");
 		const profs = objAt(draft, "skill_proficiencies");
 		const values = objAt(draft, "skills");
-		const groups = body.createDiv("strakes-sb-skill-groups");
+		const groups = mark(body.createDiv("strakes-sb-skill-groups"), "skills");
 		const collator = new Intl.Collator(currentLanguage());
 		for (const a of ABILITIES) {
 			const skills = Object.entries(SKILLS)
@@ -467,7 +485,7 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 		const damageIds = DAMAGE_TYPES as readonly string[];
 		const isDamage = (x: string) => damageIds.includes(x.toLowerCase());
 		for (const key of ["vulnerabilities", "resistances", "immunities"] as const) {
-			const r = row(body, tk(`statblock.${key}`), "is-block");
+			const r = mark(row(body, tk(`statblock.${key}`), "is-block"), key);
 			toggles(r, () => stringsAt(draft, key), (l) => (draft[key] = l), DAMAGE_TYPES.map((t) => [t, tk(`statblock.damage.${t}`)]));
 			tags(r, draft, key, { only: (x) => !isDamage(x), placeholder: T("sbForm.otherText") });
 		}
@@ -480,17 +498,42 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 			all.map((c) => [c.custom ? c.name : c.id, c.name]),
 		);
 
+		tags(mark(row(body, tk("statblock.gear")), "gear"), draft, "gear");
+
+		const sensesBox = mark(body.createDiv("strakes-sb-subgroup"), "senses");
 		const senses = objAt(draft, "senses");
-		const sg = body.createDiv("strakes-sb-grid");
+		const sg = sensesBox.createDiv("strakes-sb-grid");
 		for (const s of SENSES) input(row(sg, tk(`statblock.sense.${s}`)), senses, s, { kind: "numOrText", cls: "is-short", placeholder: T("sbForm.feet") });
-		tags(row(body, T("sbForm.otherSenses")), draft, "senses_other");
-		input(row(body, T("sbForm.passivePerception")), draft, "passive_perception", {
+		tags(row(sensesBox, T("sbForm.otherSenses")), draft, "senses_other");
+		input(row(sensesBox, T("sbForm.passivePerception")), draft, "passive_perception", {
 			kind: "numOrText",
 			cls: "is-short",
 			computed: (_sb, d) => (d.passivePerception !== undefined ? display(d.passivePerception) : ""),
 		});
-		tags(row(body, tk("statblock.gear")), draft, "gear");
-		tags(row(body, tk("statblock.languages")), draft, "languages");
+
+		tags(mark(row(body, tk("statblock.languages")), "languages"), draft, "languages");
+	}
+
+	// ------------------------------------------------------------ 5. Desafío
+	// Como la última línea del statblock: VD (PX…). El BC sale también aquí, enlazado con el de arriba.
+
+	{
+		const body = section("sbForm.section.challenge", "challenge");
+		const cr = body.createDiv("strakes-sb-grid");
+		const crInput = input(mark(row(cr, tk("statblock.cr")), "cr"), draft, "cr", { cls: "is-short" });
+		new OptionSuggest(app, crInput, () => CR_OPTIONS.map((c) => ({ value: c, label: c })), (v) => {
+			draft.cr = v;
+			for (const other of peers.get(draft)?.get("cr") ?? []) other.value = v;
+			changed();
+		});
+		input(mark(row(cr, tk("statblock.xp")), "xp"), draft, "xp", { kind: "numOrText", cls: "is-short", computed: (_s, d) => (d.xp !== undefined ? display(d.xp) : "") });
+		input(row(cr, tk("statblock.pb")), draft, "pb", { kind: "numOrText", cls: "is-short", computed: (_s, d) => (d.pb !== undefined ? signedValue(d.pb) : "") });
+		const lairRow = row(body);
+		const lairBox = body.createDiv("strakes-sb-subfield");
+		const showLair = () => lairBox.toggleClass("is-hidden", draft.lair !== true);
+		boolCheck(lairRow, T("sbForm.lair"), draft, "lair", showLair);
+		input(row(lairBox, T("sbForm.xpLair")), draft, "xp_lair", { kind: "numOrText", cls: "is-short", computed: (_s, d) => (d.xpLair !== undefined ? display(d.xpLair) : "") });
+		showLair();
 	}
 
 	// ------------------------------------------------------------ 5 y 6. Rasgos, conjuros y acciones
@@ -538,11 +581,11 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 	};
 
 	const entries = (key: EntrySection, extra?: (body: HTMLElement) => void) => {
-		const body = section(`statblock.section.${key}`);
+		const body = section(`statblock.section.${key}`, key);
 		extra?.(body);
 		const list = listAt(draft, key);
 		list.forEach((e, i) => {
-			const card = body.createDiv("strakes-sb-card");
+			const card = mark(body.createDiv("strakes-sb-card"), `entry:${key}:${i}`);
 			const top = card.createDiv("strakes-sb-card-top");
 			input(top, e, "name", { placeholder: T("sbForm.entryName"), cls: "is-wide" });
 			cardButtons(top, list, i);
@@ -558,37 +601,36 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 
 	entries("traits");
 
-	// Lanzamiento de conjuros: bloques con característica, tipo de uso, listas y texto final.
+	// Lanzamiento de conjuros: bloques con característica, listas y texto final. Sin tipo de uso (acción,
+	// reacción…): se quitó del formulario el 2026-11-23; los conjuros de reacción o acción adicional van en
+	// las listas, y su marca saldrá del propio conjuro (1.6).
 	{
-		const body = section("statblock.section.spellcasting");
+		const body = section("statblock.section.spellcasting", "spellcasting");
 		const blocks = listAt(draft, "spellcasting");
 		const abilityOptions: [string, string][] = [["", "—"], ...ABILITIES.map((a): [string, string] => [a, tk(`statblock.ability.${a}`)])];
-		const useOptions: [string, string][] = [
-			["action", T("sbForm.useAction")],
-			["bonus_action", T("sbForm.useBonusAction")],
-			["reaction", T("sbForm.useReaction")],
-			["trait", T("sbForm.useTrait")],
-		];
 		blocks.forEach((b, i) => {
-			const card = body.createDiv("strakes-sb-card");
+			const card = mark(body.createDiv("strakes-sb-card"), `spell:${i}`);
 			const top = card.createDiv("strakes-sb-card-top");
 			input(top, b, "name", { placeholder: tk("statblock.spellcastingName"), cls: "is-wide" });
 			cardButtons(top, blocks, i);
+			textarea(card, b, "text").placeholder = T("sbForm.spellText");
 			const g = card.createDiv("strakes-sb-grid");
-			select(row(g, T("sbForm.spellAbility")), abilityOptions, () => display(b.ability), (v) => (v ? (b.ability = v) : delete b.ability));
-			select(row(g, T("sbForm.useType")), useOptions, () => (typeof b.use === "string" ? b.use : "action"), (v) => (v === "action" ? delete b.use : (b.use = v)));
+			select(mark(row(g, T("sbForm.spellAbility")), `spell:${i}:stats`), abilityOptions, () => display(b.ability), (v) => (v ? (b.ability = v) : delete b.ability));
 			const dc = card.createDiv({ cls: "strakes-sb-hint" });
 			refreshers.push((_sb, d) => {
 				const a = typeof b.ability === "string" ? (b.ability as Ability) : undefined;
 				const mod = a ? d.mods[a] : undefined;
-				dc.setText(mod !== undefined && d.pbNum !== undefined ? tk("statblock.spellDc", { dc: 8 + d.pbNum + mod, attack: signed(d.pbNum + mod) }) : "");
+				dc.setText(
+					mod !== undefined && d.pbNum !== undefined
+						? `${tk("statblock.spellSaveDc")} ${8 + d.pbNum + mod} · ${tk("statblock.spellAttack")} ${signed(d.pbNum + mod)}`
+						: "",
+				);
 			});
-			textarea(card, b, "text").placeholder = T("sbForm.spellText");
-			tags(row(card, tk("statblock.atWill")), b, "at_will");
+			tags(mark(row(card, tk("statblock.atWill")), `spell:${i}:atWill`), b, "at_will");
 
 			const perDay = listAt(b, "per_day");
 			perDay.forEach((p, j) => {
-				const r = row(card, T("sbForm.perDayList"), "is-block");
+				const r = mark(row(card, T("sbForm.perDayList"), "is-block"), `spell:${i}:perDay:${j}`);
 				const line = r.createDiv("strakes-sb-card-top");
 				input(line, p, "uses", { kind: "int", cls: "is-short", placeholder: "1" });
 				line.createSpan({ text: T("sbForm.perDaySuffix") });
@@ -598,7 +640,7 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 			});
 			const levels = listAt(b, "levels");
 			levels.forEach((l, j) => {
-				const r = row(card, T("sbForm.levelList"), "is-block");
+				const r = mark(row(card, T("sbForm.levelList"), "is-block"), `spell:${i}:level:${j}`);
 				const line = r.createDiv("strakes-sb-card-top");
 				input(line, l, "level", { kind: "int", cls: "is-short", placeholder: "0" });
 				line.createSpan({ text: T("sbForm.slots") });
@@ -609,7 +651,7 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 			const adds = card.createDiv("strakes-sb-card-top");
 			addButton(adds, T("sbForm.addPerDay"), () => perDay.push({ uses: 1, spells: [] }));
 			addButton(adds, T("sbForm.addLevel"), () => levels.push({ level: levels.length ? Math.max(...levels.map((x) => Number(x.level) || 0)) + 1 : 0, spells: [] }));
-			textarea(card, b, "footer").placeholder = T("sbForm.footer");
+			mark(textarea(card, b, "footer"), `spell:${i}:footer`).placeholder = T("sbForm.footer");
 		});
 		addButton(body, T("sbForm.addSpellcasting"), () => blocks.push({ name: "" }));
 	}
@@ -618,21 +660,21 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 	entries("bonus_actions");
 	entries("reactions");
 	entries("legendary_actions", (body) => {
-		const g = body.createDiv("strakes-sb-grid");
+		const g = mark(body.createDiv("strakes-sb-grid"), "legendary_uses");
 		input(row(g, T("sbForm.legendaryUses")), draft, "legendary_uses", { kind: "int", cls: "is-short", placeholder: "3" });
 		input(row(g, T("sbForm.legendaryUsesLair")), draft, "legendary_uses_lair", { kind: "int", cls: "is-short" });
-		const r = row(body, T("sbForm.legendaryHeader"), "is-block");
+		const r = mark(row(body, T("sbForm.legendaryHeader"), "is-block"), "legendary_header");
 		textarea(r, draft, "legendary_header", (sb) => legendaryIntro({ ...sb, legendary_header: "" }));
 	});
 	entries("mythic_actions", (body) => {
-		const r = row(body, T("sbForm.mythicHeader"), "is-block");
+		const r = mark(row(body, T("sbForm.mythicHeader"), "is-block"), "mythic_header");
 		textarea(r, draft, "mythic_header");
 	});
 
 	// ------------------------------------------------------------ 7. Otros datos
 
 	{
-		const body = section("sbForm.section.other");
+		const body = section("sbForm.section.other", "other");
 		body.createDiv({ cls: "strakes-sb-hint", text: T("sbForm.otherHint") });
 		const g = body.createDiv("strakes-sb-grid");
 		input(row(g, T("sbForm.source")), draft, "source");

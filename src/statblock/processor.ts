@@ -3,7 +3,8 @@ import { T } from "../i18n";
 import type StrakesTTRPG from "../main";
 import { copyStatblock } from "./actions";
 import { isStatblock, nameFromNote, readStatblock, STATBLOCK_BLOCK } from "./data";
-import { statblockLayout } from "./layout";
+import { hasBoxes, statblockLayout } from "./layout";
+import { resetUses, setUsed, UseRef } from "./uses";
 import { renderStatblock, statblockColumns } from "./render";
 import { openStatblockEditor } from "./StatblockEditorView";
 
@@ -71,8 +72,10 @@ class StatblockRender extends MarkdownRenderChild {
 			this.containerEl.createDiv({ cls: "strakes-statblock-empty", text: T("statblock.unsupportedSystem", { system: sb.system }) });
 			return;
 		}
-		const wrap = await renderStatblock(app, this.containerEl, layout, this.ctx.sourcePath, this.content, columns);
-		if (file instanceof TFile) this.addActions(wrap, file);
+		const target = file instanceof TFile ? file : null;
+		const onUse = target ? (ref: UseRef, used: number) => void setUsed(app, target, ref, used) : undefined;
+		const wrap = await renderStatblock(app, this.containerEl, layout, this.ctx.sourcePath, this.content, columns, onUse);
+		if (target) this.addActions(wrap, target, hasBoxes(layout));
 	}
 
 	/**
@@ -93,7 +96,7 @@ class StatblockRender extends MarkdownRenderChild {
 	 * un clic en el bloque entraría a editar su código: se para el evento. En un statblock incrustado en
 	 * otra nota ni en la vista previa flotante no se ven (CSS: `.internal-embed` y `.hover-popover`).
 	 */
-	private addActions(wrap: HTMLElement, file: TFile): void {
+	private addActions(wrap: HTMLElement, file: TFile, withReset: boolean): void {
 		const bar = wrap.createDiv("strakes-statblock-actions");
 		const button = (icon: string, label: string, run: (e: MouseEvent) => void) => {
 			const b = bar.createEl("button", { cls: "clickable-icon", attr: { "aria-label": label } });
@@ -109,5 +112,7 @@ class StatblockRender extends MarkdownRenderChild {
 		// statblock está incrustado en otra nota o en una vista previa flotante, se abre en una pestaña nueva.
 		button("pencil", T("sbForm.edit"), (e) => void openStatblockEditor(this.plugin, file, Keymap.isModEvent(e) || this.leaf() || "tab"));
 		button("copy", T("sbForm.copyToNew"), () => void copyStatblock(this.plugin, file));
+		// Vacía todas las casillas (p. ej. tras un descanso largo).
+		if (withReset) button("rotate-ccw", T("sbForm.resetUses"), () => void resetUses(this.plugin.app, file));
 	}
 }

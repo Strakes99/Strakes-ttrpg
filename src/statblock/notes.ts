@@ -61,6 +61,7 @@ export const STATBLOCK_KEYS = [
 	"reactions",
 	"legendary_uses",
 	"legendary_uses_lair",
+	"legendary_used",
 	"legendary_header",
 	"legendary_actions",
 	"mythic_header",

@@ -77,6 +77,14 @@ export class StatblockEditorView extends ItemView {
 		this.formEl = this.contentEl.createDiv("strakes-sb-form");
 		const side = this.contentEl.createDiv("strakes-sb-preview");
 		this.previewEl = side.createDiv("strakes-sb-preview-inner");
+		// Clic en una parte de la vista previa: lleva a su campo del formulario (los enlaces se siguen abriendo).
+		this.registerDomEvent(this.previewEl, "click", (evt) => {
+			const node = evt.target as Node | null;
+			const el = node?.instanceOf(HTMLElement) ? node : null;
+			if (!el || el.closest("a")) return;
+			const target = el.closest<HTMLElement>("[data-sb-target]")?.getAttr("data-sb-target");
+			if (target) this.focusTarget(target);
+		});
 
 		this.redoButton = this.addAction("redo-2", T("sbForm.redo"), () => void this.redo());
 		this.undoButton = this.addAction("undo-2", T("sbForm.undo"), () => void this.undo());
@@ -250,6 +258,31 @@ export class StatblockEditorView extends ItemView {
 		void this.renderPreview();
 	}
 
+	/**
+	 * Lleva al campo del formulario marcado con `target` (o, si no está, al más cercano: «entry:actions:2»
+	 * → la sección de acciones): abre su sección, lo centra, le pone el cursor y lo resalta un momento.
+	 */
+	private focusTarget(target: string): void {
+		const parts = target.split(":");
+		const candidates = parts.map((_, i) => parts.slice(0, parts.length - i).join(":"));
+		if (parts[0] === "entry") candidates.push(`section:${parts[1]}`);
+		if (parts[0] === "spell") candidates.push("section:spellcasting");
+		if (parts[0] === "ability") candidates.push("section:abilities");
+		const find = (t: string) => Array.from(this.formEl.querySelectorAll<HTMLElement>("[data-sb-target]")).find((x) => x.getAttr("data-sb-target") === t);
+		let el: HTMLElement | undefined;
+		for (const c of candidates) if ((el = find(c))) break;
+		if (!el) return;
+		for (let p: HTMLElement | null = el; p && p !== this.formEl; p = p.parentElement) if (p.instanceOf(HTMLDetailsElement)) p.open = true;
+		// Una sección o algo más alto que media pantalla, desde su principio; lo demás, centrado.
+		const tall = el.matches("details") || el.offsetHeight > this.formEl.clientHeight / 2;
+		el.scrollIntoView({ block: tall ? "start" : "center", behavior: "smooth" });
+		const focusable = el.matches("input, textarea, select") ? el : el.querySelector<HTMLElement>("input:not([type=checkbox]), textarea, select, input");
+		// Un grupo de varios campos (la línea de tipo) solo se resalta, sin poner el cursor en ninguno.
+		if (!el.hasAttribute("data-sb-nofocus")) focusable?.focus({ preventScroll: true });
+		el.addClass("strakes-sb-flash");
+		window.setTimeout(() => el?.removeClass("strakes-sb-flash"), 1200);
+	}
+
 	private schedulePreview(): void {
 		if (this.previewTimer !== null) window.clearTimeout(this.previewTimer);
 		this.previewTimer = window.setTimeout(() => {
@@ -267,7 +300,7 @@ export class StatblockEditorView extends ItemView {
 		this.previewComponent = new Component();
 		this.previewComponent.load();
 		this.previewEl.empty();
-		await renderStatblock(this.app, this.previewEl, layout, this.file.path, this.previewComponent, statblockColumns(sb, s.statblockColumns));
+		await renderStatblock(this.app, this.previewEl, layout, this.file.path, this.previewComponent, statblockColumns(sb, s.statblockColumns), undefined, true);
 	}
 }
 

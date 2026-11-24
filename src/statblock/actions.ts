@@ -4,6 +4,7 @@ import type StrakesTTRPG from "../main";
 import { promptText } from "../ui/modals";
 import { isStatblock, nameFromNote } from "./data";
 import { createStatblockNote, draftFromFrontmatter } from "./notes";
+import { resetUsesIn } from "./uses";
 import { openStatblockEditor } from "./StatblockEditorView";
 
 /**
@@ -31,6 +32,7 @@ export async function copyStatblock(plugin: StrakesTTRPG, file: TFile): Promise<
 	const fm = statblockFrontmatter(plugin, file);
 	if (!fm) return;
 	const draft = draftFromFrontmatter(fm);
+	resetUsesIn(draft); // la copia empieza sin usos gastados
 	const s = plugin.settings;
 	const name = typeof draft.name === "string" && draft.name.trim() ? draft.name.trim() : nameFromNote(file.basename, s.statblockPrefix, s.statblockSuffix);
 	const copy = await createStatblockNote(plugin, name, draft);

@@ -2,8 +2,10 @@ import { currentLanguage, numberLocale, T, TranslationKey } from "../i18n";
 import en from "../i18n/locales/en.json";
 import { ConditionCatalog, conditionById } from "../initiative/conditions";
 import { derive, Derived, signed, signedValue } from "./compute";
+import { UseRef } from "./uses";
 import {
 	ABILITIES,
+	Ability,
 	CREATURE_TYPES,
 	DAMAGE_TYPES,
 	EntrySection,
@@ -213,10 +215,13 @@ export function speedLine(sb: Statblock, metric: boolean): string {
 export interface LabelValue {
 	label: string;
 	value: string;
+	/** Campo del formulario al que lleva un clic en la vista previa («ac», «senses»…). */
+	field?: string;
 }
 
 /** Una característica: abreviatura, puntuación, modificador y salvación («—» si falta). */
 export interface AbilityCell {
+	ability: Ability;
 	label: string;
 	score: string;
 	mod: string;
@@ -224,10 +229,47 @@ export interface AbilityCell {
 }
 
 /** Una sección (Rasgos, Acciones…): título, introducción opcional (Markdown) y entradas (Markdown). */
+/**
+ * Casillas de usos (paso 4): `total` casillas, las `used` primeras marcadas. Desde `lairFrom`, solo en
+ * la guarida («3/día, o 4/día en su guarida»: 4 casillas, la cuarta de guarida). `recharge`: la única
+ * casilla de una recarga («gastada»). `ref`: dónde se guarda.
+ */
+export interface Boxes {
+	total: number;
+	used: number;
+	lairFrom?: number;
+	recharge?: boolean;
+	ref: UseRef;
+}
+
+/** Una línea de una lista de conjuros: «**1/día cada uno:** *Bola de fuego* ☐, *Volar* ☐». */
+export interface SpellLine {
+	/** Campo del formulario: «spell:0:atWill», «spell:0:perDay:1», «spell:0:level:2». */
+	target: string;
+	label: string;
+	spells: { name: string; boxes?: Boxes }[];
+	/** Casillas de la lista entera (al día sin «cada uno», o los espacios de un nivel), tras la etiqueta. */
+	boxes?: Boxes;
+}
+
+/** Una entrada: Markdown (con el nombre al principio) y, si las tiene, sus casillas tras el nombre. */
+export interface LayoutEntry {
+	/** Campo del formulario al que lleva un clic en la vista previa («entry:actions:2», «spell:0»). */
+	target: string;
+	markdown: string;
+	boxes?: Boxes;
+	/** Bloques de conjuros: la CD y el ataque, las listas y el texto final (Markdown). */
+	spell?: { stats?: LabelValue[]; lines: SpellLine[]; footer?: string };
+}
+
 export interface LayoutSection {
+	/** «traits», «spellcasting», «actions»… (para llevar a su sección del formulario). */
+	key: string;
 	title: string;
 	intro?: string;
-	entries: string[];
+	entries: LayoutEntry[];
+	/** Casillas tras el título (los usos de acción legendaria). */
+	boxes?: Boxes;
 }
 
 export interface StatblockLayout {
@@ -247,7 +289,7 @@ export interface StatblockLayout {
 }
 
 function topBlock(sb: Statblock, d: Derived): (LabelValue | null)[][] {
-	const cellOf = (key: string, value: string | undefined): LabelValue | null => (value ? { label: tk(key), value } : null);
+	const cellOf = (key: string, value: string | undefined): LabelValue | null => (value ? { label: tk(key), value, field: key.replace("statblock.", "") } : null);
 	const ac = sb.ac !== undefined ? `${val(sb.ac)}${sb.ac_note ? ` (${knownPhrases(sb.ac_note, ARMOR, "statblock.armor")})` : ""}` : undefined;
 	const init = d.initiative === undefined ? undefined : typeof d.initiative === "number" ? `${signed(d.initiative)} (${10 + d.initiative})` : d.initiative;
 	const hp = d.hp !== undefined ? `${val(d.hp)}${sb.hp_formula ? ` (${sb.hp_formula})` : ""}` : sb.hp_formula ? `(${sb.hp_formula})` : undefined;
@@ -262,6 +304,7 @@ function abilityCells(sb: Statblock, d: Derived): AbilityCell[] | null {
 	if (!ABILITIES.some((a) => sb.scores[a] !== undefined || sb.saves[a] !== undefined)) return null;
 	const none = tk("statblock.none");
 	return ABILITIES.map((a) => ({
+		ability: a,
 		label: tk(`statblock.ability.${a}`),
 		score: sb.scores[a] !== undefined ? fmt(sb.scores[a]) : none,
 		mod: d.mods[a] !== undefined ? signed(d.mods[a]) : none,
@@ -295,7 +338,7 @@ function sensesLine(sb: Statblock, d: Derived, metric: boolean): string {
 function infoLines(sb: Statblock, d: Derived, opts: StatblockOptions): LabelValue[] {
 	const lines: LabelValue[] = [];
 	const add = (key: string, text: string) => {
-		if (text) lines.push({ label: tk(key), value: text });
+		if (text) lines.push({ label: tk(key), value: text, field: key.replace("statblock.", "") });
 	};
 	if (!sb.all_skills) add("statblock.skills", skillNames(d).map((s) => `${s.name} ${s.value}`).join(", "));
 	add("statblock.vulnerabilities", damageList(sb.vulnerabilities).join(", "));
@@ -355,21 +398,60 @@ function entryLines(title: string, text: string): string[] {
 	return [`${title} ${first}`, ...rest];
 }
 
-function entryBlock(e: StatEntry): string[] {
-	return entryLines(entryTitle(e.name, [usesText(e), rechargeText(e)]), e.text);
+/**
+ * Casillas de una entrada: una por uso (y las de la guarida, aparte) o, si no tiene usos pero sí recarga,
+ * una sola. Lo gastado nunca pasa del total (si se bajaron los usos).
+ */
+function entryBoxes(e: StatEntry, section: EntrySection): Boxes | undefined {
+	const ref: UseRef = { kind: "entry", section, index: e.index };
+	if (e.uses) {
+		const total = Math.max(e.uses, e.uses_lair ?? 0);
+		return { total, used: Math.min(e.used, total), ...(total > e.uses ? { lairFrom: e.uses } : {}), ref };
+	}
+	if (e.recharge !== undefined) return { total: 1, used: Math.min(e.used, 1), recharge: true, ref };
+	return undefined;
 }
 
-function spellList(spells: string[]): string {
-	return spells.map((s) => `*${plainTags(s).trim()}*`).join(", ");
+function entryBlock(e: StatEntry, section: EntrySection): LayoutEntry {
+	const boxes = entryBoxes(e, section);
+	return {
+		target: `entry:${section}:${e.index}`,
+		markdown: hardBreaks(entryLines(entryTitle(e.name, [usesText(e), rechargeText(e)]), e.text)),
+		...(boxes ? { boxes } : {}),
+	};
 }
 
-function spellcastingBlock(b: SpellcastingBlock, d: Derived): string[] {
-	const use = b.use === "action" || b.use === "trait" ? "" : tk(`statblock.use.${b.use}`);
-	const lines = entryLines(entryTitle(b.name || tk("statblock.spellcastingName"), [use]), b.text);
+const spellName = (s: string) => plainTags(s).trim();
+
+function spellcastingBlock(b: SpellcastingBlock, d: Derived): LayoutEntry {
+	const markdown = hardBreaks(entryLines(entryTitle(b.name || tk("statblock.spellcastingName"), []), b.text));
 	const mod = b.ability ? d.mods[b.ability] : undefined;
-	if (mod !== undefined && d.pbNum !== undefined) lines.push(tk("statblock.spellDc", { dc: 8 + d.pbNum + mod, attack: signed(d.pbNum + mod) }));
-	if (b.at_will.length) lines.push(`**${tk("statblock.atWill")}:** ${spellList(b.at_will)}`);
-	for (const p of b.per_day) lines.push(`**${tk(p.each ? "statblock.perDayEach" : "statblock.usesDay", { n: p.uses })}:** ${spellList(p.spells)}`);
+	// «CD de salvación de conjuros 14 | Bonificador de ataque con conjuros +6», como CA e Iniciativa.
+	const stats: LabelValue[] | undefined =
+		mod !== undefined && d.pbNum !== undefined
+			? [
+					{ label: tk("statblock.spellSaveDc"), value: String(8 + d.pbNum + mod) },
+					{ label: tk("statblock.spellAttack"), value: signed(d.pbNum + mod) },
+				]
+			: undefined;
+	const lines: SpellLine[] = [];
+	const target = `spell:${b.index}`;
+	if (b.at_will.length) lines.push({ target: `${target}:atWill`, label: tk("statblock.atWill"), spells: b.at_will.map((s) => ({ name: spellName(s) })) });
+	for (const p of b.per_day) {
+		const ref = { kind: "perDay" as const, block: b.index, index: p.index };
+		const label = tk(p.each ? "statblock.perDayEach" : "statblock.usesDay", { n: p.uses });
+		const lineTarget = `${target}:perDay:${p.index}`;
+		if (p.each)
+			lines.push({
+				target: lineTarget,
+				label,
+				spells: p.spells.map((s) => {
+					const name = spellName(s);
+					return { name, boxes: { total: p.uses, used: Math.min(p.usedEach[name] ?? 0, p.uses), ref: { ...ref, spell: name } } };
+				}),
+			});
+		else lines.push({ target: lineTarget, label, spells: p.spells.map((s) => ({ name: spellName(s) })), boxes: { total: p.uses, used: Math.min(p.used, p.uses), ref } });
+	}
 	for (const l of b.levels) {
 		const label =
 			l.level === 0
@@ -377,10 +459,20 @@ function spellcastingBlock(b: SpellcastingBlock, d: Derived): string[] {
 				: l.slots !== undefined
 					? T("statblock.levelSlots", { level: l.level, count: l.slots })
 					: tk("statblock.level", { level: l.level });
-		lines.push(`**${label}:** ${spellList(l.spells)}`);
+		const slots = l.level > 0 && l.slots ? { total: l.slots, used: Math.min(l.used, l.slots), ref: { kind: "level" as const, block: b.index, index: l.index } } : undefined;
+		lines.push({ target: `${target}:level:${l.index}`, label, spells: l.spells.map((s) => ({ name: spellName(s) })), ...(slots ? { boxes: slots } : {}) });
 	}
-	if (b.footer.trim()) lines.push(...plainTags(b.footer).trim().split("\n"));
-	return lines;
+	const footer = plainTags(b.footer).trim();
+	return { target, markdown, spell: { ...(stats ? { stats } : {}), lines, ...(footer ? { footer } : {}) } };
+}
+
+/** ¿Tiene el statblock alguna casilla? (para el botón «Restablecer usos»). */
+export function hasBoxes(layout: StatblockLayout): boolean {
+	return layout.sections.some(
+		(s) =>
+			s.boxes ||
+			s.entries.some((e) => e.boxes || e.spell?.lines.some((l) => l.boxes || l.spells.some((x) => x.boxes))),
+	);
 }
 
 /** Cómo se refiere el texto a la criatura: «el aboleth», «Strahd». */
@@ -394,17 +486,18 @@ export function creatureRef(sb: Statblock): string {
 
 const capitalize = (s: string) => s.charAt(0).toLocaleUpperCase(currentLanguage()) + s.slice(1);
 
+/** Usos de acción legendaria por defecto, si `legendary_uses` está vacío (el valor habitual; pedido del desarrollador). */
+export const DEFAULT_LEGENDARY_USES = 3;
+
 export function legendaryIntro(sb: Statblock): string {
 	if (sb.legendary_header) return plainTags(sb.legendary_header);
 	const ref = creatureRef(sb);
+	const n = sb.legendary_uses ?? DEFAULT_LEGENDARY_USES;
 	const uses =
-		sb.legendary_uses === undefined
-			? ""
-			: sb.legendary_uses_lair
-				? tk("statblock.legendaryUsesLair", { uses: sb.legendary_uses, lair: sb.legendary_uses_lair })
-				: tk("statblock.legendaryUses", { uses: sb.legendary_uses });
-	const intro = tk("statblock.legendaryIntro", { name: ref, Name: capitalize(ref) });
-	return uses ? `${uses} ${intro}` : intro;
+		sb.legendary_uses_lair && sb.legendary_uses_lair !== n
+			? tk("statblock.legendaryUsesLair", { uses: n, lair: sb.legendary_uses_lair })
+			: tk("statblock.legendaryUses", { uses: n });
+	return `${uses} ${tk("statblock.legendaryIntro", { name: ref, Name: capitalize(ref) })}`;
 }
 
 // ---------------------------------------------------------------- todo junto
@@ -416,16 +509,25 @@ const hardBreaks = (lines: string[]) => lines.map((l, i) => (i < lines.length - 
 export function statblockLayout(sb: Statblock, opts: StatblockOptions): StatblockLayout {
 	const d = derive(sb, sb.all_skills);
 	const sections: LayoutSection[] = [];
-	const section = (key: string, entries: string[][], intro?: string) => {
-		if (entries.length) sections.push({ title: tk(key), ...(intro ? { intro } : {}), entries: entries.map(hardBreaks) });
+	const section = (key: string, entries: LayoutEntry[], intro?: string, boxes?: Boxes) => {
+		if (entries.length) sections.push({ key: key.replace("statblock.section.", ""), title: tk(key), ...(intro ? { intro } : {}), entries, ...(boxes ? { boxes } : {}) });
 	};
-	const entries = (s: EntrySection) => sb.entries[s].map(entryBlock);
+	// Usos de acción legendaria: una casilla por uso (las de más en la guarida, aparte).
+	const legendaryUses = sb.legendary_uses ?? DEFAULT_LEGENDARY_USES;
+	const legendaryTotal = Math.max(legendaryUses, sb.legendary_uses_lair ?? 0);
+	const legendaryBoxes: Boxes = {
+		total: legendaryTotal,
+		used: Math.min(sb.legendary_used, legendaryTotal),
+		...(legendaryTotal > legendaryUses ? { lairFrom: legendaryUses } : {}),
+		ref: { kind: "legendary" },
+	};
+	const entries = (s: EntrySection) => sb.entries[s].map((e) => entryBlock(e, s));
 	section("statblock.section.traits", entries("traits"));
 	section("statblock.section.spellcasting", sb.spellcasting.map((b) => spellcastingBlock(b, d)));
 	section("statblock.section.actions", entries("actions"));
 	section("statblock.section.bonus_actions", entries("bonus_actions"));
 	section("statblock.section.reactions", entries("reactions"));
-	section("statblock.section.legendary_actions", entries("legendary_actions"), sb.entries.legendary_actions.length ? legendaryIntro(sb) : undefined);
+	section("statblock.section.legendary_actions", entries("legendary_actions"), sb.entries.legendary_actions.length ? legendaryIntro(sb) : undefined, legendaryBoxes);
 	section("statblock.section.mythic_actions", entries("mythic_actions"), sb.mythic_header ? plainTags(sb.mythic_header) : undefined);
 	return {
 		name: sb.name,
