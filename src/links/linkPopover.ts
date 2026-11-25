@@ -4,6 +4,7 @@ import { renderConditionIcon } from "../initiative/conditionUi";
 import type StrakesTTRPG from "../main";
 import { isStatblock, nameFromNote, readStatblock } from "../statblock/data";
 import { statblockLayout } from "../statblock/layout";
+import { presetFor } from "../statblock/presets";
 import { renderStatblock } from "../statblock/render";
 import { applyUsed, readUsed, setUsed, UseRef } from "../statblock/uses";
 import { linkifyElement } from "./linkify";
@@ -113,7 +114,7 @@ class LinkPopover {
 		void readUsed(app, file)
 			.then((used) => {
 				applyUsed(sb, used);
-				const layout = statblockLayout(sb, { metric: settings.statblockMetric, catalog: settings });
+				const layout = statblockLayout(sb, { preset: presetFor(settings, sb.preset), catalog: settings });
 				return renderStatblock(app, body, layout, file.path, this.component, 1, onUse, false, (el) => linkifyElement(this.plugin, el));
 			})
 			.then(() => this.place());

@@ -1,12 +1,12 @@
 import { App, Component, MarkdownRenderer } from "obsidian";
 import { T, TC } from "../i18n";
 import { Statblock } from "./data";
-import { Boxes, LabelValue, LayoutEntry, StatblockLayout } from "./layout";
+import { Boxes, LabelValue, LayoutEntry, LayoutSection, StatblockLayout } from "./layout";
 import { UseRef } from "./uses";
 
-/** Columnas de un statblock: las suyas (`columns`) o las de los ajustes (`statblockColumns`). */
-export function statblockColumns(sb: Statblock, setting: string): 1 | 2 {
-	return sb.columns ?? (setting === "2" ? 2 : 1);
+/** Columnas de un statblock: las suyas (`columns`) o las de su preset. */
+export function statblockColumns(sb: Statblock, presetColumns: 1 | 2): 1 | 2 {
+	return sb.columns ?? presetColumns;
 }
 
 /**
@@ -19,6 +19,10 @@ export function statblockColumns(sb: Statblock, setting: string): 1 | 2 {
  * Columnas: con una, el statblock ocupa la mitad del ancho disponible; con dos, todo el ancho, repartido
  * en dos columnas. Si el sitio es estrecho (móvil, barra lateral), una sola a todo el ancho (consulta de
  * contenedor en `.strakes-stat-wrap`).
+ *
+ * Las partes van en el orden del preset (`layout.order`, paso 8). Las de la cabecera seguidas forman un
+ * bloque que no se parte entre columnas, y las líneas seguidas, otro con su margen; con el orden de
+ * «D&D 2024» queda como antes de los presets.
  *
  * Los textos de rasgos y acciones (Markdown) se dibujan con `MarkdownRenderer`, con `component` como dueño.
  */
@@ -52,65 +56,91 @@ export async function renderStatblock(
 		el.appendText(` ${lv.value}`);
 	};
 
-	// Cabecera: nombre, tipo, bloque superior y características (no se parte entre columnas).
-	const head = sb.createDiv("strakes-stat-head");
-	mark(head.createDiv({ cls: "strakes-stat-name", text: layout.name }), "name");
-	if (layout.subtitle) mark(head.createDiv({ cls: "strakes-stat-subtitle", text: layout.subtitle }), "subtitle");
-	if (layout.top.length || layout.speed) {
-		const top = head.createDiv("strakes-stat-top");
-		for (const row of layout.top)
-			for (const c of row) {
-				const cell = top.createDiv("strakes-stat-top-cell");
-				if (c) pair(cell, c);
-			}
-		if (layout.speed) pair(top.createDiv("strakes-stat-top-cell is-wide"), { label: TC("statblock.speed"), value: layout.speed, field: "speed" });
-	}
-	if (layout.abilities) {
-		const grid = head.createDiv("strakes-stat-abilities");
-		const cell = (a: (typeof layout.abilities)[number], o: { cls?: string; text: string }) => mark(grid.createDiv(o), `ability:${a.ability}`);
-		for (const a of layout.abilities) cell(a, { cls: "strakes-stat-ability-label", text: a.label });
-		grid.createDiv();
-		for (const a of layout.abilities) cell(a, { cls: "strakes-stat-ability-score", text: a.score });
-		grid.createDiv();
-		for (const a of layout.abilities) cell(a, { text: a.mod });
-		grid.createDiv({ cls: "strakes-stat-row-label", text: TC("statblock.mod") });
-		for (const a of layout.abilities) cell(a, { text: a.save });
-		grid.createDiv({ cls: "strakes-stat-row-label", text: TC("statblock.save") });
-	}
-
-	// Todas las habilidades: tabla de cuatro columnas, de arriba abajo.
-	if (layout.allSkills?.length) {
-		const skills = layout.allSkills;
-		const grid = mark(sb.createDiv("strakes-stat-all-skills"), "skills");
-		const half = Math.ceil(skills.length / 2);
-		for (let h = 0; h < 2; h++) {
-			grid.createDiv({ cls: "strakes-stat-row-label", text: TC("statblock.skillHeader") });
-			grid.createDiv({ cls: "strakes-stat-row-label", text: TC("statblock.mod") });
-		}
-		for (let i = 0; i < half; i++)
-			for (const s of [skills[i], skills[i + half]]) {
-				grid.createDiv({ text: s?.label ?? "" });
-				grid.createDiv({ text: s?.value ?? "" });
-			}
-	}
-
-	if (layout.lines.length) {
-		const lines = sb.createDiv("strakes-stat-lines");
-		for (const l of layout.lines) pair(lines.createDiv("strakes-stat-line"), l);
-	}
-
+	// Grupo en el que van las partes seguidas del mismo tipo (cabecera o líneas).
+	let group: { kind: "head" | "lines"; el: HTMLElement } | null = null;
+	const inGroup = (kind: "head" | "lines") => {
+		if (group?.kind !== kind) group = { kind, el: sb.createDiv(kind === "head" ? "strakes-stat-head" : "strakes-stat-lines") };
+		return group.el;
+	};
+	const alone = (cls: string) => {
+		group = null;
+		return sb.createDiv(cls);
+	};
 	const renders: Promise<void>[] = [];
-	for (const s of layout.sections) {
-		const sec = sb.createDiv("strakes-stat-section");
+	const section = (s: LayoutSection) => {
+		const sec = alone("strakes-stat-section");
 		const title = mark(sec.createDiv({ cls: "strakes-stat-section-title", text: s.title }), `section:${s.key}`);
 		if (s.boxes) title.appendChild(renderBoxes(s.boxes, onUse));
 		const introTarget = s.key === "legendary_actions" ? "legendary_header" : s.key === "lair_actions" ? "lair_actions_header" : `section:${s.key}`;
 		if (s.intro) renders.push(markdown(mark(sec.createDiv("strakes-stat-entry"), introTarget), s.intro));
 		for (const e of s.entries) renders.push(renderEntry(mark(sec.createDiv("strakes-stat-entry"), e.target), e, markdown, onUse, mark));
+	};
+
+	for (const item of layout.order) {
+		if (item === "header") {
+			const head = inGroup("head");
+			mark(head.createDiv({ cls: "strakes-stat-name", text: layout.name }), "name");
+			if (layout.subtitle) mark(head.createDiv({ cls: "strakes-stat-subtitle", text: layout.subtitle }), "subtitle");
+		} else if (item === "defense") {
+			if (!layout.top.length) continue;
+			const top = inGroup("head").createDiv("strakes-stat-top");
+			for (const row of layout.top)
+				for (const c of row) {
+					const cell = top.createDiv("strakes-stat-top-cell");
+					if (c) pair(cell, c);
+				}
+		} else if (item === "speed") {
+			if (!layout.speed) continue;
+			const top = inGroup("head").createDiv("strakes-stat-top");
+			pair(top.createDiv("strakes-stat-top-cell is-wide"), { label: TC("statblock.speed"), value: layout.speed, field: "speed" });
+		} else if (item === "abilities") {
+			if (layout.abilities) renderAbilities(inGroup("head"), layout.abilities, layout.saves, mark);
+		} else if (item === "skills" && layout.allSkills?.length) {
+			renderAllSkills(mark(alone("strakes-stat-all-skills"), "skills"), layout.allSkills);
+		} else {
+			const line = layout.lines.find((l) => l.item === item);
+			if (line) pair(inGroup("lines").createDiv("strakes-stat-line"), line);
+			const sec = layout.sections.find((s) => s.key === item);
+			if (sec) section(sec);
+		}
 	}
 	await Promise.all(renders);
 	linkify?.(sb);
 	return wrap;
+}
+
+/** Tabla de características: abreviaturas, puntuaciones, modificadores y (si el preset la muestra) salvaciones. */
+function renderAbilities(
+	parent: HTMLElement,
+	abilities: NonNullable<StatblockLayout["abilities"]>,
+	saves: boolean,
+	mark: (el: HTMLElement, target: string | undefined) => HTMLElement,
+): void {
+	const grid = parent.createDiv("strakes-stat-abilities");
+	const cell = (a: (typeof abilities)[number], o: { cls?: string; text: string }) => mark(grid.createDiv(o), `ability:${a.ability}`);
+	for (const a of abilities) cell(a, { cls: "strakes-stat-ability-label", text: a.label });
+	grid.createDiv();
+	for (const a of abilities) cell(a, { cls: "strakes-stat-ability-score", text: a.score });
+	grid.createDiv();
+	for (const a of abilities) cell(a, { text: a.mod });
+	grid.createDiv({ cls: "strakes-stat-row-label", text: TC("statblock.mod") });
+	if (!saves) return;
+	for (const a of abilities) cell(a, { text: a.save });
+	grid.createDiv({ cls: "strakes-stat-row-label", text: TC("statblock.save") });
+}
+
+/** Todas las habilidades: tabla de cuatro columnas, de arriba abajo. */
+function renderAllSkills(grid: HTMLElement, skills: LabelValue[]): void {
+	const half = Math.ceil(skills.length / 2);
+	for (let h = 0; h < 2; h++) {
+		grid.createDiv({ cls: "strakes-stat-row-label", text: TC("statblock.skillHeader") });
+		grid.createDiv({ cls: "strakes-stat-row-label", text: TC("statblock.mod") });
+	}
+	for (let i = 0; i < half; i++)
+		for (const s of [skills[i], skills[i + half]]) {
+			grid.createDiv({ text: s?.label ?? "" });
+			grid.createDiv({ text: s?.value ?? "" });
+		}
 }
 
 /**

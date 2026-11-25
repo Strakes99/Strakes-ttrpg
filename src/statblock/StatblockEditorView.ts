@@ -4,6 +4,7 @@ import type StrakesTTRPG from "../main";
 import { nameFromNote, readStatblock } from "./data";
 import { buildForm } from "./form";
 import { renderStatblock, statblockColumns } from "./render";
+import { presetFor } from "./presets";
 import { linkifyElement } from "../links/linkify";
 import { statblockLayout } from "./layout";
 import { applyUsed, readUsed, remapUsed } from "./uses";
@@ -311,12 +312,13 @@ export class StatblockEditorView extends ItemView {
 		const s = this.plugin.settings;
 		const sb = readStatblock(this.draft, this.fallbackName());
 		applyUsed(sb, await readUsed(this.app, this.file));
-		const layout = statblockLayout(sb, { metric: s.statblockMetric, catalog: s });
+		const preset = presetFor(s, sb.preset);
+		const layout = statblockLayout(sb, { preset, catalog: s });
 		this.previewComponent?.unload();
 		this.previewComponent = new Component();
 		this.previewComponent.load();
 		this.previewEl.empty();
-		await renderStatblock(this.app, this.previewEl, layout, this.file.path, this.previewComponent, statblockColumns(sb, s.statblockColumns), undefined, true, (el) =>
+		await renderStatblock(this.app, this.previewEl, layout, this.file.path, this.previewComponent, statblockColumns(sb, preset.columns), undefined, true, (el) =>
 			linkifyElement(this.plugin, el),
 		);
 	}

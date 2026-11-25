@@ -6,6 +6,7 @@ import { isStatblock, nameFromNote, readStatblock, STATBLOCK_BLOCK } from "./dat
 import { hasBoxes, statblockLayout } from "./layout";
 import { applyUsed, parseUsed, resetUses, setUsed, UseRef } from "./uses";
 import { renderStatblock, statblockColumns } from "./render";
+import { presetFor } from "./presets";
 import { linkifyElement } from "../links/linkify";
 import { openStatblockEditor } from "./StatblockEditorView";
 
@@ -22,7 +23,7 @@ export function registerStatblockBlock(plugin: StrakesTTRPG): void {
 
 /**
  * Un statblock dibujado. Se vuelve a dibujar cuando cambian las propiedades de su nota (Obsidian no
- * repite el procesador si el bloque no cambia), los ajustes (metros, columnas) o las condiciones
+ * repite el procesador si el bloque no cambia), los ajustes (presets) o las condiciones
  * (nombres de las inmunidades).
  */
 class StatblockRender extends MarkdownRenderChild {
@@ -62,8 +63,9 @@ class StatblockRender extends MarkdownRenderChild {
 		// el archivo: así el statblock se dibuja de una vez y la nota no salta al marcar una casilla.
 		if (sb) applyUsed(sb, parseUsed(this.source));
 		const supported = !!sb && /^dnd5e(-|$)/i.test(sb.system);
-		const layout = sb && supported ? statblockLayout(sb, { metric: settings.statblockMetric, catalog: settings }) : null;
-		const columns = sb ? statblockColumns(sb, settings.statblockColumns) : 1;
+		const preset = presetFor(settings, sb?.preset);
+		const layout = sb && supported ? statblockLayout(sb, { preset, catalog: settings }) : null;
+		const columns = sb ? statblockColumns(sb, preset.columns) : 1;
 		const key = JSON.stringify({ system: sb?.system ?? null, layout, columns });
 		if (key === this.lastKey) return;
 		this.lastKey = key;

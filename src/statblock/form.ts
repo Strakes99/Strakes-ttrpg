@@ -19,6 +19,7 @@ import {
 import { ALIGNMENTS, alignmentFromInput, alignmentName, creatureRef, legendaryIntro } from "./layout";
 import { Draft } from "./notes";
 import { IndexMove, removeMove, swapMove } from "./uses";
+import { allPresets, defaultPreset } from "./presets";
 
 /**
  * Formulario de un statblock (1.4, §10.2). Cada campo está ligado a una propiedad del borrador (`Draft`,
@@ -363,6 +364,17 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 			],
 			() => display(draft.columns),
 			(v) => (v ? (draft.columns = Number(v)) : delete draft.columns),
+		);
+		// Preset de presentación (paso 8), por nombre. Uno que ya no existe (borrado o renombrado) se sigue
+		// ofreciendo, para que se vea qué tiene escrito la nota; mientras, se dibuja con el general.
+		const presets = allPresets(ctx.plugin.settings).map((p): [string, string] => [p.name, p.name]);
+		const current = typeof draft.preset === "string" ? draft.preset : "";
+		if (current && !presets.some(([n]) => n === current)) presets.push([current, current]);
+		select(
+			row(body, T("sbForm.preset")),
+			[["", T("sbForm.presetDefault", { name: defaultPreset(ctx.plugin.settings).name })], ...presets],
+			() => display(draft.preset),
+			(v) => (v ? (draft.preset = v) : delete draft.preset),
 		);
 
 		// Tamaño, tipo, subtipos, enjambre y alineamiento: lo que forma la línea de tipo del statblock. Un clic

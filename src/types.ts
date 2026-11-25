@@ -273,10 +273,10 @@ export interface StrakesSettings {
 	statblockSuffix: string;
 	/** Statblocks: carpeta de las notas nuevas (se crea si no existe). Vacío = la raíz de la bóveda. */
 	statblockFolder: string;
-	/** Statblocks: velocidad y sentidos también en metros, entre paréntesis. */
-	statblockMetric: boolean;
-	/** Statblocks: columnas por defecto ("1": la mitad del ancho; "2": todo el ancho, en dos columnas). */
-	statblockColumns: "1" | "2";
+	/** Statblocks (paso 8): id del preset general («dnd5e-2024» = «D&D 2024», el que viene hecho). */
+	statblockPreset: string;
+	/** Statblocks: presets del usuario (qué se muestra, orden, columnas y metros). */
+	statblockPresets: StatblockPreset[];
 	/** «Traducir el contenido» (1.4): desactivado, solo se traduce la interfaz; el contenido sale en inglés. */
 	translateContent: boolean;
 }
@@ -317,8 +317,8 @@ export const DEFAULT_SETTINGS: StrakesSettings = {
 	statblockPrefix: "ST-",
 	statblockSuffix: "",
 	statblockFolder: "Statblocks",
-	statblockMetric: false,
-	statblockColumns: "1",
+	statblockPreset: "dnd5e-2024",
+	statblockPresets: [],
 	translateContent: true,
 };
 
@@ -328,4 +328,5 @@ export const MAP_EXTENSION = "smap";
 
 export const VIEW_TYPE_PLAYER = "strakes-player-screen";
 export const VIEW_TYPE_INITIATIVE = "strakes-initiative";
-export const VIEW_TYPE_MAP = "strakes-map";
+export const VIEW_TYPE_MAP = "strakes-map";import type { StatblockPreset } from "./statblock/presets";
+

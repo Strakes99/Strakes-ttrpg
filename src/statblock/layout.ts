@@ -3,6 +3,7 @@ import en from "../i18n/locales/en.json";
 import { allConditions, ConditionCatalog, conditionById } from "../initiative/conditions";
 import { derive, Derived, signed, signedValue } from "./compute";
 import { UseRef } from "./uses";
+import { shows, StatblockItem, StatblockPreset } from "./presets";
 import {
 	ABILITIES,
 	Ability,
@@ -29,8 +30,8 @@ import {
  */
 
 export interface StatblockOptions {
-	/** Velocidad y sentidos también en metros, entre paréntesis («60 ft. (18 m)»). */
-	metric: boolean;
+	/** Qué se muestra y en qué orden, y los metros (`presets.ts`). */
+	preset: StatblockPreset;
 	/** Para dar el nombre traducido de las inmunidades a condiciones del SRD. */
 	catalog: ConditionCatalog;
 }
@@ -234,6 +235,11 @@ export interface LabelValue {
 	field?: string;
 }
 
+/** Una línea «**Etiqueta** valor» (Habilidades… Idiomas, Desafío), con la parte del statblock que es. */
+export interface LayoutLine extends LabelValue {
+	item: StatblockItem;
+}
+
 /** Una característica: abreviatura, puntuación, modificador y salvación («—» si falta). */
 export interface AbilityCell {
 	ability: Ability;
@@ -296,19 +302,23 @@ export interface StatblockLayout {
 	/** «10 pies, Nadar 40 pies», a lo ancho bajo el bloque superior. */
 	speed: string;
 	abilities: AbilityCell[] | null;
+	/** ¿Fila de salvaciones en la tabla de características? (se puede ocultar en el preset). */
+	saves: boolean;
 	/** Con «Mostrar todas las habilidades», la tabla de las 18 (si no, null y van en una línea). */
 	allSkills: LabelValue[] | null;
-	/** Líneas «**Etiqueta** valor»: Habilidades… Idiomas y, al final, el VD con los PX. */
-	lines: LabelValue[];
+	/** Líneas «**Etiqueta** valor»: Habilidades… Idiomas y el Desafío (VD y PX). */
+	lines: LayoutLine[];
 	sections: LayoutSection[];
+	/** Orden de las partes (las ocultas del preset, fuera). Las que no tienen nada no se dibujan. */
+	order: StatblockItem[];
 }
 
-function topBlock(sb: Statblock, d: Derived): (LabelValue | null)[][] {
+function topBlock(sb: Statblock, d: Derived, preset: StatblockPreset): (LabelValue | null)[][] {
 	const cellOf = (key: string, value: string | undefined): LabelValue | null => (value ? { label: tk(key), value, field: key.replace("statblock.", "") } : null);
 	const ac = sb.ac !== undefined ? `${val(sb.ac)}${sb.ac_note ? ` (${knownPhrases(sb.ac_note, ARMOR, "statblock.armor")})` : ""}` : undefined;
-	const init = d.initiative === undefined ? undefined : typeof d.initiative === "number" ? `${signed(d.initiative)} (${10 + d.initiative})` : d.initiative;
+	const init = d.initiative === undefined || !shows(preset, "initiative") ? undefined : typeof d.initiative === "number" ? `${signed(d.initiative)} (${10 + d.initiative})` : d.initiative;
 	const hp = d.hp !== undefined ? `${val(d.hp)}${sb.hp_formula ? ` (${sb.hp_formula})` : ""}` : sb.hp_formula ? `(${sb.hp_formula})` : undefined;
-	const pb = d.pb !== undefined ? signedValue(d.pb) : undefined;
+	const pb = d.pb !== undefined && shows(preset, "pb") ? signedValue(d.pb) : undefined;
 	return [
 		[cellOf("statblock.ac", ac), cellOf("statblock.initiative", init)],
 		[cellOf("statblock.hp", hp), cellOf("statblock.pb", pb)],
@@ -345,31 +355,33 @@ function conditionName(x: string, catalog: ConditionCatalog): string {
 	return info ? `{@condition ${info.custom ? info.name : info.id}||${info.name}}` : keepLinks(x);
 }
 
-function sensesLine(sb: Statblock, d: Derived, metric: boolean): string {
+function sensesLine(sb: Statblock, d: Derived, metric: boolean, passivePerception: boolean): string {
 	const senses = SENSES.filter((s) => sb.senses[s] !== undefined).map((s) => `${tk(`statblock.sense.${s}`)} ${distance(sb.senses[s] as NumOrText, metric)}`);
 	const list = [...senses, ...sb.senses_other.map((s) => knownPhrases(s, SENSE_TEXT, "statblock.senseText"))].join(", ");
-	const passive = d.passivePerception !== undefined ? tk("statblock.passivePerception", { n: val(d.passivePerception) }) : "";
+	const passive = d.passivePerception !== undefined && passivePerception ? tk("statblock.passivePerception", { n: val(d.passivePerception) }) : "";
 	return list && passive ? `${list}; ${passive}` : list || passive;
 }
 
-function infoLines(sb: Statblock, d: Derived, opts: StatblockOptions): LabelValue[] {
-	const lines: LabelValue[] = [];
-	const add = (key: string, text: string) => {
-		if (text) lines.push({ label: tk(key), value: text, field: key.replace("statblock.", "") });
+function infoLines(sb: Statblock, d: Derived, opts: StatblockOptions): LayoutLine[] {
+	const p = opts.preset;
+	const lines: LayoutLine[] = [];
+	const add = (item: StatblockItem, key: string, text: string) => {
+		if (text) lines.push({ item, label: tk(key), value: text, field: key.replace("statblock.", "") });
 	};
-	if (!sb.all_skills) add("statblock.skills", skillNames(d).map((s) => `${s.name} ${s.value}`).join(", "));
-	add("statblock.vulnerabilities", damageList(sb.vulnerabilities).join(", "));
-	add("statblock.resistances", damageList(sb.resistances).join(", "));
+	if (!sb.all_skills) add("skills", "statblock.skills", skillNames(d).map((s) => `${s.name} ${s.value}`).join(", "));
+	add("vulnerabilities", "statblock.vulnerabilities", damageList(sb.vulnerabilities).join(", "));
+	add("resistances", "statblock.resistances", damageList(sb.resistances).join(", "));
 	const damage = damageList(sb.immunities).join(", ");
 	const conditions = sb.condition_immunities.map((c) => conditionName(c, opts.catalog)).join(", ");
-	add("statblock.immunities", damage && conditions ? `${damage}; ${conditions}` : damage || conditions);
-	add("statblock.gear", sb.gear.map(keepLinks).join(", "));
-	add("statblock.senses", sensesLine(sb, d, opts.metric));
-	add("statblock.languages", sb.languages.map(keepLinks).join(", ") || tk("statblock.none"));
-	const xp = d.xp === undefined ? "" : d.xpLair !== undefined ? tk("statblock.xpLair", { xp: val(d.xp), lair: val(d.xpLair) }) : val(d.xp);
-	// «VD 10 (PX 5900, o 7200 en su guarida)»; sin VD, «PX 5900».
-	if (sb.cr) add("statblock.cr", xp ? `${sb.cr} (${tk("statblock.xp")} ${xp})` : sb.cr);
-	else add("statblock.xp", xp);
+	add("immunities", "statblock.immunities", damage && conditions ? `${damage}; ${conditions}` : damage || conditions);
+	add("gear", "statblock.gear", sb.gear.map(keepLinks).join(", "));
+	add("senses", "statblock.senses", sensesLine(sb, d, p.metric, shows(p, "passive_perception")));
+	add("languages", "statblock.languages", sb.languages.map(keepLinks).join(", ") || tk("statblock.none"));
+	const lair = d.xpLair !== undefined && shows(p, "xp_lair");
+	const xp = d.xp === undefined || !shows(p, "xp") ? "" : lair ? tk("statblock.xpLair", { xp: val(d.xp), lair: val(d.xpLair as NumOrText) }) : val(d.xp);
+	// «VD 10 (PX 5900, o 7200 en su guarida)»; sin VD (o con el VD oculto), «PX 5900».
+	if (sb.cr && shows(p, "cr")) add("challenge", "statblock.cr", xp ? `${sb.cr} (${tk("statblock.xp")} ${xp})` : sb.cr);
+	else add("challenge", "statblock.xp", xp);
 	return lines;
 }
 
@@ -554,16 +566,20 @@ export function statblockLayout(sb: Statblock, opts: StatblockOptions): Statbloc
 	section("statblock.section.actions", entries("actions"));
 	section("statblock.section.bonus_actions", entries("bonus_actions"));
 	section("statblock.section.reactions", entries("reactions"));
-	section("statblock.section.legendary_actions", entries("legendary_actions"), sb.entries.legendary_actions.length ? legendaryIntro(sb) : undefined, legendaryBoxes);
+	const legendaryText = sb.entries.legendary_actions.length && shows(opts.preset, "legendary_header") ? legendaryIntro(sb) : undefined;
+	section("statblock.section.legendary_actions", entries("legendary_actions"), legendaryText, legendaryBoxes);
 	section("statblock.section.lair_actions", entries("lair_actions"), sb.lair_actions_header ? keepLinks(sb.lair_actions_header) : undefined);
 	return {
 		name: sb.name,
 		subtitle: headerLine(sb),
-		top: topBlock(sb, d),
-		speed: speedLine(sb, opts.metric),
+		top: topBlock(sb, d, opts.preset),
+		speed: speedLine(sb, opts.preset.metric),
 		abilities: abilityCells(sb, d),
+		saves: shows(opts.preset, "saves"),
 		allSkills: sb.all_skills ? skillNames(d).map((x) => ({ label: x.name, value: x.value })) : null,
 		lines: infoLines(sb, d, opts),
 		sections,
+		// Equipo, Sentidos e Idiomas se pueden ocultar enteros.
+		order: opts.preset.order.filter((item) => !(item === "gear" || item === "senses" || item === "languages") || shows(opts.preset, item)),
 	};
 }

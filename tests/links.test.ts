@@ -1,6 +1,6 @@
 // 1.4, paso 6: enlaces {@condition}, {@creature}, {@spell} (y sus nombres en español).
 import { findCondition } from "../src/links/linkResolve";
-import { codeRanges, normalizeName, splitLinkTags } from "../src/links/linkTags";
+import { codeRanges, hasLinkTag, normalizeName, splitLinkTags } from "../src/links/linkTags";
 import { setLocale, t } from "./helpers";
 
 const catalog = { customConditions: [], conditionOverrides: {} };
@@ -20,6 +20,12 @@ t(
 		".",
 	],
 );
+{
+	// Regresión (Liche, 2026-11-25): comprobar el texto antes de partirlo hacía saltar la primera marca.
+	const text = "The lich casts {@spell Counterspell} or {@spell Shield} in response.";
+	const names = () => splitLinkTags(text).flatMap((p) => (typeof p === "string" ? [] : [p.name]));
+	t("marcas: comprobar antes de partir no se salta la primera", [hasLinkTag(text), hasLinkTag(text), names(), names()], [true, true, ["Counterspell", "Shield"], ["Counterspell", "Shield"]]);
+}
 t("marcas: otras marcas no son enlaces", splitLinkTags("{@dice 1d6} {@item sword}"), ["{@dice 1d6} {@item sword}"]);
 t("nombres: sin mayúsculas ni acentos", normalizeName("  Visión  EN la Oscuridad "), "vision en la oscuridad");
 

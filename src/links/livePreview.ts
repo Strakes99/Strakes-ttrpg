@@ -3,7 +3,7 @@ import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetTy
 import { editorLivePreviewField } from "obsidian";
 import type StrakesTTRPG from "../main";
 import { createLinkEl } from "./linkify";
-import { codeRanges, LINK_TAG_RE, LinkTag, parseLinkTag } from "./linkTags";
+import { codeRanges, LinkTag, linkTagRe, parseLinkTag } from "./linkTags";
 
 /**
  * Enlaces en Live Preview (1.4, paso 6): cada marca `{@condition …}`, `{@creature …}` o `{@spell …}` se ve
@@ -41,7 +41,7 @@ function build(plugin: StrakesTTRPG, view: EditorView): DecorationSet {
 	const builder = new RangeSetBuilder<Decoration>();
 	for (const { from, to } of view.visibleRanges) {
 		const slice = text.slice(from, to);
-		for (const m of slice.matchAll(LINK_TAG_RE)) {
+		for (const m of slice.matchAll(linkTagRe())) {
 			const start = from + (m.index ?? 0);
 			const end = start + m[0].length;
 			if (code.some(([a, b]) => start < b && end > a)) continue;

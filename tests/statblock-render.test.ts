@@ -3,14 +3,15 @@ import { abilityMod, averageHp, derive, lairXpForCr, pbForCr, xpForCr } from "..
 import { nameFromNote, readStatblock } from "../src/statblock/data";
 import { alignmentName, creatureRef, hasBoxes, headerLine, speedLine, StatblockLayout, statblockLayout } from "../src/statblock/layout";
 import { applyUsed, findStatblockBlock, parseUsed, remapListKeys, removeMove, serializeUsed, swapMove, useKey, withBlockBody } from "../src/statblock/uses";
+import { BUILTIN_PRESET, StatblockPreset } from "../src/statblock/presets";
 import { setTranslateContent, T } from "../src/i18n";
 import { conditionById } from "../src/initiative/conditions";
 import { setLocale, t } from "./helpers";
 
 const catalog = { customConditions: [], conditionOverrides: {} };
-const opts = { metric: false, catalog };
+const opts = { preset: BUILTIN_PRESET as StatblockPreset, catalog };
 const sb = (fm: Record<string, unknown>, name = "Criatura") => readStatblock({ statblock: "dnd5e-2024", ...fm }, name);
-const lay = (fm: Record<string, unknown>, metric = false) => statblockLayout(sb(fm), { ...opts, metric });
+const lay = (fm: Record<string, unknown>, metric = false) => statblockLayout(sb(fm), { ...opts, preset: { ...BUILTIN_PRESET, metric } });
 /** Con lo gastado escrito en el bloque de la nota («clave: n» por línea). */
 const layUsed = (fm: Record<string, unknown>, used: string) => {
 	const r = sb(fm);
@@ -127,7 +128,7 @@ t("es: velocidad en texto, tal cual", speedLine(sb({ speed: { walk: "30 ft. (onl
 	t("es: habilidades en orden alfabético", line(l, "Habilidades"), "Historia +12, Percepción +10");
 	t("es: sentidos con la Percepción pasiva", line(l, "Sentidos"), "Visión en la oscuridad 120 pies; Percepción pasiva 20");
 	t("es: idiomas", line(l, "Idiomas"), "Deep Speech, telepathy 120 ft.");
-	t("es: VD con los PX y la guarida, al final y sin el BC", l.lines[l.lines.length - 1], { label: "VD", value: "10 (PX 5900, o 7200 en su guarida)", field: "cr" });
+	t("es: VD con los PX y la guarida, al final y sin el BC", l.lines[l.lines.length - 1], { item: "challenge", label: "VD", value: "10 (PX 5900, o 7200 en su guarida)", field: "cr" });
 	t("es: sin líneas vacías de vulnerabilidades, resistencias, inmunidades ni equipo", ["Vulnerabilidades", "Resistencias", "Inmunidades", "Equipo"].some((w) => line(l, w) !== undefined), false);
 	t("es: orden de las líneas", l.lines.map((x) => x.label), ["Habilidades", "Sentidos", "Idiomas", "VD"]);
 	const text = entries(l);
@@ -143,11 +144,11 @@ t("es: velocidad en texto, tal cual", speedLine(sb({ speed: { walk: "30 ft. (onl
 t("es: sin idiomas, «Idiomas —»", line(lay({ str: 10 }), "Idiomas"), "—");
 {
 	const l = lay({});
-	t("es: sin nada, solo el nombre y los idiomas", [l.name, l.subtitle, l.top, l.speed, l.abilities, l.lines, l.sections], ["Criatura", "", [], "", null, [{ label: "Idiomas", value: "—", field: "languages" }], []]);
+	t("es: sin nada, solo el nombre y los idiomas", [l.name, l.subtitle, l.top, l.speed, l.abilities, l.lines, l.sections], ["Criatura", "", [], "", null, [{ item: "languages", label: "Idiomas", value: "—", field: "languages" }], []]);
 }
 t("es: sin CA, la iniciativa sigue en su columna", lay({ dex: 14 }).top, [[null, { label: "Iniciativa", value: "+2 (12)", field: "initiative" }]]);
-t("es: sin VD, solo los PX escritos", lay({ xp: 50 }).lines.at(-1), { label: "PX", value: "50", field: "xp" });
-t("es: VD sin PX (texto)", lay({ cr: "especial" }).lines.at(-1), { label: "VD", value: "especial", field: "cr" });
+t("es: sin VD, solo los PX escritos", lay({ xp: 50 }).lines.at(-1), { item: "challenge", label: "PX", value: "50", field: "xp" });
+t("es: VD sin PX (texto)", lay({ cr: "especial" }).lines.at(-1), { item: "challenge", label: "VD", value: "especial", field: "cr" });
 t("es: sentidos en metros", line(lay({ senses: { blindsight: 60 }, wis: 10 }, true), "Sentidos"), "Vista ciega 60 pies (18 m); Percepción pasiva 10");
 t("es: CA con nota conocida, traducida", lay({ ac: 13, ac_note: "chain shirt" }).top[0][0], { label: "CA", value: "13 (camisote de mallas)", field: "ac" });
 t("es: nota de CA con varias partes, sin distinguir mayúsculas", lay({ ac: 20, ac_note: "Plate Armor, shield" }).top[0][0]?.value, "20 (armadura de placas, escudo)");
@@ -283,7 +284,7 @@ t("es: columnas del statblock (1, 2 o las de los ajustes)", [sb({ columns: 2 }).
 setLocale("en");
 {
 	const l = lay(aboleth);
-	t("en: CR line with XP and lair, number format", l.lines.at(-1), { label: "CR", value: "10 (XP 5900, or 7200 in Lair)", field: "cr" });
+	t("en: CR line with XP and lair, number format", l.lines.at(-1), { item: "challenge", label: "CR", value: "10 (XP 5900, or 7200 in Lair)", field: "cr" });
 	t("en: generated legendary intro", has(l.sections[2].intro ?? "", "Legendary Action Uses: 3 (4 in Lair). Immediately after another creature's turn, the aboleth can expend a use"), true);
 	t("en: uses", has(entries(l), "***Legendary Resistance (3/Day, or 4/Day in Lair):***"), true);
 	t("en: ability abbreviations", l.abilities?.map((a) => a.label), ["Str", "Dex", "Con", "Int", "Wis", "Cha"]);

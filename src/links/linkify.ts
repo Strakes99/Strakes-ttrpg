@@ -3,7 +3,7 @@ import { T } from "../i18n";
 import type StrakesTTRPG from "../main";
 import { showLinkPopover } from "./linkPopover";
 import { findCondition } from "./linkResolve";
-import { LINK_TAG_RE, LinkTag, splitLinkTags } from "./linkTags";
+import { hasLinkTag, LinkTag, splitLinkTags } from "./linkTags";
 
 /**
  * Enlaces en lo ya dibujado (1.4, paso 6): convierte las marcas `{@condition …}`, `{@creature …}` y
@@ -71,8 +71,7 @@ export function linkifyElement(plugin: StrakesTTRPG, root: HTMLElement): void {
 	const nodes: Text[] = [];
 	for (let n = walker.nextNode(); n; n = walker.nextNode()) {
 		const text = n as Text;
-		LINK_TAG_RE.lastIndex = 0;
-		if (!LINK_TAG_RE.test(text.data)) continue;
+		if (!hasLinkTag(text.data)) continue;
 		if (text.parentElement?.closest(SKIP)) continue;
 		nodes.push(text);
 	}

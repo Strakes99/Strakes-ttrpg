@@ -22,6 +22,7 @@ export const DEFAULT_SYSTEM = "dnd5e-2024";
  */
 export const STATBLOCK_KEYS = [
 	"statblock",
+	"preset",
 	"columns",
 	"name",
 	"short_name",
@@ -145,10 +146,10 @@ export async function ensureFolder(plugin: StrakesTTRPG, folder: string): Promis
 	return path;
 }
 
-/** Ruta libre para una nota: si ya existe, añade un número («ST-Goblin 2»). Nunca se sobrescribe nada. */
-export function freeNotePath(plugin: StrakesTTRPG, folder: string, base: string): string {
+/** Ruta libre para una nota (o un archivo de otra extensión): si ya existe, añade un número («ST-Goblin 2»). Nunca se sobrescribe nada. */
+export function freeNotePath(plugin: StrakesTTRPG, folder: string, base: string, ext = "md"): string {
 	const clean = base.replace(/[\\/:*?"<>|#^[\]]/g, "").trim() || "Statblock";
-	const at = (name: string) => normalizePath(folder ? `${folder}/${name}.md` : `${name}.md`);
+	const at = (name: string) => normalizePath(folder ? `${folder}/${name}.${ext}` : `${name}.${ext}`);
 	let path = at(clean);
 	for (let n = 2; plugin.app.vault.getAbstractFileByPath(path); n++) path = at(`${clean} ${n}`);
 	return path;

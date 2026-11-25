@@ -1,5 +1,6 @@
 import { Component, Editor, Events, MarkdownView, Menu, normalizePath, Notice, Plugin, TAbstractFile, TFile, TFolder, WorkspaceLeaf } from "obsidian";
 import { setTranslateContent, T } from "./i18n";
+import { normalizePreset, StatblockPreset } from "./statblock/presets";
 import { InitiativeTracker } from "./initiative/tracker";
 import { InitiativeView } from "./initiative/InitiativeView";
 import { IconLibrary, setIconLibrary } from "./map/icons";
@@ -153,6 +154,8 @@ export default class StrakesTTRPG extends Plugin {
 		// Unidad de los mapas nuevos: lo que no sea una de las opciones (el antiguo «Las de cada mapa»,
 		// leguas…) pasa a km (si no, el desplegable saldría vacío).
 		if (!unitOptions().some((o) => o.value === this.settings.displayUnit)) this.settings.displayUnit = "km";
+		// Presets de los statblocks: lo que no se pueda leer se descarta.
+		this.settings.statblockPresets = (Array.isArray(loaded.statblockPresets) ? loaded.statblockPresets : []).map(normalizePreset).filter((p): p is StatblockPreset => p !== null);
 		this.settings.portraitMemory = loaded.portraitMemory && typeof loaded.portraitMemory === "object" ? { ...loaded.portraitMemory } : {};
 		// Condiciones de los combatientes: lista de { id, level }. Lo que no lo sea se descarta.
 		// La CA se quitó del tracker en la 1.4 (se ve en el statblock): la de los combates guardados se descarta.

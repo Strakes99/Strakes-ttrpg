@@ -1,12 +1,17 @@
-import { App, PluginSettingTab, Setting, SettingDefinitionItem, setIcon, setTooltip } from "obsidian";
-import { setTranslateContent, T } from "./i18n";
+import { App, ButtonComponent, PluginSettingTab, Setting, SettingDefinitionItem, SettingDefinitionPage, setIcon, setTooltip } from "obsidian";
+import { setTranslateContent, T, TranslationKey } from "./i18n";
 import type StrakesTTRPG from "./main";
 import { ConditionModal, deleteCustomCondition, renderConditionIcon } from "./initiative/conditionUi";
 import { allConditions, CC_BY_URL, customInfo, SRD_URL } from "./initiative/conditions";
 import { decimalInput, parseDecimal } from "./ui/dom";
 import { unitOptions } from "./map/mapData";
-import { StrakesSettings } from "./types";
 import { importStatblocks } from "./statblock/importUi";
+import { createBestiaryBase } from "./statblock/bestiary";
+import { allPresets, BUILTIN_PRESET, copyPreset, defaultPreset, freePresetName, Hideable, HIDEABLE, StatblockPreset } from "./statblock/presets";
+import { confirmDialog } from "./ui/modals";
+
+/** Claves de los controles de un preset: `preset:<id>:<campo>` (`columns`, `metric`, `show:<parte>`). */
+const presetKey = (p: StatblockPreset, field: string) => `preset:${p.id}:${field}`;
 
 /** Primera línea con texto de una descripción en Markdown, sin marcas de formato (para la lista). */
 function firstLine(markdown: string): string {
@@ -33,7 +38,32 @@ export class StrakesSettingTab extends PluginSettingTab {
 	 * Guarda cada cambio de un control y avisa a las vistas abiertas (pantalla de jugadores,
 	 * iniciativa, mapas) para que se actualicen al momento.
 	 */
+	/** Los controles de los presets (`preset:…`) leen del preset; los demás, de los ajustes. */
+	getControlValue(key: string): unknown {
+		const m = /^preset:([^:]+):(.+)$/.exec(key);
+		if (!m) return super.getControlValue(key);
+		const p = this.plugin.settings.statblockPresets.find((x) => x.id === m[1]);
+		if (!p) return undefined;
+		if (m[2] === "columns") return String(p.columns);
+		if (m[2] === "metric") return p.metric;
+		if (m[2].startsWith("show:")) return !p.hidden.includes(m[2].slice(5) as Hideable);
+		return undefined;
+	}
+
 	async setControlValue(key: string, value: unknown): Promise<void> {
+		const m = /^preset:([^:]+):(.+)$/.exec(key);
+		if (m) {
+			const p = this.plugin.settings.statblockPresets.find((x) => x.id === m[1]);
+			if (!p) return;
+			if (m[2] === "columns") p.columns = value === "2" ? 2 : 1;
+			else if (m[2] === "metric") p.metric = value === true;
+			else if (m[2].startsWith("show:")) {
+				const what = m[2].slice(5) as Hideable;
+				p.hidden = value === true ? p.hidden.filter((h) => h !== what) : [...p.hidden.filter((h) => h !== what), what];
+			}
+			await this.save();
+			return;
+		}
 		if ((key === "mapFolder" || key === "statblockFolder") && typeof value === "string") value = value.trim().replace(/\/+$/, "");
 		(this.plugin.settings as unknown as Record<string, unknown>)[key] = value;
 		if (key === "translateContent") setTranslateContent(value === true);
@@ -47,7 +77,7 @@ export class StrakesSettingTab extends PluginSettingTab {
 		this.plugin.events.trigger("settings");
 	}
 
-	getSettingDefinitions(): SettingDefinitionItem<Extract<keyof StrakesSettings, string>>[] {
+	getSettingDefinitions(): SettingDefinitionItem<string>[] {
 		/** Número entero en píxeles dentro de un rango; fuera de él, Obsidian muestra el error y no lo guarda. */
 		const px = (min: number, max: number) => ({
 			type: "number" as const,
@@ -286,20 +316,132 @@ export class StrakesSettingTab extends PluginSettingTab {
 						control: { type: "text", key: "statblockSuffix" },
 					},
 					{
-						name: T("settings.statblockColumns"),
-						desc: T("settings.statblockColumnsDesc"),
-						control: { type: "dropdown", key: "statblockColumns", options: { "1": T("settings.oneColumn"), "2": T("settings.twoColumns") } },
+						name: T("settings.bestiaryBase"),
+						desc: T("settings.bestiaryBaseDesc"),
+						render: (setting: Setting) => {
+							setting.addButton((b) => b.setButtonText(T("settings.bestiaryBaseButton")).onClick(() => void createBestiaryBase(this.plugin)));
+						},
 					},
-					{
-						name: T("settings.statblockMetric"),
-						desc: T("settings.statblockMetricDesc"),
-						control: { type: "toggle", key: "statblockMetric" },
-					},
+					this.presetsPage(),
 				] }],
 			},
 			// Atribución del SRD 5.2 (exigida por su licencia), al final de todo: habrá más datos del SRD.
 			{ type: "group", heading: T("settings.srdAttribution"), items: [{ name: "SRD 5.2", desc: srdAttribution() }] },
 		];
+	}
+
+	/**
+	 * «Presentación de los statblocks» (paso 8): el preset general, «D&D 2024» (solo se duplica) y los del
+	 * usuario, cada uno con su página. Se crean con + (copia del general) o con «Duplicar».
+	 */
+	private presetsPage(): SettingDefinitionPage<string> {
+		const s = this.plugin.settings;
+		const duplicate = (from: StatblockPreset) => (b: ButtonComponent) =>
+			b.setButtonText(T("settings.duplicate")).onClick(() => void this.addPreset(copyPreset(s, from, T("settings.presetCopyName", { name: from.name }))));
+		return {
+			type: "page",
+			name: T("settings.statblockDisplay"),
+			desc: T("settings.statblockDisplayDesc"),
+			displayValue: () => defaultPreset(s).name,
+			items: [
+				{
+					type: "group",
+					items: [
+						{
+							name: T("settings.defaultPreset"),
+							desc: T("settings.defaultPresetDesc"),
+							control: { type: "dropdown", key: "statblockPreset", options: Object.fromEntries(allPresets(s).map((p) => [p.id, p.name])) },
+						},
+						{ name: BUILTIN_PRESET.name, desc: T("settings.builtinPresetDesc"), render: (setting: Setting) => void setting.addButton(duplicate(BUILTIN_PRESET)) },
+					],
+				},
+				{
+					type: "list",
+					heading: T("settings.yourPresets"),
+					emptyState: T("settings.noPresets"),
+					addItem: { name: T("settings.newPreset"), action: () => void this.addPreset(copyPreset(s, defaultPreset(s), T("settings.newPreset"))) },
+					onDelete: (index) => void this.deletePreset(index),
+					items: s.statblockPresets.map((p) => this.presetPage(p, duplicate(p))),
+				},
+			],
+		};
+	}
+
+	/** La página de un preset del usuario: nombre, columnas, metros, qué se muestra y el orden. */
+	private presetPage(p: StatblockPreset, duplicate: (b: ButtonComponent) => unknown): SettingDefinitionPage<string> {
+		return {
+			type: "page",
+			name: p.name,
+			items: [
+				{
+					type: "group",
+					items: [
+						{ name: T("settings.presetName"), desc: T("settings.presetNameDesc"), render: (setting: Setting) => this.presetNameField(setting, p) },
+						{
+							name: T("settings.statblockColumns"),
+							desc: T("settings.statblockColumnsDesc"),
+							control: { type: "dropdown", key: presetKey(p, "columns"), options: { "1": T("settings.oneColumn"), "2": T("settings.twoColumns") } },
+						},
+						{ name: T("settings.statblockMetric"), desc: T("settings.statblockMetricDesc"), control: { type: "toggle", key: presetKey(p, "metric") } },
+						{ name: T("settings.duplicate"), render: (setting: Setting) => void setting.addButton(duplicate) },
+					],
+				},
+				{
+					type: "group",
+					heading: T("settings.presetShow"),
+					items: HIDEABLE.map((h) => ({ name: T(`sbPreset.show.${h}` as TranslationKey), control: { type: "toggle" as const, key: presetKey(p, `show:${h}`) } })),
+				},
+				{
+					type: "list",
+					heading: T("settings.presetOrder"),
+					onReorder: (from, to) => void this.movePresetItem(p, from, to),
+					items: p.order.map((item) => ({ name: T(`sbPreset.item.${item}` as TranslationKey) })),
+				},
+			],
+		};
+	}
+
+	/**
+	 * Campo del nombre: se guarda al salir de él (o con Enter), sin repetir el de otro preset (se le añade
+	 * un número); vacío, vuelve al anterior. Luego se redibuja la pestaña (título de la página, desplegable).
+	 * Obsidian reutiliza la fila en `update()`: se vacía antes.
+	 */
+	private presetNameField(setting: Setting, p: StatblockPreset): void {
+		setting.controlEl.empty();
+		const input = setting.controlEl.createEl("input", { type: "text" });
+		input.value = p.name;
+		input.addEventListener("change", () => {
+			const name = input.value.trim();
+			if (name && name !== p.name) p.name = freePresetName(this.plugin.settings, name, p.id);
+			input.value = p.name;
+			void this.save().then(() => this.update());
+		});
+	}
+
+	private async addPreset(p: StatblockPreset): Promise<void> {
+		this.plugin.settings.statblockPresets.push(p);
+		await this.save();
+		this.update();
+	}
+
+	/** Papelera de la lista de presets: pide confirmación. Si era el general, pasa a serlo «D&D 2024». */
+	private async deletePreset(index: number): Promise<void> {
+		const s = this.plugin.settings;
+		const p = s.statblockPresets[index];
+		if (p && (await confirmDialog(this.app, T("settings.deletePreset"), T("settings.deletePresetConfirm", { name: p.name })))) {
+			s.statblockPresets.splice(index, 1);
+			if (s.statblockPreset === p.id) s.statblockPreset = BUILTIN_PRESET.id;
+			await this.save();
+		}
+		// Si se canceló, la fila vuelve.
+		this.update();
+	}
+
+	private async movePresetItem(p: StatblockPreset, from: number, to: number): Promise<void> {
+		const [item] = p.order.splice(from, 1);
+		if (item) p.order.splice(to, 0, item);
+		await this.save();
+		this.update();
 	}
 
 	/**

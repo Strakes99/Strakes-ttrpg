@@ -28,8 +28,18 @@ const KINDS: Record<string, LinkKind> = {
 	conjuro: "spell",
 };
 
-/** Una marca de enlace (con `g`: para recorrer un texto). */
-export const LINK_TAG_RE = /\{@(condition|condici[oó]n|creature|criatura|spell|hechizo|conjuro)\s+([^{}]+?)\}/gi;
+/**
+ * Una marca de enlace, con `g` para recorrer un texto. **Una expresión nueva en cada uso:** con `g`, `test`
+ * y `exec` guardan en `lastIndex` dónde acabaron, y `matchAll` empieza desde ahí. Compartida, la comprobación
+ * previa de `linkifyElement` hacía que se saltara la primera marca de un texto (visto en el Liche,
+ * 2026-11-25: de «{@spell Counterspell} or {@spell Shield}» solo se convertía Shield).
+ */
+export const linkTagRe = (): RegExp => /\{@(condition|condici[oó]n|creature|criatura|spell|hechizo|conjuro)\s+([^{}]+?)\}/gi;
+
+/** ¿Tiene el texto alguna marca de enlace? */
+export function hasLinkTag(text: string): boolean {
+	return linkTagRe().test(text);
+}
 
 export function parseLinkTag(raw: string, kindWord: string, body: string): LinkTag {
 	const parts = body.split("|");
@@ -41,7 +51,7 @@ export function parseLinkTag(raw: string, kindWord: string, body: string): LinkT
 export function splitLinkTags(text: string): (string | LinkTag)[] {
 	const out: (string | LinkTag)[] = [];
 	let last = 0;
-	for (const m of text.matchAll(LINK_TAG_RE)) {
+	for (const m of text.matchAll(linkTagRe())) {
 		const i = m.index ?? 0;
 		if (i > last) out.push(text.slice(last, i));
 		out.push(parseLinkTag(m[0], m[1], m[2]));

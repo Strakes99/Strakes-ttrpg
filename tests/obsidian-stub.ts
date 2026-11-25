@@ -31,6 +31,7 @@ export class TFile {}
 export class MarkdownView {}
 export class TFolder {}
 export class FileSystemAdapter {}
+export class MarkdownRenderer {}
 
 export const normalizePath = (path: string): string => path;
 export const setIcon = (): void => {};

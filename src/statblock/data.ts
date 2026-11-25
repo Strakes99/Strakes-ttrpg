@@ -204,8 +204,10 @@ export interface Statblock {
 	lair_actions_header: string;
 	short_name: string;
 	named: boolean;
-	/** Columnas de este statblock; sin valor, las de los ajustes. */
+	/** Columnas de este statblock; sin valor, las de su preset. */
 	columns?: 1 | 2;
+	/** Preset de presentación de este statblock (por nombre); vacío, el general de los ajustes (paso 8). */
+	preset: string;
 }
 
 // ---------------------------------------------------------------- lectura
@@ -392,5 +394,6 @@ export function readStatblock(fm: Raw, fallbackName: string): Statblock {
 		short_name: str(fm.short_name),
 		named: bool(fm.named),
 		columns: num(fm.columns) === 1 ? 1 : num(fm.columns) === 2 ? 2 : undefined,
+		preset: str(fm.preset),
 	};
 }
