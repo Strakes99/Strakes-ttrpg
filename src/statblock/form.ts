@@ -618,9 +618,15 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 			const top = card.createDiv("strakes-sb-card-top");
 			input(top, b, "name", { placeholder: tk("statblock.spellcastingName"), cls: "is-wide" });
 			cardButtons(top, blocks, i);
+			const bu = card.createDiv("strakes-sb-grid");
+			input(row(bu, T("sbForm.uses")), b, "uses", { kind: "int", cls: "is-short" });
+			input(row(bu, T("sbForm.usesLair")), b, "uses_lair", { kind: "int", cls: "is-short" });
+			select(row(bu, T("sbForm.usesPer")), USES_PER, () => (typeof b.uses_per === "string" ? b.uses_per : "day"), (v) => (v === "day" ? delete b.uses_per : (b.uses_per = v)));
+			select(row(bu, T("sbForm.recharge")), RECHARGE, () => display(b.recharge), (v) => (v ? (b.recharge = /^\d$/.test(v) ? Number(v) : v) : delete b.recharge));
 			textarea(card, b, "text").placeholder = T("sbForm.spellText");
 			const g = card.createDiv("strakes-sb-grid");
 			select(mark(row(g, T("sbForm.spellAbility")), `spell:${i}:stats`), abilityOptions, () => display(b.ability), (v) => (v ? (b.ability = v) : delete b.ability));
+			check(row(g), T("sbForm.showDc"), () => b.hide_dc !== true, (v) => (v ? delete b.hide_dc : (b.hide_dc = true)));
 			const dc = card.createDiv({ cls: "strakes-sb-hint" });
 			refreshers.push((_sb, d) => {
 				const a = typeof b.ability === "string" ? (b.ability as Ability) : undefined;

@@ -1,4 +1,4 @@
-import { Component, getFrontMatterInfo, ItemView, Keymap, PaneType, parseYaml, TFile, ViewStateResult, WorkspaceLeaf } from "obsidian";
+import { Component, getFrontMatterInfo, ItemView, Keymap, PaneType, parseYaml, Scope, TFile, ViewStateResult, WorkspaceLeaf } from "obsidian";
 import { T } from "../i18n";
 import type StrakesTTRPG from "../main";
 import { nameFromNote, readStatblock } from "./data";
@@ -90,6 +90,14 @@ export class StatblockEditorView extends ItemView {
 		this.undoButton = this.addAction("undo-2", T("sbForm.undo"), () => void this.undo());
 		// La nota sustituye al formulario en esta misma pestaña (con Ctrl+clic, como en Obsidian, en otra).
 		this.addAction("file-text", T("sbForm.openNote"), (evt) => void this.openNote(evt));
+		// Escape cierra el formulario y vuelve a la nota en esta pestaña, como «Abrir la nota» (pedido del
+		// desarrollador: antes Obsidian pasaba a otra pestaña y dejaba esta abierta). Una lista de sugerencias
+		// abierta tiene su propio ámbito y se cierra primero.
+		this.scope = new Scope(this.app.scope);
+		this.scope.register([], "Escape", () => {
+			void this.openNote();
+			return false;
+		});
 
 		this.registerEvent(
 			this.app.metadataCache.on("changed", (file) => {
@@ -114,10 +122,10 @@ export class StatblockEditorView extends ItemView {
 		this.renderAll();
 	}
 
-	private async openNote(evt: MouseEvent): Promise<void> {
+	private async openNote(evt?: MouseEvent): Promise<void> {
 		if (!this.file) return;
 		await this.flushSave();
-		const mod = Keymap.isModEvent(evt);
+		const mod = evt ? Keymap.isModEvent(evt) : false;
 		await (mod ? this.app.workspace.getLeaf(mod) : this.leaf).openFile(this.file);
 	}
 

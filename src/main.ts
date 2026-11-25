@@ -27,6 +27,7 @@ import {
 import { askIconConflict, ImagePickerModal, isImageFile, loadImageSize } from "./ui/modals";
 import { registerStatblockBlock } from "./statblock/processor";
 import { newStatblock, statblockFrontmatter } from "./statblock/actions";
+import { importStatblocks } from "./statblock/importUi";
 import { openStatblockEditor, StatblockEditorView, VIEW_TYPE_STATBLOCK } from "./statblock/StatblockEditorView";
 
 export default class StrakesTTRPG extends Plugin {
@@ -108,10 +109,12 @@ export default class StrakesTTRPG extends Plugin {
 		this.addRibbonIcon("monitor", T("main.openPlayerScreen"), () => this.openPlayerScreen(true));
 		this.addRibbonIcon("swords", T("main.openInitiativeTracker"), () => this.openInitiative());
 		this.addRibbonIcon("map", T("main.createNewMap"), () => this.pickImageForMap());
+		this.addRibbonIcon("scroll-text", T("main.createStatblock"), () => void newStatblock(this));
 
 		this.registerCommands();
 		this.registerMenus();
 		this.registerEvent(this.app.vault.on("rename", (f, old) => void this.onRename(f, old)));
+		this.registerStatblockReadingMode();
 		this.register(() => {
 			if (this.renameTimer !== null) window.clearTimeout(this.renameTimer);
 		});
@@ -222,6 +225,7 @@ export default class StrakesTTRPG extends Plugin {
 		});
 		this.addCommand({ id: "create-map", name: T("main.createNewMapFromAn"), callback: () => this.pickImageForMap() });
 		this.addCommand({ id: "create-statblock", name: T("main.createStatblock"), callback: () => void newStatblock(this) });
+		this.addCommand({ id: "import-statblocks", name: T("main.importStatblocks"), callback: () => importStatblocks(this) });
 		this.addCommand({
 			id: "edit-statblock",
 			name: T("main.editStatblock"),
@@ -233,6 +237,25 @@ export default class StrakesTTRPG extends Plugin {
 				return true;
 			},
 		});
+	}
+
+	/**
+	 * Las notas de statblock se abren en modo lectura (pedido del desarrollador: se ven en el bloque
+	 * dibujado). Solo al abrir la nota en una pestaña, no al volver a ella: si se pasa a editar, se respeta
+	 * hasta que se abra otra nota en esa pestaña.
+	 */
+	private registerStatblockReadingMode(): void {
+		const lastFile = new WeakMap<WorkspaceLeaf, string>();
+		this.registerEvent(
+			this.app.workspace.on("file-open", (file) => {
+				const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+				if (!file || !view || view.file !== file) return;
+				const leaf = view.leaf;
+				if (lastFile.get(leaf) === file.path) return;
+				lastFile.set(leaf, file.path);
+				if (view.getMode() === "source" && statblockFrontmatter(this, file)) void view.setState({ ...view.getState(), mode: "preview" }, { history: false });
+			}),
+		);
 	}
 
 	private registerMenus(): void {

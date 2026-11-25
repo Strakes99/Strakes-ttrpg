@@ -12,6 +12,7 @@ import { ENTRY_SECTIONS, EntrySection } from "./data";
 /** Dónde está una casilla en las propiedades de la nota. */
 export type UseRef =
 	| { kind: "legendary" }
+	| { kind: "block"; block: number }
 	| { kind: "entry"; section: EntrySection; index: number }
 	| { kind: "perDay"; block: number; index: number; spell?: string }
 	| { kind: "level"; block: number; index: number };
@@ -35,6 +36,7 @@ function target(fm: Obj, ref: Exclude<UseRef, { kind: "legendary" }>): Obj | und
 	const blocks = fm.spellcasting;
 	const block: unknown = Array.isArray(blocks) ? blocks[ref.block] : undefined;
 	if (!isObj(block)) return undefined;
+	if (ref.kind === "block") return block;
 	const item = spellList(block, ref.kind === "perDay" ? "per_day" : "levels")[ref.index];
 	return isObj(item) ? item : undefined;
 }
@@ -80,6 +82,7 @@ export function resetUsesIn(fm: Obj): boolean {
 	if (Array.isArray(blocks))
 		for (const b of blocks) {
 			if (!isObj(b)) continue;
+			clear(b);
 			spellList(b, "per_day").forEach(clear);
 			spellList(b, "levels").forEach(clear);
 		}

@@ -2215,3 +2215,55 @@ input[type="number"].strakes-fog-size-number {
 	box-shadow: 0 0 0 2px var(--interactive-accent);
 	transition: box-shadow 0.3s;
 }
+
+/* Importar statblocks (1.4, paso 5): buscador, botones, aviso y lista con casillas. */
+.strakes-import-bar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-4-2);
+	align-items: center;
+	margin-bottom: var(--size-4-2);
+}
+.strakes-import-search {
+	flex: 1 1 14em;
+}
+.strakes-import-warning {
+	color: var(--text-warning);
+	font-size: var(--font-ui-small);
+	margin-bottom: var(--size-4-2);
+}
+.strakes-import-warning.is-hidden {
+	display: none;
+}
+.strakes-import-count {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	margin-bottom: var(--size-4-1);
+}
+.strakes-import-list {
+	max-height: 50vh;
+	overflow-y: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+}
+.strakes-import-row {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	padding: var(--size-2-2) var(--size-4-2);
+	cursor: pointer;
+}
+.strakes-import-row:hover {
+	background-color: var(--background-modifier-hover);
+}
+.strakes-import-name {
+	flex: 1 1 auto;
+}
+.strakes-import-meta,
+.strakes-import-empty {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+.strakes-import-empty {
+	padding: var(--size-4-2);
+}

@@ -2,6 +2,16 @@ import { normalizePath, TFile, TFolder } from "obsidian";
 import type StrakesTTRPG from "../main";
 import { STATBLOCK_BLOCK } from "./data";
 
+/**
+ * Pliega el bloque de propiedades de una nota recién creada (pedido del desarrollador: los statblocks se ven
+ * en el bloque dibujado). Obsidian guarda por nota lo que está plegado (`foldManager`, no público); las
+ * propiedades plegadas son el pliegue `{ from: 0, to: 0 }`. Si no existe, no se hace nada.
+ */
+export function collapseProperties(plugin: StrakesTTRPG, file: TFile, content: string): void {
+	const fm = (plugin.app as unknown as { foldManager?: { save?: (file: TFile, info: { folds: { from: number; to: number }[]; lines: number }) => void } }).foldManager;
+	fm?.save?.(file, { folds: [{ from: 0, to: 0 }], lines: content.split("\n").length });
+}
+
 /** Valor de `statblock` de las notas nuevas. */
 export const DEFAULT_SYSTEM = "dnd5e-2024";
 
@@ -129,7 +139,7 @@ export async function writeDraft(plugin: StrakesTTRPG, file: TFile, draft: Draft
 }
 
 /** Carpeta de las notas nuevas: la de los ajustes («Statblocks»), creada si no existe. */
-async function ensureFolder(plugin: StrakesTTRPG, folder: string): Promise<string> {
+export async function ensureFolder(plugin: StrakesTTRPG, folder: string): Promise<string> {
 	const path = normalizePath(folder.trim() || "/");
 	if (path === "/" || path === "") return "";
 	if (!(plugin.app.vault.getAbstractFileByPath(path) instanceof TFolder)) await plugin.app.vault.createFolder(path);
@@ -155,5 +165,6 @@ export async function createStatblockNote(plugin: StrakesTTRPG, name: string, da
 	const path = freeNotePath(plugin, dir, `${s.statblockPrefix}${name}${s.statblockSuffix}`);
 	const file = await plugin.app.vault.create(path, `\`\`\`${STATBLOCK_BLOCK}\n\`\`\`\n`);
 	await writeDraft(plugin, file, { statblock: DEFAULT_SYSTEM, ...data, name });
+	collapseProperties(plugin, file, await plugin.app.vault.read(file));
 	return file;
 }

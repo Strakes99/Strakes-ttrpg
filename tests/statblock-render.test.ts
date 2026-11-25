@@ -304,3 +304,14 @@ t("números del contenido sin separador de miles (también en español)", lay({ 
 		["- The water surges.", "***Grasping Mud:*** Mud grabs."],
 	]);
 }
+
+// ---------- Bloques de conjuros con usos propios y sin CD (2026-11-24) ----------
+{
+	const l = lay({ int: 16, cr: "5", spellcasting: [{ name: "Protective Magic", ability: "int", uses: 3, used: 1, hide_dc: true, text: "Casts {@spell Shield}." }] });
+	const e = l.sections[0].entries[0];
+	t("bloque con usos: paréntesis y casillas tras el nombre", [e.markdown, e.boxes], ["***Protective Magic (3/día):*** Casts Shield.", { total: 3, used: 1, ref: { kind: "block", block: 0 } }]);
+	t("bloque con hide_dc: sin CD ni ataque", e.spell?.stats, undefined);
+	const fm: Record<string, unknown> = { spellcasting: [{ name: "P", uses: 3 }] };
+	setUsedIn(fm, { kind: "block", block: 0 }, 2);
+	t("casillas del bloque: used en el bloque; restablecer lo quita", [(fm.spellcasting as Record<string, unknown>[])[0].used, resetUsesIn(fm), (fm.spellcasting as Record<string, unknown>[])[0].used], [2, true, undefined]);
+}

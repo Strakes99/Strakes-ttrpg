@@ -366,14 +366,17 @@ function splitName(name: string): { base: string; own: string } {
 	return m ? { base: m[1], own: m[2] } : { base: name, own: "" };
 }
 
-function usesText(e: StatEntry): string {
+/** Lo que tienen en común una entrada y un bloque de conjuros para sus usos y casillas. */
+type UsesFields = Pick<StatEntry, "uses" | "uses_lair" | "uses_per" | "recharge" | "used">;
+
+function usesText(e: UsesFields): string {
 	if (!e.uses) return "";
 	const per = e.uses_per === "short" ? "statblock.usesShort" : e.uses_per === "long" ? "statblock.usesLong" : "statblock.usesDay";
 	const uses = tk(per, { n: e.uses });
 	return e.uses_lair ? tk("statblock.usesLair", { uses, lair: tk(per, { n: e.uses_lair }) }) : uses;
 }
 
-function rechargeText(e: StatEntry): string {
+function rechargeText(e: UsesFields): string {
 	const r = e.recharge;
 	if (r === undefined) return "";
 	if (r === "short") return tk("statblock.rechargeShort");
@@ -405,7 +408,10 @@ function entryLines(title: string, text: string): string[] {
  * una sola. Lo gastado nunca pasa del total (si se bajaron los usos).
  */
 function entryBoxes(e: StatEntry, section: EntrySection): Boxes | undefined {
-	const ref: UseRef = { kind: "entry", section, index: e.index };
+	return usesBoxes(e, { kind: "entry", section, index: e.index });
+}
+
+function usesBoxes(e: UsesFields, ref: UseRef): Boxes | undefined {
 	if (e.uses) {
 		const total = Math.max(e.uses, e.uses_lair ?? 0);
 		return { total, used: Math.min(e.used, total), ...(total > e.uses ? { lairFrom: e.uses } : {}), ref };
@@ -427,11 +433,14 @@ function entryBlock(e: StatEntry, section: EntrySection): LayoutEntry {
 const spellName = (s: string) => plainTags(s).trim();
 
 function spellcastingBlock(b: SpellcastingBlock, d: Derived): LayoutEntry {
-	const markdown = hardBreaks(entryLines(entryTitle(b.name || tk("statblock.spellcastingName"), []), b.text));
+	// Usos y recarga del bloque entero («Protective Magic (3/día)»), con sus casillas tras el nombre.
+	const markdown = hardBreaks(entryLines(entryTitle(b.name || tk("statblock.spellcastingName"), [usesText(b), rechargeText(b)]), b.text));
+	const boxes = usesBoxes(b, { kind: "block", block: b.index });
 	const mod = b.ability ? d.mods[b.ability] : undefined;
-	// «CD de salvación de conjuros 14 | Bonificador de ataque con conjuros +6», como CA e Iniciativa.
+	// «CD de salvación de conjuros 14 | Bonificador de ataque con conjuros +6», como CA e Iniciativa. Se puede
+	// ocultar en un bloque (`hide_dc`): p. ej. si es la misma que la del bloque principal.
 	const stats: LabelValue[] | undefined =
-		mod !== undefined && d.pbNum !== undefined
+		!b.hide_dc && mod !== undefined && d.pbNum !== undefined
 			? [
 					{ label: tk("statblock.spellSaveDc"), value: String(8 + d.pbNum + mod) },
 					{ label: tk("statblock.spellAttack"), value: signed(d.pbNum + mod) },
@@ -466,7 +475,7 @@ function spellcastingBlock(b: SpellcastingBlock, d: Derived): LayoutEntry {
 		lines.push({ target: `${target}:level:${l.index}`, label, spells: l.spells.map((s) => ({ name: spellName(s) })), ...(slots ? { boxes: slots } : {}) });
 	}
 	const footer = plainTags(b.footer).trim();
-	return { target, markdown, spell: { ...(stats ? { stats } : {}), lines, ...(footer ? { footer } : {}) } };
+	return { target, markdown, ...(boxes ? { boxes } : {}), spell: { ...(stats ? { stats } : {}), lines, ...(footer ? { footer } : {}) } };
 }
 
 /** ¿Tiene el statblock alguna casilla? (para el botón «Restablecer usos»). */

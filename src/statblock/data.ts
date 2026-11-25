@@ -138,6 +138,14 @@ export interface SpellcastingBlock {
 	name: string;
 	ability?: Ability;
 	text: string;
+	/** Usos y recarga del bloque entero (p. ej. «Protective Magic (3/Day)»), con sus casillas tras el nombre. */
+	uses?: number;
+	uses_lair?: number;
+	uses_per?: UsesPer;
+	recharge?: Recharge;
+	used: number;
+	/** No mostrar la CD de salvación ni el bonificador de ataque (los da ya el bloque principal). */
+	hide_dc: boolean;
 	at_will: string[];
 	per_day: SpellsPerDay[];
 	levels: SpellLevel[];
@@ -245,6 +253,20 @@ function readRecharge(v: unknown): Recharge | undefined {
 /** Casillas gastadas: un entero ≥ 0. */
 const usedCount = (v: unknown): number => Math.max(0, Math.round(num(v) ?? 0));
 
+/** Usos, usos en la guarida, por qué se recuperan y recarga (de una entrada o de un bloque de conjuros). */
+function readUses(x: Raw): Pick<StatEntry, "uses" | "uses_lair" | "uses_per" | "recharge"> {
+	const out: Pick<StatEntry, "uses" | "uses_lair" | "uses_per" | "recharge"> = {};
+	const uses = num(x.uses);
+	if (uses !== undefined && uses > 0) out.uses = Math.round(uses);
+	const lair = num(x.uses_lair);
+	if (lair !== undefined && lair > 0) out.uses_lair = Math.round(lair);
+	const per = pick(x.uses_per, ["day", "short", "long"] as const);
+	if (per) out.uses_per = per;
+	const recharge = readRecharge(x.recharge);
+	if (recharge !== undefined) out.recharge = recharge;
+	return out;
+}
+
 function readEntries(v: unknown): StatEntry[] {
 	if (!Array.isArray(v)) return [];
 	const out: StatEntry[] = [];
@@ -252,15 +274,7 @@ function readEntries(v: unknown): StatEntry[] {
 		if (!isObj(x)) continue;
 		const e: StatEntry = { name: str(x.name), text: typeof x.text === "string" ? x.text : str(x.text), used: usedCount(x.used), index };
 		if (!e.name && !e.text) continue;
-		const uses = num(x.uses);
-		if (uses !== undefined && uses > 0) e.uses = Math.round(uses);
-		const lair = num(x.uses_lair);
-		if (lair !== undefined && lair > 0) e.uses_lair = Math.round(lair);
-		const per = pick(x.uses_per, ["day", "short", "long"] as const);
-		if (per) e.uses_per = per;
-		const recharge = readRecharge(x.recharge);
-		if (recharge !== undefined) e.recharge = recharge;
-		out.push(e);
+		out.push({ ...e, ...readUses(x) });
 	}
 	return out;
 }
@@ -298,6 +312,9 @@ function readSpellcasting(v: unknown): SpellcastingBlock[] {
 				.filter((l) => l.spells.length)
 				.sort((a, b) => a.level - b.level),
 			footer: typeof x.footer === "string" ? x.footer : "",
+			...readUses(x),
+			used: usedCount(x.used),
+			hide_dc: bool(x.hide_dc),
 		});
 	}
 	return out;

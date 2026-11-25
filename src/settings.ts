@@ -6,6 +6,7 @@ import { allConditions, CC_BY_URL, customInfo, SRD_URL } from "./initiative/cond
 import { decimalInput, parseDecimal } from "./ui/dom";
 import { unitOptions } from "./map/mapData";
 import { StrakesSettings } from "./types";
+import { importStatblocks } from "./statblock/importUi";
 
 /** Primera línea con texto de una descripción en Markdown, sin marcas de formato (para la lista). */
 function firstLine(markdown: string): string {
@@ -262,6 +263,13 @@ export class StrakesSettingTab extends PluginSettingTab {
 				name: T("settings.statblocks"),
 				desc: T("settings.statblocksPageDesc"),
 				items: [{ type: "group", items: [
+					{
+						name: T("settings.importStatblocks"),
+						desc: T("settings.importStatblocksDesc"),
+						render: (setting: Setting) => {
+							setting.addButton((b) => b.setButtonText(T("settings.importStatblocksButton")).onClick(() => importStatblocks(this.plugin)));
+						},
+					},
 					{
 						name: T("settings.statblockFolder"),
 						desc: T("settings.statblockFolderDesc"),
