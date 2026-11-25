@@ -28,6 +28,7 @@ export class FuzzySuggestModal {
 export class AbstractInputSuggest {}
 export class Setting {}
 export class TFile {}
+export class MarkdownView {}
 export class TFolder {}
 export class FileSystemAdapter {}
 

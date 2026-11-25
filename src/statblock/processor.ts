@@ -4,8 +4,9 @@ import type StrakesTTRPG from "../main";
 import { copyStatblock } from "./actions";
 import { isStatblock, nameFromNote, readStatblock, STATBLOCK_BLOCK } from "./data";
 import { hasBoxes, statblockLayout } from "./layout";
-import { resetUses, setUsed, UseRef } from "./uses";
+import { applyUsed, parseUsed, resetUses, setUsed, UseRef } from "./uses";
 import { renderStatblock, statblockColumns } from "./render";
+import { linkifyElement } from "../links/linkify";
 import { openStatblockEditor } from "./StatblockEditorView";
 
 /**
@@ -14,8 +15,8 @@ import { openStatblockEditor } from "./StatblockEditorView";
  * en notas incrustadas y en las vistas previas (en todas ellas `ctx.sourcePath` es la nota del bloque).
  */
 export function registerStatblockBlock(plugin: StrakesTTRPG): void {
-	plugin.registerMarkdownCodeBlockProcessor(STATBLOCK_BLOCK, (_source, el, ctx) => {
-		ctx.addChild(new StatblockRender(plugin, el, ctx));
+	plugin.registerMarkdownCodeBlockProcessor(STATBLOCK_BLOCK, (source, el, ctx) => {
+		ctx.addChild(new StatblockRender(plugin, el, ctx, source));
 	});
 }
 
@@ -34,6 +35,8 @@ class StatblockRender extends MarkdownRenderChild {
 		private plugin: StrakesTTRPG,
 		el: HTMLElement,
 		private ctx: MarkdownPostProcessorContext,
+		/** El contenido del bloque: lo gastado (`clave: n`). Al cambiarlo, Obsidian vuelve a llamar al procesador. */
+		private source: string,
 	) {
 		super(el);
 	}
@@ -55,6 +58,9 @@ class StatblockRender extends MarkdownRenderChild {
 		const file = app.vault.getAbstractFileByPath(this.ctx.sourcePath);
 		const fm: unknown = file instanceof TFile ? app.metadataCache.getFileCache(file)?.frontmatter : undefined;
 		const sb = file instanceof TFile && fm && isStatblock(fm) ? readStatblock(fm as Record<string, unknown>, nameFromNote(file.basename, settings.statblockPrefix, settings.statblockSuffix)) : null;
+		// Lo gastado está escrito en el bloque (no en las propiedades). Se lee de su contenido, sin esperar a leer
+		// el archivo: así el statblock se dibuja de una vez y la nota no salta al marcar una casilla.
+		if (sb) applyUsed(sb, parseUsed(this.source));
 		const supported = !!sb && /^dnd5e(-|$)/i.test(sb.system);
 		const layout = sb && supported ? statblockLayout(sb, { metric: settings.statblockMetric, catalog: settings }) : null;
 		const columns = sb ? statblockColumns(sb, settings.statblockColumns) : 1;
@@ -74,7 +80,9 @@ class StatblockRender extends MarkdownRenderChild {
 		}
 		const target = file instanceof TFile ? file : null;
 		const onUse = target ? (ref: UseRef, used: number) => void setUsed(app, target, ref, used) : undefined;
-		const wrap = await renderStatblock(app, this.containerEl, layout, this.ctx.sourcePath, this.content, columns, onUse);
+		const wrap = await renderStatblock(app, this.containerEl, layout, this.ctx.sourcePath, this.content, columns, onUse, false, (el) =>
+			linkifyElement(this.plugin, el),
+		);
 		if (target) this.addActions(wrap, target, hasBoxes(layout));
 	}
 

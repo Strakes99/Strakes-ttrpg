@@ -26,6 +26,9 @@ import {
 } from "./types";
 import { askIconConflict, ImagePickerModal, isImageFile, loadImageSize } from "./ui/modals";
 import { registerStatblockBlock } from "./statblock/processor";
+import { linkifyElement } from "./links/linkify";
+import { CreatureIndex } from "./links/linkResolve";
+import { linkLivePreview } from "./links/livePreview";
 import { newStatblock, statblockFrontmatter } from "./statblock/actions";
 import { importStatblocks } from "./statblock/importUi";
 import { openStatblockEditor, StatblockEditorView, VIEW_TYPE_STATBLOCK } from "./statblock/StatblockEditorView";
@@ -52,6 +55,8 @@ export default class StrakesTTRPG extends Plugin {
 	 */
 	settingTab!: StrakesSettingTab;
 	tracker!: InitiativeTracker;
+	/** Notas de statblock por nombre, para los enlaces `{@creature …}` (1.4). */
+	creatures = new CreatureIndex(this);
 	icons!: IconLibrary;
 
 	/** Vuelve a leer la carpeta de iconos y redibuja los mapas abiertos. */
@@ -104,6 +109,15 @@ export default class StrakesTTRPG extends Plugin {
 		this.registerExtensions([MAP_EXTENSION], VIEW_TYPE_MAP);
 		this.registerMapEmbeds();
 		registerStatblockBlock(this);
+		// Enlaces {@condition}, {@creature}, {@spell} (1.4, paso 6): modo lectura (y todo lo que dibuja
+		// MarkdownRenderer) y Live Preview. El índice de criaturas se rehace tras cualquier cambio.
+		this.registerMarkdownPostProcessor((el) => linkifyElement(this, el));
+		this.registerEditorExtension(linkLivePreview(this));
+		const invalidate = () => this.creatures.invalidate();
+		this.registerEvent(this.app.metadataCache.on("changed", invalidate));
+		this.registerEvent(this.app.vault.on("rename", invalidate));
+		this.registerEvent(this.app.vault.on("delete", invalidate));
+		this.registerEvent(this.app.vault.on("create", invalidate));
 		this.registerHoverLinkSource("strakes-ttrpg", { display: T("main.strakesTtrpgMaps"), defaultMod: true });
 
 		this.addRibbonIcon("monitor", T("main.openPlayerScreen"), () => this.openPlayerScreen(true));

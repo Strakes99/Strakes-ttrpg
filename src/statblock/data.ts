@@ -103,9 +103,9 @@ export interface StatEntry {
 	uses_lair?: number;
 	uses_per?: UsesPer;
 	recharge?: Recharge;
-	/** Casillas gastadas (paso 4 de la 1.4): usos, o la recarga (1 = gastada). */
+	/** Casillas gastadas (paso 4): usos, o la recarga (1 = gastada). Se leen del bloque de la nota (`uses.ts`, `applyUsed`), no de las propiedades. */
 	used: number;
-	/** Posición en la lista de la nota (para guardar `used`; las entradas vacías no se leen). */
+	/** Posición en la lista de la nota (para la clave de sus casillas; las entradas vacías no se leen). */
 	index: number;
 }
 
@@ -250,8 +250,6 @@ function readRecharge(v: unknown): Recharge | undefined {
 	return pick(v, ["short", "long", "short_or_long"] as const);
 }
 
-/** Casillas gastadas: un entero ≥ 0. */
-const usedCount = (v: unknown): number => Math.max(0, Math.round(num(v) ?? 0));
 
 /** Usos, usos en la guarida, por qué se recuperan y recarga (de una entrada o de un bloque de conjuros). */
 function readUses(x: Raw): Pick<StatEntry, "uses" | "uses_lair" | "uses_per" | "recharge"> {
@@ -272,7 +270,7 @@ function readEntries(v: unknown): StatEntry[] {
 	const out: StatEntry[] = [];
 	for (const [index, x] of v.entries()) {
 		if (!isObj(x)) continue;
-		const e: StatEntry = { name: str(x.name), text: typeof x.text === "string" ? x.text : str(x.text), used: usedCount(x.used), index };
+		const e: StatEntry = { name: str(x.name), text: typeof x.text === "string" ? x.text : str(x.text), used: 0, index };
 		if (!e.name && !e.text) continue;
 		out.push({ ...e, ...readUses(x) });
 	}
@@ -299,21 +297,21 @@ function readSpellcasting(v: unknown): SpellcastingBlock[] {
 					uses: Math.max(1, Math.round(num(p.uses) ?? 1)),
 					each: bool(p.each),
 					spells: list(p.spells),
-					used: isObj(p.used) ? 0 : usedCount(p.used),
-					usedEach: isObj(p.used) ? Object.fromEntries(Object.entries(p.used).map(([k, n]) => [k, usedCount(n)])) : {},
+					used: 0,
+					usedEach: {},
 					index: i,
 				}))
 				.filter((p) => p.spells.length),
 			levels: levels
 				.map(({ item: l, i }) => {
 					const slots = num(l.slots);
-					return { level: Math.max(0, Math.round(num(l.level) ?? 0)), slots: slots !== undefined ? Math.round(slots) : undefined, spells: list(l.spells), used: usedCount(l.used), index: i };
+					return { level: Math.max(0, Math.round(num(l.level) ?? 0)), slots: slots !== undefined ? Math.round(slots) : undefined, spells: list(l.spells), used: 0, index: i };
 				})
 				.filter((l) => l.spells.length)
 				.sort((a, b) => a.level - b.level),
 			footer: typeof x.footer === "string" ? x.footer : "",
 			...readUses(x),
-			used: usedCount(x.used),
+			used: 0,
 			hide_dc: bool(x.hide_dc),
 		});
 	}
@@ -388,7 +386,7 @@ export function readStatblock(fm: Raw, fallbackName: string): Statblock {
 		spellcasting: readSpellcasting(fm.spellcasting),
 		legendary_uses: legendary !== undefined && legendary > 0 ? Math.round(legendary) : undefined,
 		legendary_uses_lair: legendaryLair !== undefined && legendaryLair > 0 ? Math.round(legendaryLair) : undefined,
-		legendary_used: usedCount(fm.legendary_used),
+		legendary_used: 0,
 		legendary_header: typeof fm.legendary_header === "string" ? fm.legendary_header.trim() : "",
 		lair_actions_header: typeof fm.lair_actions_header === "string" ? fm.lair_actions_header.trim() : "",
 		short_name: str(fm.short_name),

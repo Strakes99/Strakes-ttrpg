@@ -1,6 +1,6 @@
 import { contentLanguage, TC, TranslationKey } from "../i18n";
 import en from "../i18n/locales/en.json";
-import { ConditionCatalog, conditionById } from "../initiative/conditions";
+import { allConditions, ConditionCatalog, conditionById } from "../initiative/conditions";
 import { derive, Derived, signed, signedValue } from "./compute";
 import { UseRef } from "./uses";
 import {
@@ -50,9 +50,22 @@ function listOr(items: string[]): string {
 	return ListFormat ? new ListFormat(contentLanguage(), { type: "disjunction" }).format(items) : items.join(", ");
 }
 
-/** Marcas de 5etools que queden en un texto (`{@condition Grappled}`): por ahora, solo su texto. */
+/** Marcas de 5etools que queden en un texto: solo su texto (para nombres y conjuros de las listas). */
 export function plainTags(text: string): string {
 	return text.replace(/\{@\w+\s+([^{}]*)\}/g, (_all, inner: string) => {
+		const parts = inner.split("|");
+		return (parts[2] || parts[0]).trim();
+	});
+}
+
+/**
+ * Como `plainTags`, pero **conserva las marcas de enlace** (`{@condition}`, `{@creature}`, `{@spell}` y sus
+ * nombres en español): el dibujo las convierte en enlaces (paso 6). Para los textos de rasgos, acciones,
+ * introducciones y líneas.
+ */
+export function keepLinks(text: string): string {
+	return text.replace(/\{@(\w+)\s+([^{}]*)\}/g, (all, tag: string, inner: string) => {
+		if (/^(condition|condici[oó]n|creature|criatura|spell|hechizo|conjuro)$/i.test(tag)) return all;
 		const parts = inner.split("|");
 		return (parts[2] || parts[0]).trim();
 	});
@@ -97,7 +110,7 @@ const SENSE_TEXT: Record<string, string> = {
  * → «armadura de placas, escudo»); lo demás, tal cual. Sin distinguir mayúsculas.
  */
 export function knownPhrases(text: string, dict: Record<string, string>, prefix: string): string {
-	return plainTags(text)
+	return keepLinks(text)
 		.split(",")
 		.map((part) => {
 			const id = dict[part.trim().toLowerCase()];
@@ -324,10 +337,12 @@ function skillNames(d: Derived): { name: string; value: string }[] {
 }
 
 
-const damageList = (xs: string[]) => xs.map((x) => (known(DAMAGE_TYPES, x) ? tk(`statblock.damage.${x.toLowerCase()}`) : plainTags(x)));
+const damageList = (xs: string[]) => xs.map((x) => (known(DAMAGE_TYPES, x) ? tk(`statblock.damage.${x.toLowerCase()}`) : keepLinks(x)));
 
 function conditionName(x: string, catalog: ConditionCatalog): string {
-	return conditionById(x.toLowerCase(), catalog, true)?.name ?? plainTags(x);
+	// Como enlace a su ficha (§10.1-4), con su nombre en el idioma del contenido.
+	const info = conditionById(x.toLowerCase(), catalog, true) ?? allConditions(catalog, { includeHidden: true }).find((c) => c.custom && c.name === x);
+	return info ? `{@condition ${info.custom ? info.name : info.id}||${info.name}}` : keepLinks(x);
 }
 
 function sensesLine(sb: Statblock, d: Derived, metric: boolean): string {
@@ -348,9 +363,9 @@ function infoLines(sb: Statblock, d: Derived, opts: StatblockOptions): LabelValu
 	const damage = damageList(sb.immunities).join(", ");
 	const conditions = sb.condition_immunities.map((c) => conditionName(c, opts.catalog)).join(", ");
 	add("statblock.immunities", damage && conditions ? `${damage}; ${conditions}` : damage || conditions);
-	add("statblock.gear", sb.gear.map(plainTags).join(", "));
+	add("statblock.gear", sb.gear.map(keepLinks).join(", "));
 	add("statblock.senses", sensesLine(sb, d, opts.metric));
-	add("statblock.languages", sb.languages.map(plainTags).join(", ") || tk("statblock.none"));
+	add("statblock.languages", sb.languages.map(keepLinks).join(", ") || tk("statblock.none"));
 	const xp = d.xp === undefined ? "" : d.xpLair !== undefined ? tk("statblock.xpLair", { xp: val(d.xp), lair: val(d.xpLair) }) : val(d.xp);
 	// «VD 10 (PX 5900, o 7200 en su guarida)»; sin VD, «PX 5900».
 	if (sb.cr) add("statblock.cr", xp ? `${sb.cr} (${tk("statblock.xp")} ${xp})` : sb.cr);
@@ -397,7 +412,7 @@ function entryTitle(name: string, extra: string[]): string {
 
 /** El título y el texto: el primer párrafo va en la misma línea que el título. */
 function entryLines(title: string, text: string): string[] {
-	const body = plainTags(text).trim();
+	const body = keepLinks(text).trim();
 	if (!body) return [title];
 	const [first, ...rest] = body.split("\n");
 	return [`${title} ${first}`, ...rest];
@@ -425,7 +440,7 @@ function entryBlock(e: StatEntry, section: EntrySection): LayoutEntry {
 	// Sin nombre (y sin usos ni recarga, que van en el paréntesis del nombre): solo el texto. En las
 	// acciones de guarida, como en el libro, en viñeta.
 	const plain = !e.name.trim() && !boxes;
-	const text = plainTags(e.text).trim();
+	const text = keepLinks(e.text).trim();
 	const markdown = plain ? (section === "lair_actions" ? `- ${text}` : text) : hardBreaks(entryLines(entryTitle(e.name, [usesText(e), rechargeText(e)]), e.text));
 	return { target: `entry:${section}:${e.index}`, markdown, ...(boxes ? { boxes } : {}) };
 }
@@ -474,7 +489,7 @@ function spellcastingBlock(b: SpellcastingBlock, d: Derived): LayoutEntry {
 		const slots = l.level > 0 && l.slots ? { total: l.slots, used: Math.min(l.used, l.slots), ref: { kind: "level" as const, block: b.index, index: l.index } } : undefined;
 		lines.push({ target: `${target}:level:${l.index}`, label, spells: l.spells.map((s) => ({ name: spellName(s) })), ...(slots ? { boxes: slots } : {}) });
 	}
-	const footer = plainTags(b.footer).trim();
+	const footer = keepLinks(b.footer).trim();
 	return { target, markdown, ...(boxes ? { boxes } : {}), spell: { ...(stats ? { stats } : {}), lines, ...(footer ? { footer } : {}) } };
 }
 
@@ -502,7 +517,7 @@ const capitalize = (s: string) => s.charAt(0).toLocaleUpperCase(contentLanguage(
 export const DEFAULT_LEGENDARY_USES = 3;
 
 export function legendaryIntro(sb: Statblock): string {
-	if (sb.legendary_header) return plainTags(sb.legendary_header);
+	if (sb.legendary_header) return keepLinks(sb.legendary_header);
 	const ref = creatureRef(sb);
 	const n = sb.legendary_uses ?? DEFAULT_LEGENDARY_USES;
 	const uses =
@@ -540,7 +555,7 @@ export function statblockLayout(sb: Statblock, opts: StatblockOptions): Statbloc
 	section("statblock.section.bonus_actions", entries("bonus_actions"));
 	section("statblock.section.reactions", entries("reactions"));
 	section("statblock.section.legendary_actions", entries("legendary_actions"), sb.entries.legendary_actions.length ? legendaryIntro(sb) : undefined, legendaryBoxes);
-	section("statblock.section.lair_actions", entries("lair_actions"), sb.lair_actions_header ? plainTags(sb.lair_actions_header) : undefined);
+	section("statblock.section.lair_actions", entries("lair_actions"), sb.lair_actions_header ? keepLinks(sb.lair_actions_header) : undefined);
 	return {
 		name: sb.name,
 		subtitle: headerLine(sb),

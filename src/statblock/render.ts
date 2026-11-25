@@ -36,6 +36,8 @@ export async function renderStatblock(
 	 * lleva un clic (ver `StatblockEditorView.focusTarget`).
 	 */
 	targets = false,
+	/** Convierte las marcas de enlace del statblock (líneas, entradas…) en enlaces (paso 6; `links/linkify.ts`). */
+	linkify?: (el: HTMLElement) => void,
 ): Promise<HTMLElement> {
 	const wrap = parent.createDiv("strakes-stat-wrap");
 	const sb = wrap.createDiv({ cls: `strakes-statblock is-cols-${columns}` });
@@ -107,6 +109,7 @@ export async function renderStatblock(
 		for (const e of s.entries) renders.push(renderEntry(mark(sec.createDiv("strakes-stat-entry"), e.target), e, markdown, onUse, mark));
 	}
 	await Promise.all(renders);
+	linkify?.(sb);
 	return wrap;
 }
 

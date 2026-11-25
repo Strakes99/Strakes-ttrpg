@@ -1144,5 +1144,15 @@
 	"sbImport.duplicatesDesc_other": "{{count}} selected creatures already have a note with their name. Check the ones to import anyway (their book is added to the new note's name); unchecked ones are skipped.",
 	"sbImport.existingNote": "note: {{note}}",
 	"sbImport.back": "Back",
-	"sbImport.continue": "Continue"
+	"sbImport.continue": "Continue",
+	"links.notFound": "Not found: «{{name}}»",
+	"links.pin": "Pin",
+	"links.unpin": "Unpin",
+	"links.close": "Close",
+	"links.openNote": "Open the note",
+	"sbForm.link": "Link the selected text…",
+	"sbForm.linkCondition": "Condition",
+	"sbForm.linkCreature": "Creature",
+	"sbForm.linkSpell": "Spell",
+	"sbForm.selectToLink": "First select the text you want to link."
 }

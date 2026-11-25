@@ -4,7 +4,9 @@ import type StrakesTTRPG from "../main";
 import { nameFromNote, readStatblock } from "./data";
 import { buildForm } from "./form";
 import { renderStatblock, statblockColumns } from "./render";
+import { linkifyElement } from "../links/linkify";
 import { statblockLayout } from "./layout";
+import { applyUsed, readUsed, remapUsed } from "./uses";
 import { cleanDraft, Draft, draftFromFrontmatter, writeDraft } from "./notes";
 
 export const VIEW_TYPE_STATBLOCK = "strakes-statblock-editor";
@@ -262,6 +264,10 @@ export class StatblockEditorView extends ItemView {
 			fallbackName: this.fallbackName(),
 			changed: () => this.onFormChange(),
 			rerender: () => this.renderAll(),
+			remapUsed: (list, move) => {
+				const file = this.file;
+				if (file) void remapUsed(this.app, file, list, move).then(() => this.schedulePreview());
+			},
 		});
 		this.formEl.scrollTop = scroll;
 		void this.renderPreview();
@@ -304,12 +310,15 @@ export class StatblockEditorView extends ItemView {
 		if (!this.file) return;
 		const s = this.plugin.settings;
 		const sb = readStatblock(this.draft, this.fallbackName());
+		applyUsed(sb, await readUsed(this.app, this.file));
 		const layout = statblockLayout(sb, { metric: s.statblockMetric, catalog: s });
 		this.previewComponent?.unload();
 		this.previewComponent = new Component();
 		this.previewComponent.load();
 		this.previewEl.empty();
-		await renderStatblock(this.app, this.previewEl, layout, this.file.path, this.previewComponent, statblockColumns(sb, s.statblockColumns), undefined, true);
+		await renderStatblock(this.app, this.previewEl, layout, this.file.path, this.previewComponent, statblockColumns(sb, s.statblockColumns), undefined, true, (el) =>
+			linkifyElement(this.plugin, el),
+		);
 	}
 }
 

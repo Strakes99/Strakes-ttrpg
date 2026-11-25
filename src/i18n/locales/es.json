@@ -1144,5 +1144,15 @@
 	"sbImport.duplicatesDesc_other": "{{count}} criaturas seleccionadas ya tienen una nota con su nombre. Marca las que quieras importar igualmente (se añade su libro al nombre de la nota nueva); las demás no se importan.",
 	"sbImport.existingNote": "nota: {{note}}",
 	"sbImport.back": "Volver",
-	"sbImport.continue": "Continuar"
+	"sbImport.continue": "Continuar",
+	"links.notFound": "No se encontró «{{name}}»",
+	"links.pin": "Fijar",
+	"links.unpin": "Soltar",
+	"links.close": "Cerrar",
+	"links.openNote": "Abrir la nota",
+	"sbForm.link": "Enlazar el texto seleccionado…",
+	"sbForm.linkCondition": "Condición",
+	"sbForm.linkCreature": "Criatura",
+	"sbForm.linkSpell": "Conjuro",
+	"sbForm.selectToLink": "Selecciona primero el texto que quieres enlazar."
 }

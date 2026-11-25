@@ -2267,3 +2267,68 @@ input[type="number"].strakes-fog-size-number {
 .strakes-import-empty {
 	padding: var(--size-4-2);
 }
+
+/* Enlaces {@condition}, {@creature}, {@spell} (1.4, paso 6) y su ventanita. */
+.strakes-link {
+	color: var(--link-color);
+	border-bottom: 1px dotted currentColor;
+	cursor: pointer;
+}
+.strakes-link:hover {
+	color: var(--link-color-hover);
+}
+.strakes-link.is-unresolved {
+	color: var(--text-muted);
+	cursor: default;
+	border-bottom-color: var(--text-faint);
+}
+.strakes-link-popover {
+	position: fixed;
+	z-index: var(--layer-popover);
+	max-height: 60vh;
+	display: flex;
+	flex-direction: column;
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-s);
+}
+.strakes-link-popover.is-pinned {
+	border-color: var(--interactive-accent);
+}
+.strakes-link-popover-head {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-1);
+	padding: var(--size-4-1) var(--size-4-2);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+.strakes-link-popover-title {
+	flex: 1 1 auto;
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	font-weight: var(--font-semibold);
+}
+.strakes-link-popover-head .clickable-icon.is-active {
+	color: var(--interactive-accent);
+}
+.strakes-link-popover-body {
+	overflow-y: auto;
+	padding: var(--size-4-2) var(--size-4-3);
+}
+.strakes-link-popover-body .strakes-statblock {
+	width: 100%;
+}
+.strakes-link-popover-empty {
+	color: var(--text-muted);
+}
+/* Formulario: botón de enlaces en la esquina de cada cuadro de texto. */
+.strakes-sb-textarea-wrap {
+	position: relative;
+}
+.strakes-sb-link-button {
+	position: absolute;
+	top: var(--size-2-2);
+	right: var(--size-2-2);
+}

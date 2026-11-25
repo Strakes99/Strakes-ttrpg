@@ -2,7 +2,7 @@
 import { abilityMod, averageHp, derive, lairXpForCr, pbForCr, xpForCr } from "../src/statblock/compute";
 import { nameFromNote, readStatblock } from "../src/statblock/data";
 import { alignmentName, creatureRef, hasBoxes, headerLine, speedLine, StatblockLayout, statblockLayout } from "../src/statblock/layout";
-import { resetUsesIn, setUsedIn } from "../src/statblock/uses";
+import { applyUsed, findStatblockBlock, parseUsed, remapListKeys, removeMove, serializeUsed, swapMove, useKey, withBlockBody } from "../src/statblock/uses";
 import { setTranslateContent, T } from "../src/i18n";
 import { conditionById } from "../src/initiative/conditions";
 import { setLocale, t } from "./helpers";
@@ -11,6 +11,12 @@ const catalog = { customConditions: [], conditionOverrides: {} };
 const opts = { metric: false, catalog };
 const sb = (fm: Record<string, unknown>, name = "Criatura") => readStatblock({ statblock: "dnd5e-2024", ...fm }, name);
 const lay = (fm: Record<string, unknown>, metric = false) => statblockLayout(sb(fm), { ...opts, metric });
+/** Con lo gastado escrito en el bloque de la nota («clave: n» por línea). */
+const layUsed = (fm: Record<string, unknown>, used: string) => {
+	const r = sb(fm);
+	applyUsed(r, parseUsed(used));
+	return statblockLayout(r, opts);
+};
 /** El valor de una línea («Habilidades», «Sentidos»…), o undefined si no está. */
 const line = (l: StatblockLayout, label: string) => l.lines.find((x) => x.label === label)?.value;
 /** Todas las entradas (Markdown) de las secciones, juntas. */
@@ -147,10 +153,10 @@ t("es: CA con nota conocida, traducida", lay({ ac: 13, ac_note: "chain shirt" })
 t("es: nota de CA con varias partes, sin distinguir mayúsculas", lay({ ac: 20, ac_note: "Plate Armor, shield" }).top[0][0]?.value, "20 (armadura de placas, escudo)");
 t("es: nota de CA desconocida, tal cual", lay({ ac: 15, ac_note: "15 with Mage Armor" }).top[0][0]?.value, "15 (15 with Mage Armor)");
 t("es: sentidos de texto conocidos, traducidos", line(lay({ senses: { blindsight: 30 }, senses_other: ["echolocation", "smells fear"] }), "Sentidos"), "Vista ciega 30 pies, ecolocalización, smells fear");
-t("es: inmunidades de daño y condiciones juntas, con «;»", line(lay({ immunities: ["fire", "poison"], condition_immunities: ["charmed", "Mi condición"] }), "Inmunidades"), "Fuego, Veneno; Hechizado, Mi condición");
+t("es: inmunidades de daño y condiciones juntas, con «;»", line(lay({ immunities: ["fire", "poison"], condition_immunities: ["charmed", "Mi condición"] }), "Inmunidades"), "Fuego, Veneno; {@condition charmed||Hechizado}, Mi condición");
 t("es: resistencias en texto (2014), tal cual", line(lay({ resistances: ["cold", "bludgeoning from nonmagical attacks"] }), "Resistencias"), "Frío, bludgeoning from nonmagical attacks");
 t("es: el paréntesis propio del nombre se junta con «;»", entries(lay({ actions: [{ name: "Fell Glare (Fiend Only)", text: "x", recharge: "long" }] })), "***Fell Glare (Fiend Only; Se recarga tras un descanso largo):*** x");
-t("es: marcas de 5etools que queden, como texto", has(entries(lay({ actions: [{ name: "Garra", text: "El objetivo queda {@condition Grappled|XPHB}." }] })), "El objetivo queda Grappled."), true);
+t("es: marcas de enlace, se conservan (el dibujo las vuelve enlaces); las demás, su texto", entries(lay({ actions: [{ name: "Garra", text: "Queda {@condition Grappled|XPHB} con {@dice 1d6}." }] })), "***Garra:*** Queda {@condition Grappled|XPHB} con 1d6.");
 t("es: entrada de varios párrafos, con salto forzado", entries(lay({ reactions: [{ name: "A", text: "Uno.\n\nDos." }] })), "***A:*** Uno.  \n  \nDos.");
 t("es: Nombre propio, sin artículo", creatureRef(sb({ name: "Strahd", named: true })), "Strahd");
 t("es: nombre en el texto con su artículo", [creatureRef(sb({ name: "Arpía", short_name: "la arpía" })), creatureRef(sb({ name: "Goblin Jefe", short_name: "goblin" }))], ["la arpía", "el goblin"]);
@@ -208,19 +214,22 @@ t("es: columnas del statblock (1, 2 o las de los ajustes)", [sb({ columns: 2 }).
 	t("es: habilidades en orden alfabético", l.allSkills?.slice(0, 2), [{ label: "Acrobacias", value: "+2" }, { label: "Atletismo", value: "+0" }]);
 	t("es: con competencia, el BC", l.allSkills?.find((x) => x.label === "Sigilo")?.value, "+4");
 }
-// ---------- Casillas de usos (paso 4) ----------
+// ---------- Casillas de usos (paso 4); lo gastado, en el bloque de la nota ----------
 {
-	const l = lay({
-		traits: [
-			{ name: "", text: "" },
-			{ name: "Resistencia legendaria", text: "x", uses: 3, uses_lair: 4, used: 2 },
-		],
-		actions: [
-			{ name: "Aliento", text: "x", recharge: 5, used: 1 },
-			{ name: "Garra", text: "x" },
-			{ name: "Dominar", text: "x", uses: 2, used: 7 },
-		],
-	});
+	const l = layUsed(
+		{
+			traits: [
+				{ name: "", text: "" },
+				{ name: "Resistencia legendaria", text: "x", uses: 3, uses_lair: 4 },
+			],
+			actions: [
+				{ name: "Aliento", text: "x", recharge: 5 },
+				{ name: "Garra", text: "x" },
+				{ name: "Dominar", text: "x", uses: 2 },
+			],
+		},
+		"traits.1: 2\nactions.0: 1\nactions.2: 7",
+	);
 	const [legendary] = l.sections[0].entries;
 	const [breath, claw, dominate] = l.sections[1].entries;
 	t("casillas: usos y los de la guarida aparte; posición real en la nota (la entrada vacía cuenta)", legendary.boxes, { total: 4, used: 2, lairFrom: 3, ref: { kind: "entry", section: "traits", index: 1 } });
@@ -229,37 +238,47 @@ t("es: columnas del statblock (1, 2 o las de los ajustes)", [sb({ columns: 2 }).
 	t("casillas: lo gastado nunca pasa del total", dominate.boxes?.used, 2);
 	t("destinos de la vista previa: entradas y secciones", [legendary.target, breath.target, l.sections.map((x) => x.key)], ["entry:traits:1", "entry:actions:0", ["traits", "actions"]]);
 	t("hasBoxes: con casillas sí, sin ellas no", [hasBoxes(l), hasBoxes(lay({ actions: [{ name: "Garra", text: "x" }] }))], [true, false]);
+	t("lo gastado en las propiedades ya no cuenta (solo el bloque)", lay({ actions: [{ name: "A", text: "x", uses: 2, used: 2 }] }).sections[0].entries[0].boxes?.used, 0);
 }
 {
-	const legendary = (fm: Record<string, unknown>) => lay({ legendary_actions: [{ name: "Lash", text: "x" }], ...fm }).sections[0].boxes;
-	t("acciones legendarias: una casilla por uso, las de la guarida aparte", legendary({ legendary_uses: 3, legendary_uses_lair: 4, legendary_used: 1 }), { total: 4, used: 1, lairFrom: 3, ref: { kind: "legendary" } });
+	const legendary = (fm: Record<string, unknown>, used = "") => layUsed({ legendary_actions: [{ name: "Lash", text: "x" }], ...fm }, used).sections[0].boxes;
+	t("acciones legendarias: una casilla por uso, las de la guarida aparte", legendary({ legendary_uses: 3, legendary_uses_lair: 4 }, "legendary: 1"), { total: 4, used: 1, lairFrom: 3, ref: { kind: "legendary" } });
 	t("acciones legendarias: sin usos escritos, 3 casillas (el valor por defecto)", legendary({}), { total: 3, used: 0, ref: { kind: "legendary" } });
 	t("acciones legendarias: la introducción generada también dice 3", lay({ legendary_actions: [{ name: "Lash", text: "x" }] }).sections[0].intro?.startsWith("Usos de acción legendaria: 3."), true);
 	t("acciones legendarias: hasBoxes las cuenta", hasBoxes(lay({ legendary_actions: [{ name: "Lash", text: "x" }] })), true);
 }
 {
-	const fm: Record<string, unknown> = {
-		actions: [{ name: "A", uses: 2 }, { name: "B", recharge: 5, used: 1 }],
-		spellcasting: [{ per_day: { uses: 1, each: true, spells: ["Fly"] }, levels: [{ level: 1, slots: 2, used: 1 }] }],
-	};
-	setUsedIn(fm, { kind: "entry", section: "actions", index: 0 }, 2);
-	setUsedIn(fm, { kind: "perDay", block: 0, index: 0, spell: "Fly" }, 1);
-	setUsedIn(fm, { kind: "level", block: 0, index: 0 }, 2);
-	t("setUsedIn: entrada, conjuro de «cada uno» (objeto suelto) y nivel", [(fm.actions as Record<string, unknown>[])[0].used, fm.spellcasting], [
-		2,
-		[{ per_day: { uses: 1, each: true, spells: ["Fly"], used: { Fly: 1 } }, levels: [{ level: 1, slots: 2, used: 2 }] }],
+	t(
+		"claves de las casillas",
+		[
+			useKey({ kind: "legendary" }),
+			useKey({ kind: "entry", section: "bonus_actions", index: 2 }),
+			useKey({ kind: "block", block: 1 }),
+			useKey({ kind: "perDay", block: 0, index: 1 }),
+			useKey({ kind: "perDay", block: 0, index: 1, spell: "Fog Cloud" }),
+			useKey({ kind: "level", block: 0, index: 3 }),
+		],
+		["legendary", "bonus_actions.2", "spellcasting.1", "spellcasting.0.per_day.1", "spellcasting.0.per_day.1/Fog Cloud", "spellcasting.0.levels.3"],
+	);
+	t("leer y escribir lo gastado (lo raro se ignora; 0 no se escribe)", [[...parseUsed("traits.1: 2\nbasura\nlegendary: 0\nx: -1\nspellcasting.0.per_day.0/Fog Cloud: 1")], serializeUsed(new Map([["a", 1], ["b", 0]]))], [
+		[["traits.1", 2], ["spellcasting.0.per_day.0/Fog Cloud", 1]],
+		"a: 1",
 	]);
-	setUsedIn(fm, { kind: "perDay", block: 0, index: 0, spell: "Fly" }, 0);
-	setUsedIn(fm, { kind: "entry", section: "actions", index: 1 }, 0);
-	t("setUsedIn: 0 quita used (y el objeto de «cada uno» vacío)", [(fm.actions as Record<string, unknown>[])[1], ((fm.spellcasting as Record<string, unknown>[])[0].per_day as Record<string, unknown>).used], [{ name: "B", recharge: 5 }, undefined]);
-	t("setUsedIn: una casilla que ya no existe no toca nada", setUsedIn(fm, { kind: "entry", section: "traits", index: 3 }, 1), false);
-	setUsedIn(fm, { kind: "legendary" }, 2);
-	t("setUsedIn: usos de acción legendaria en legendary_used", fm.legendary_used, 2);
-	t("resetUsesIn: quita todo lo gastado (también legendary_used)", [resetUsesIn(fm), JSON.stringify(fm).includes('used"'), resetUsesIn(fm)], [true, false, false]);
-}
-{
-	const r = sb({ actions: [{ name: "A", text: "x", used: 2 }], spellcasting: [{ per_day: [{ uses: 1, spells: ["X"], used: 1 }, { uses: 1, each: true, spells: ["Y"], used: { Y: 1 } }], levels: [{ level: 2, slots: 1, spells: ["Z"], used: 1 }] }] });
-	t("lectura: used de entradas, listas al día (número u objeto) y niveles", [r.entries.actions[0].used, r.spellcasting[0].per_day.map((p) => [p.used, p.usedEach]), r.spellcasting[0].levels[0].used], [2, [[1, {}], [0, { Y: 1 }]], 1]);
+	const r = sb({ spellcasting: [{ per_day: [{ uses: 1, spells: ["X"] }, { uses: 1, each: true, spells: ["Y", "Z"] }], levels: [{ level: 2, slots: 1, spells: ["W"] }] }] });
+	applyUsed(r, parseUsed("spellcasting.0.per_day.0: 1\nspellcasting.0.per_day.1/Y: 1\nspellcasting.0.levels.0: 1"));
+	t("aplicar lo gastado: listas al día (con «cada uno», por conjuro) y niveles", [r.spellcasting[0].per_day.map((p) => [p.used, p.usedEach]), r.spellcasting[0].levels[0].used], [[[1, {}], [0, { Y: 1 }]], 1]);
+	const note = "---\nstatblock: dnd5e-2024\n---\nTexto\n```strakes-statblock\n```\nMás";
+	t("bloque de la nota: se encuentra", findStatblockBlock(note), { open: 4, close: 5, body: "" });
+	const written = withBlockBody(note, () => "traits.0: 1\nlegendary: 2");
+	t("bloque de la nota: se escribe dentro, sin tocar lo demás", written, "---\nstatblock: dnd5e-2024\n---\nTexto\n```strakes-statblock\ntraits.0: 1\nlegendary: 2\n```\nMás");
+	t("bloque de la nota: vaciarlo (restablecer usos)", withBlockBody(written, () => ""), note);
+	t("nota sin bloque: no se toca", withBlockBody("sin bloque", () => "x: 1"), "sin bloque");
+	const spent = new Map([["traits.0", 1], ["traits.2", 3], ["actions.0", 2], ["legendary", 1], ["spellcasting.0", 1], ["spellcasting.1.levels.0", 2], ["spellcasting.1.per_day.0/Fog Cloud", 1], ["spellcasting.10", 1]]);
+	t("mover una entrada: lo gastado la sigue (y no toca otras secciones)", [...remapListKeys(spent, "traits", swapMove(2, 1))].slice(0, 4), [["traits.0", 1], ["traits.1", 3], ["actions.0", 2], ["legendary", 1]]);
+	t("quitar una entrada: se va lo suyo y las de detrás suben", [...remapListKeys(new Map([["traits.0", 1], ["traits.1", 2], ["traits.2", 3]]), "traits", removeMove(1))], [["traits.0", 1], ["traits.1", 3]]);
+	t("mover un bloque de conjuros: con él sus listas y niveles (spellcasting.10 no es el 1)", [...remapListKeys(spent, "spellcasting", swapMove(1, 0))].slice(4), [["spellcasting.1", 1], ["spellcasting.0.levels.0", 2], ["spellcasting.0.per_day.0/Fog Cloud", 1], ["spellcasting.10", 1]]);
+	t("quitar un nivel de un bloque: solo ese bloque", [...remapListKeys(new Map([["spellcasting.0.levels.0", 1], ["spellcasting.0.levels.1", 2], ["spellcasting.1.levels.1", 3]]), "spellcasting.0.levels", removeMove(0))], [["spellcasting.0.levels.0", 2], ["spellcasting.1.levels.1", 3]]);
+	t("mover una lista al día con «cada uno»", [...remapListKeys(new Map([["spellcasting.0.per_day.0/Entangle", 1]]), "spellcasting.0.per_day", swapMove(0, 1))], [["spellcasting.0.per_day.1/Entangle", 1]]);
 }
 setLocale("en");
 {
@@ -307,11 +326,8 @@ t("números del contenido sin separador de miles (también en español)", lay({ 
 
 // ---------- Bloques de conjuros con usos propios y sin CD (2026-11-24) ----------
 {
-	const l = lay({ int: 16, cr: "5", spellcasting: [{ name: "Protective Magic", ability: "int", uses: 3, used: 1, hide_dc: true, text: "Casts {@spell Shield}." }] });
+	const l = layUsed({ int: 16, cr: "5", spellcasting: [{ name: "Protective Magic", ability: "int", uses: 3, hide_dc: true, text: "Casts {@spell Shield}." }] }, "spellcasting.0: 1");
 	const e = l.sections[0].entries[0];
-	t("bloque con usos: paréntesis y casillas tras el nombre", [e.markdown, e.boxes], ["***Protective Magic (3/día):*** Casts Shield.", { total: 3, used: 1, ref: { kind: "block", block: 0 } }]);
+	t("bloque con usos: paréntesis y casillas tras el nombre", [e.markdown, e.boxes], ["***Protective Magic (3/día):*** Casts {@spell Shield}.", { total: 3, used: 1, ref: { kind: "block", block: 0 } }]);
 	t("bloque con hide_dc: sin CD ni ataque", e.spell?.stats, undefined);
-	const fm: Record<string, unknown> = { spellcasting: [{ name: "P", uses: 3 }] };
-	setUsedIn(fm, { kind: "block", block: 0 }, 2);
-	t("casillas del bloque: used en el bloque; restablecer lo quita", [(fm.spellcasting as Record<string, unknown>[])[0].used, resetUsesIn(fm), (fm.spellcasting as Record<string, unknown>[])[0].used], [2, true, undefined]);
 }

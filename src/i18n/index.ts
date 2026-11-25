@@ -77,6 +77,11 @@ function translate(lang: string, key: TranslationKey, vars?: Record<string, stri
 	return vars ? text.replace(/\{\{(\w+)\}\}/g, (all, name: string) => (name in vars ? String(vars[name] ?? "") : all)) : text;
 }
 
+/** El texto de una clave en todos los idiomas (sin repetir), p. ej. los nombres de una condición del SRD para reconocerla escrita en cualquiera. */
+export function translationsOf(key: string): string[] {
+	return [...new Set(Object.values(LOCALES).map((texts) => texts[key]).filter((x): x is string => typeof x === "string"))];
+}
+
 /** Locale para formatear números (separador decimal, etc.): el del idioma de la interfaz. */
 export function numberLocale(): string {
 	return currentLanguage();

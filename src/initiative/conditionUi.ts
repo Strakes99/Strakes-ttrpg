@@ -5,6 +5,7 @@ import { renderPinIconInto } from "../map/render";
 import { Combatant, ConditionOverride, ConditionRules, CustomCondition, HpTrigger, RuleTarget, uid } from "../types";
 import { IconColorControl, IconPicker } from "../ui/iconPicker";
 import { confirmDialog, modalFooter } from "../ui/modals";
+import { linkifyElement } from "../links/linkify";
 import { GridMenuItem, showGridMenu } from "../ui/gridMenu";
 import { ActiveCondition, allConditions, BUILTIN_CONDITIONS, builtinInfo, combatantConditions, ConditionInfo } from "./conditions";
 import { entryTooltipLines, renderEntryDetails } from "./conditionDetails";
@@ -115,7 +116,12 @@ function toggleConditionCard(anchor: HTMLElement, a: ActiveCondition, plugin: St
 	const markdown = new Component();
 	markdown.load();
 	const description = a.info.description.trim();
-	if (description) void MarkdownRenderer.render(app, description, text, "", markdown).then(() => place());
+	// Con los enlaces {@condition}/{@creature} de la descripción (1.4, paso 6).
+	if (description)
+		void MarkdownRenderer.render(app, description, text, "", markdown).then(() => {
+			linkifyElement(plugin, text);
+			place();
+		});
 	else text.setText(T("conditionUi.noDescription"));
 	// Las puestas a mano: duración, lanzador, salvación (y hechizo, si es una concentración).
 	const entry = a.explicit ? c.conditions.find((x) => x.id === a.info.id) : undefined;

@@ -1,4 +1,4 @@
-import { AbstractInputSuggest, App, setIcon } from "obsidian";
+import { AbstractInputSuggest, App, Menu, Notice, setIcon } from "obsidian";
 import { contentLanguage, T, TC, TranslationKey } from "../i18n";
 import { allConditions } from "../initiative/conditions";
 import type StrakesTTRPG from "../main";
@@ -18,6 +18,7 @@ import {
 } from "./data";
 import { ALIGNMENTS, alignmentFromInput, alignmentName, creatureRef, legendaryIntro } from "./layout";
 import { Draft } from "./notes";
+import { IndexMove, removeMove, swapMove } from "./uses";
 
 /**
  * Formulario de un statblock (1.4, §10.2). Cada campo está ligado a una propiedad del borrador (`Draft`,
@@ -40,6 +41,8 @@ export interface FormContext {
 	changed(): void;
 	/** Tras un cambio de estructura (añadir, quitar o mover una entrada): vuelve a dibujar el formulario. */
 	rerender(): void;
+	/** Al mover o quitar algo de la lista `list` de la nota: que lo gastado siga a su entrada. */
+	remapUsed(list: string, move: IndexMove): void;
 }
 
 /**
@@ -116,6 +119,42 @@ class OptionSuggest extends AbstractInputSuggest<{ value: string; label: string 
 const CR_OPTIONS = ["0", "1/8", "1/4", "1/2", ...Array.from({ length: 30 }, (_, i) => String(i + 1))];
 const HABITATS = ["any", "arctic", "coastal", "desert", "forest", "grassland", "hill", "mountain", "planar", "swamp", "underdark", "underwater", "urban"];
 const TREASURES = ["any", "arcana", "armaments", "implements", "individual", "relics"];
+
+/**
+ * Botón de enlaces de un cuadro de texto (§10.2): con texto seleccionado, Condición, Criatura o Conjuro lo
+ * envuelve en su marca (`{@condition texto}`…). El conjuro se ve como texto hasta la 1.6. Sin selección,
+ * un aviso.
+ */
+function linkButton(wrap: HTMLElement, el: HTMLTextAreaElement): void {
+	const b = wrap.createEl("button", { cls: "clickable-icon strakes-sb-link-button", attr: { "aria-label": T("sbForm.link") } });
+	setIcon(b, "link");
+	b.addEventListener("click", (evt) => {
+		evt.preventDefault();
+		const { selectionStart: start, selectionEnd: end, value } = el;
+		const selected = value.slice(start, end);
+		if (!selected.trim()) {
+			new Notice(T("sbForm.selectToLink"));
+			return;
+		}
+		const menu = new Menu();
+		const add = (label: string, kind: string) =>
+			menu.addItem((i) =>
+				i.setTitle(label).onClick(() => {
+					// Los espacios de los bordes de la selección se quedan fuera de la marca.
+					const lead = /^\s*/.exec(selected)?.[0] ?? "";
+					const trail = /\s*$/.exec(selected)?.[0] ?? "";
+					const tag = `${lead}{@${kind} ${selected.trim()}}${trail}`;
+					el.setRangeText(tag, start, end, "end");
+					el.dispatchEvent(new Event("input"));
+					el.focus();
+				}),
+			);
+		add(T("sbForm.linkCondition"), "condition");
+		add(T("sbForm.linkCreature"), "creature");
+		add(T("sbForm.linkSpell"), "spell");
+		menu.showAtMouseEvent(evt);
+	});
+}
 
 /** Dibuja el formulario en `container`. */
 export function buildForm(container: HTMLElement, ctx: FormContext): void {
@@ -195,7 +234,9 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 		return el;
 	};
 	const textarea = (parent: HTMLElement, obj: Obj, key: string, placeholder?: (sb: Statblock, d: Derived) => string): HTMLTextAreaElement => {
-		const el = parent.createEl("textarea", { cls: "strakes-sb-textarea" });
+		const wrap = parent.createDiv("strakes-sb-textarea-wrap");
+		const el = wrap.createEl("textarea", { cls: "strakes-sb-textarea" });
+		linkButton(wrap, el);
 		el.value = display(obj[key]);
 		el.rows = 3;
 		el.addEventListener("input", () => {
@@ -558,22 +599,24 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 	];
 
 	/** Botones de una tarjeta de lista: subir, bajar y quitar. */
-	const cardButtons = (card: HTMLElement, list: Obj[], i: number) => {
+	/** Mover y quitar. `path` es la lista en las claves de lo gastado (`traits`, `spellcasting.0.levels`…). */
+	const cardButtons = (card: HTMLElement, list: Obj[], i: number, path: string) => {
 		const bar = card.createDiv("strakes-sb-card-buttons");
-		const btn = (icon: string, label: string, disabled: boolean, run: () => void) => {
+		const btn = (icon: string, label: string, disabled: boolean, move: IndexMove, run: () => void) => {
 			const b = bar.createEl("button", { cls: "clickable-icon", attr: { "aria-label": label } });
 			setIcon(b, icon);
 			if (disabled) b.disabled = true;
 			b.addEventListener("click", (e) => {
 				e.preventDefault();
 				run();
+				ctx.remapUsed(path, move);
 				changed();
 				ctx.rerender();
 			});
 		};
-		btn("arrow-up", T("sbForm.moveUp"), i === 0, () => list.splice(i - 1, 0, ...list.splice(i, 1)));
-		btn("arrow-down", T("sbForm.moveDown"), i === list.length - 1, () => list.splice(i + 1, 0, ...list.splice(i, 1)));
-		btn("trash-2", T("sbForm.remove"), false, () => list.splice(i, 1));
+		btn("arrow-up", T("sbForm.moveUp"), i === 0, swapMove(i, i - 1), () => list.splice(i - 1, 0, ...list.splice(i, 1)));
+		btn("arrow-down", T("sbForm.moveDown"), i === list.length - 1, swapMove(i, i + 1), () => list.splice(i + 1, 0, ...list.splice(i, 1)));
+		btn("trash-2", T("sbForm.remove"), false, removeMove(i), () => list.splice(i, 1));
 	};
 	const addButton = (parent: HTMLElement, label: string, run: () => void) => {
 		const b = parent.createEl("button", { cls: "strakes-sb-add", text: label });
@@ -593,7 +636,7 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 			const card = mark(body.createDiv("strakes-sb-card"), `entry:${key}:${i}`);
 			const top = card.createDiv("strakes-sb-card-top");
 			input(top, e, "name", { placeholder: T("sbForm.entryName"), cls: "is-wide" });
-			cardButtons(top, list, i);
+			cardButtons(top, list, i, key);
 			const uses = card.createDiv("strakes-sb-grid");
 			input(row(uses, T("sbForm.uses")), e, "uses", { kind: "int", cls: "is-short" });
 			input(row(uses, T("sbForm.usesLair")), e, "uses_lair", { kind: "int", cls: "is-short" });
@@ -617,7 +660,7 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 			const card = mark(body.createDiv("strakes-sb-card"), `spell:${i}`);
 			const top = card.createDiv("strakes-sb-card-top");
 			input(top, b, "name", { placeholder: tk("statblock.spellcastingName"), cls: "is-wide" });
-			cardButtons(top, blocks, i);
+			cardButtons(top, blocks, i, "spellcasting");
 			const bu = card.createDiv("strakes-sb-grid");
 			input(row(bu, T("sbForm.uses")), b, "uses", { kind: "int", cls: "is-short" });
 			input(row(bu, T("sbForm.usesLair")), b, "uses_lair", { kind: "int", cls: "is-short" });
@@ -646,7 +689,7 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 				input(line, p, "uses", { kind: "int", cls: "is-short", placeholder: "1" });
 				line.createSpan({ text: T("sbForm.perDaySuffix") });
 				boolCheck(line, T("sbForm.each"), p, "each");
-				cardButtons(line, perDay, j);
+				cardButtons(line, perDay, j, `spellcasting.${i}.per_day`);
 				tags(r, p, "spells", { placeholder: T("sbForm.addSpell") });
 			});
 			const levels = listAt(b, "levels");
@@ -656,7 +699,7 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 				input(line, l, "level", { kind: "int", cls: "is-short", placeholder: "0" });
 				line.createSpan({ text: T("sbForm.slots") });
 				input(line, l, "slots", { kind: "int", cls: "is-short" });
-				cardButtons(line, levels, j);
+				cardButtons(line, levels, j, `spellcasting.${i}.levels`);
 				tags(r, l, "spells", { placeholder: T("sbForm.addSpell") });
 			});
 			const adds = card.createDiv("strakes-sb-card-top");
