@@ -5,6 +5,8 @@ A toolkit for game masters who run tabletop RPGs from Obsidian:
 - **Maps** — interactive image maps with markers, zones, layers, curved routes with distances and travel times, shortest and fastest paths, portals/stairs and a fog of war. Show them to your players, with what they can see under your control, and point or draw on them live.
 - **Player screen** — a separate window for your second monitor or projector that shows notes, sections, selections, images and maps to your players.
 - **Initiative tracker** — turns, rounds, hit points (including temporary HP), conditions with icons, and a portrait "cards" view for the player screen.
+- **Statblocks** — D&D 5e creature statblocks as notes, drawn in a layout close to the 2024 books, with a form editor, use checkboxes, display presets and JSON import.
+- **Links** — `{@condition Grappled}`, `{@creature Goblin}` and `{@spell Fireball}` in any note, with a preview of the condition or the creature's statblock.
 
 > The interface is available in **English** and **Spanish** and follows Obsidian's display language: Spanish when Obsidian is set to Spanish, English for every other language. Want it in your language? See [Translations](#translations).
 
@@ -112,6 +114,29 @@ Opens in the right sidebar.
 - The fog always covers the whole map for the players, also while their view flies to a new place.
 - What the players can't see is shown semi-transparent in your editor (the transparency is a setting).
 
+## Statblocks (D&D 5e)
+
+A statblock is a note: the creature's data lives in the note's properties, and a `strakes-statblock` code block draws it with a layout close to the 2024 books (name, type, AC and initiative, HP and PB, speed, an ability table with modifiers and saves, then skills… languages, challenge, and the trait and action sections). It uses your theme's fonts and colors, in one column or two.
+
+- **Create**: the ribbon icon (scroll) or the command *Create statblock*, or right-click a folder → *New statblock*. Notes go to a folder you choose (`Statblocks` by default), named with a prefix and a suffix (`ST-Goblin` by default). Existing notes are never overwritten. New notes open in reading view with their properties collapsed.
+- **Edit** in a form: the pencil under the statblock or the command *Edit the active note's statblock*. The form replaces the note in its tab (Escape goes back) and shows a live preview: click any part of it to jump to its field. Changes are saved as you type, with undo and redo. Proficiency bonus, modifiers, saves, skills, initiative, passive Perception, average HP, XP and spell save DC and attack are calculated; type a value to override one.
+- **Copy** a statblock to a new note with the copy button under it.
+- **Use checkboxes** for uses per day or per rest (and extra uses in the creature's lair), recharges, per-day spell lists, spell slots and legendary action uses. Ticked boxes are written as plain text inside the note's code block, not in its properties, so they survive restarts. A button under the statblock clears them all. Moving or removing an entry in the form keeps its ticked boxes with it.
+- **Import** creatures from JSON bestiary files (files with a `monster` list): the command *Import statblocks* or the button in the settings. Pick the creatures from a searchable list; the ones that already have a note are listed apart so you can confirm them. Uses, recharges, spellcasting, legendary and lair actions are converted; regional effects go into the note's body.
+- **Display presets** (Settings → Statblocks → Statblock display): choose what statblocks show (initiative, PB, the saves row, gear, senses, passive Perception, languages, CR, XP, XP in lair, the legendary actions introduction), reorder every part by dragging it, and set one or two columns and meters next to feet. *D&D 2024* is built in; duplicate it to make your own. Each statblock can pick a preset in its form.
+- **Bestiary base**: a button in the settings creates an Obsidian base with a table of every statblock note (name, CR, type, size, alignment, habitat, source), sorted by CR.
+- **Embedding**: `![[ST-Goblin]]` shows the statblock in another note, such as your session notes, with working checkboxes.
+
+## Links to conditions, creatures and spells
+
+Write `{@condition Grappled}`, `{@creature Goblin}` or `{@spell Fireball}` in any note (the Spanish `{@condicion …}`, `{@criatura …}` and `{@hechizo …}` work too). In reading view and Live Preview they become links:
+
+- **Conditions**: Ctrl/Cmd+hover shows the condition's card; clicking pins it.
+- **Creatures**: Ctrl/Cmd+hover shows the creature's statblock, with working checkboxes; clicking opens its note (Ctrl/Cmd+click, in a new tab). A creature is found by its note name (without the prefix and suffix) or its `name` property.
+- **Spells**: shown in italics for now.
+- `{@condition Prone||knocked down}` shows other text. Links that aren't found are dimmed. Nothing is converted inside code.
+- In the statblock form, select some text and use the link button next to the text box to mark it.
+
 ## Translations
 
 The interface text lives in one file per language, in [`src/i18n/locales/`](src/i18n/locales). Adding a language doesn't require touching the code:
@@ -122,12 +147,13 @@ The interface text lives in one file per language, in [`src/i18n/locales/`](src/
 4. Register the file in [`src/i18n/index.ts`](src/i18n/index.ts): import it and add it to `LOCALES`.
 5. Run `npm test`. It checks that your file only uses existing keys and keeps the same `{{…}}` values.
 
-Anything you leave out is shown in English, so a partial translation works. The `srd.*` keys are the condition texts from the SRD 5.2: a translation of them is a derivative of that material and keeps its CC-BY-4.0 license (see [Attribution](#attribution)). A few words the plugin recognizes when you type them (unit names like `km` or `miles`, durations) are matched in English and Spanish only; they're in `src/map/mapData.ts` if you want to add yours.
+Anything you leave out is shown in English, so a partial translation works. The setting *Translate content* (at the top of the settings) decides whether content, that is statblocks and the SRD condition texts, follows the interface language or stays in English. The `srd.*` keys are the condition texts from the SRD 5.2: a translation of them is a derivative of that material and keeps its CC-BY-4.0 license (see [Attribution](#attribution)). A few words the plugin recognizes when you type them (unit names like `km` or `miles`, durations) are matched in English and Spanish only; they're in `src/map/mapData.ts` if you want to add yours.
 
 ## Data and files
 
 - **Maps** are plain JSON files with the `.smap` extension, stored in your vault.
-- **Settings, the current combat, custom conditions and remembered portraits** are stored in the plugin's `data.json`.
+- **Statblocks** are Markdown notes: the creature in the note's properties and a `strakes-statblock` code block that draws it. Ticked use checkboxes are lines like `traits.1: 2` inside that code block.
+- **Settings, the current combat, custom conditions, statblock presets and remembered portraits** are stored in the plugin's `data.json`.
 - **Not saved**: labels, laser and pen drawings, and the live view only last while Obsidian is open.
 - **Custom SVG icons** live in `<vault>/.obsidian/plugins/strakes-ttrpg/icons/`. Plugin updates don't touch this folder, but uninstalling the plugin deletes it.
 - **SVG sanitizing**: every SVG is cleaned before it is displayed. Scripts, event handlers, HTML elements, link-changing animations, `javascript:` links and external resources (including those referenced from CSS) are removed.
@@ -136,6 +162,9 @@ Anything you leave out is shown in English, so a partial translation works. The 
 
 - **Map embeds** use `app.embedRegistry.registerExtension` so that `![[file.smap]]` renders an interactive map. This is the same internal mechanism Obsidian uses for Canvas and Bases embeds; there is no public API for custom embeds yet. Registration is guarded: if the API is missing or changes, the plugin keeps working and only map embeds are unavailable.
 - **The player screen** is a regular view opened with `workspace.openPopoutLeaf()`.
+- **Collapsed properties on new statblock notes** use the internal `app.foldManager` (there is no public API to fold a note's properties). It is guarded: if it is missing, notes are created with their properties expanded.
+- **Links in Live Preview** are a CodeMirror 6 view plugin registered with `registerEditorExtension`.
+- **The statblock form tab** calls the internal `leaf.updateHeader()` to refresh its title when its note is renamed. It is guarded: if it is missing, the title updates the next time the tab is opened.
 - **Network and telemetry**: none.
 
 ## Attribution

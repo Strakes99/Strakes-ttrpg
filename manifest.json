@@ -1,9 +1,9 @@
 {
   "id": "strakes-ttrpg",
   "name": "Strakes TTRPG",
-  "version": "1.3.3",
+  "version": "1.4.0",
   "minAppVersion": "1.13.0",
-  "description": "TTRPG toolkit for game masters: image maps with markers, layers, curved routes, travel times and portals; a player screen for notes and images; and an initiative tracker with conditions, temporary HP and portrait cards.",
+  "description": "TTRPG toolkit for game masters: image maps with markers, routes, travel times and fog of war; a player screen; an initiative tracker with conditions; and D&D 5e statblocks with a form editor, use checkboxes and JSON import.",
   "author": "Strakes99",
   "authorUrl": "https://github.com/Strakes99",
   "isDesktopOnly": true
