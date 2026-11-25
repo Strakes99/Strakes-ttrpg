@@ -956,7 +956,6 @@
 	"statblock.section.bonus_actions": "Bonus Actions",
 	"statblock.section.reactions": "Reactions",
 	"statblock.section.legendary_actions": "Legendary Actions",
-	"statblock.section.mythic_actions": "Mythic Actions",
 	"statblock.spellcastingName": "Spellcasting",
 	"statblock.atWill": "At Will",
 	"statblock.perDayEach": "{{n}}/Day Each",
@@ -1075,7 +1074,6 @@
 	"sbForm.legendaryUses": "Uses",
 	"sbForm.legendaryUsesLair": "In lair",
 	"sbForm.legendaryHeader": "Introduction (empty = generated)",
-	"sbForm.mythicHeader": "Introduction",
 	"sbForm.otherHint": "Not shown in the statblock: they're for filtering in Bases.",
 	"sbForm.source": "Source",
 	"sbForm.page": "Page",
@@ -1111,5 +1109,10 @@
 	"sbForm.resetUses": "Reset uses",
 	"statblock.spellSaveDc": "Spell Save DC",
 	"statblock.spellAttack": "Spell Attack Bonus",
-	"sbForm.section.challenge": "Challenge"
+	"sbForm.section.challenge": "Challenge",
+	"settings.translateContent": "Translate content",
+	"settings.translateContentDesc": "Statblocks (labels, sizes, types, abilities, skills, sections…) and basic rules conditions in the interface language. Off: only the interface is translated and that content stays in English. Your own texts are never translated.",
+	"statblock.section.lair_actions": "Lair Actions",
+	"sbForm.lairActionsHeader": "Introduction",
+	"sbForm.lairActionsHeaderPlaceholder": "On initiative count 20 (losing initiative ties), the creature takes a lair action…"
 }

@@ -1,5 +1,5 @@
 import { AbstractInputSuggest, App, setIcon } from "obsidian";
-import { currentLanguage, T, TranslationKey } from "../i18n";
+import { contentLanguage, T, TC, TranslationKey } from "../i18n";
 import { allConditions } from "../initiative/conditions";
 import type StrakesTTRPG from "../main";
 import { averageHp, Derived, derive, signed, signedValue } from "./compute";
@@ -42,7 +42,12 @@ export interface FormContext {
 	rerender(): void;
 }
 
-const tk = (key: string, vars?: Record<string, string | number>) => T(key as TranslationKey, vars);
+/**
+ * Valores del statblock (tamaños, tipos, daños, habilidades, condiciones, títulos de sección…): en el idioma
+ * del contenido, para que lo que se edita se corresponda con lo que se ve (decisión del desarrollador).
+ * Las etiquetas propias del formulario (`sbForm.*`) son interfaz y van con `T`.
+ */
+const tk = (key: string, vars?: Record<string, string | number>) => TC(key as TranslationKey, vars);
 
 const isObj = (v: unknown): v is Obj => !!v && typeof v === "object" && !Array.isArray(v);
 
@@ -459,7 +464,7 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 		const profs = objAt(draft, "skill_proficiencies");
 		const values = objAt(draft, "skills");
 		const groups = mark(body.createDiv("strakes-sb-skill-groups"), "skills");
-		const collator = new Intl.Collator(currentLanguage());
+		const collator = new Intl.Collator(contentLanguage());
 		for (const a of ABILITIES) {
 			const skills = Object.entries(SKILLS)
 				.filter(([, ab]) => ab === a)
@@ -666,9 +671,9 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 		const r = mark(row(body, T("sbForm.legendaryHeader"), "is-block"), "legendary_header");
 		textarea(r, draft, "legendary_header", (sb) => legendaryIntro({ ...sb, legendary_header: "" }));
 	});
-	entries("mythic_actions", (body) => {
-		const r = mark(row(body, T("sbForm.mythicHeader"), "is-block"), "mythic_header");
-		textarea(r, draft, "mythic_header");
+	entries("lair_actions", (body) => {
+		const r = mark(row(body, T("sbForm.lairActionsHeader"), "is-block"), "lair_actions_header");
+		textarea(r, draft, "lair_actions_header").placeholder = T("sbForm.lairActionsHeaderPlaceholder");
 	});
 
 	// ------------------------------------------------------------ 7. Otros datos

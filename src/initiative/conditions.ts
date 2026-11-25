@@ -1,4 +1,4 @@
-import { T, TranslationKey } from "../i18n";
+import { T, TC, TranslationKey } from "../i18n";
 import { ConditionEntry, ConditionOverride, ConditionRules, CustomCondition, HpTrigger } from "../types";
 
 /** Datos del usuario que afectan al catálogo: condiciones propias y cambios a las integradas. */
@@ -304,7 +304,7 @@ export const BUILTIN_CONDITIONS: BuiltinCondition[] = [
 
 /** Descripción de una integrada en Markdown: cada apartado con título es un encabezado `##`. */
 export function builtinMarkdown(b: BuiltinCondition): string {
-	return b.sections.map((x) => (T(x.title) ? `## ${T(x.title)}\n\n${T(x.text)}` : T(x.text))).join("\n\n");
+	return b.sections.map((x) => (TC(x.title) ? `## ${TC(x.title)}\n\n${TC(x.text)}` : TC(x.text))).join("\n\n");
 }
 
 /** Automatismos originales de una integrada, con los textos en el idioma actual. */
@@ -312,7 +312,7 @@ export function builtinRules(b: BuiltinCondition): ConditionRules {
 	const r = b.rules;
 	if (!r) return {};
 	const { damageSave, ...rest } = r;
-	return structuredClone({ ...rest, ...(damageSave ? { damageSave: { ability: T(damageSave.ability) } } : {}) });
+	return structuredClone({ ...rest, ...(damageSave ? { damageSave: { ability: TC(damageSave.ability) } } : {}) });
 }
 
 /** Condición integrada con los cambios del usuario (nombre, descripción, icono, color, automatismos…). */
@@ -321,7 +321,7 @@ export function builtinInfo(b: BuiltinCondition, o?: ConditionOverride): Conditi
 	const maxLevel = o && "maxLevel" in o ? (o.maxLevel ?? undefined) : b.maxLevel;
 	return {
 		id: b.id,
-		name: o?.name?.trim() || T(b.name),
+		name: o?.name?.trim() || TC(b.name),
 		icon: o?.icon || b.icon,
 		color,
 		implies: (o?.implies ?? b.implies ?? []).filter((id) => id !== b.id),

@@ -80,7 +80,11 @@ export const SPEEDS = ["walk", "burrow", "climb", "fly", "swim"] as const;
 export const SENSES = ["blindsight", "darkvision", "tremorsense", "truesight"] as const;
 
 /** Secciones de rasgos y acciones, en el orden de 2024 (los conjuros van entre Rasgos y Acciones). */
-export const ENTRY_SECTIONS = ["traits", "actions", "bonus_actions", "reactions", "legendary_actions", "mythic_actions"] as const;
+/**
+ * Secciones de entradas, en el orden del statblock. Las acciones de guarida (de 2014) van al final; las
+ * acciones míticas se quitaron el 2026-11-24 (ninguna criatura de los bestiarios del SRD las tiene).
+ */
+export const ENTRY_SECTIONS = ["traits", "actions", "bonus_actions", "reactions", "legendary_actions", "lair_actions"] as const;
 export type EntrySection = (typeof ENTRY_SECTIONS)[number];
 
 export type Proficiency = "none" | "proficient" | "expertise";
@@ -188,7 +192,8 @@ export interface Statblock {
 	/** Usos de acción legendaria gastados (casillas, paso 4). */
 	legendary_used: number;
 	legendary_header: string;
-	mythic_header: string;
+	/** Introducción de las acciones de guarida («On initiative count 20…»). */
+	lair_actions_header: string;
 	short_name: string;
 	named: boolean;
 	/** Columnas de este statblock; sin valor, las de los ajustes. */
@@ -368,7 +373,7 @@ export function readStatblock(fm: Raw, fallbackName: string): Statblock {
 		legendary_uses_lair: legendaryLair !== undefined && legendaryLair > 0 ? Math.round(legendaryLair) : undefined,
 		legendary_used: usedCount(fm.legendary_used),
 		legendary_header: typeof fm.legendary_header === "string" ? fm.legendary_header.trim() : "",
-		mythic_header: typeof fm.mythic_header === "string" ? fm.mythic_header.trim() : "",
+		lair_actions_header: typeof fm.lair_actions_header === "string" ? fm.lair_actions_header.trim() : "",
 		short_name: str(fm.short_name),
 		named: bool(fm.named),
 		columns: num(fm.columns) === 1 ? 1 : num(fm.columns) === 2 ? 2 : undefined,

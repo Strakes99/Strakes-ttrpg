@@ -1,5 +1,5 @@
 import { Component, Editor, Events, MarkdownView, Menu, normalizePath, Notice, Plugin, TAbstractFile, TFile, TFolder, WorkspaceLeaf } from "obsidian";
-import { T } from "./i18n";
+import { setTranslateContent, T } from "./i18n";
 import { InitiativeTracker } from "./initiative/tracker";
 import { InitiativeView } from "./initiative/InitiativeView";
 import { IconLibrary, setIconLibrary } from "./map/icons";
@@ -127,6 +127,7 @@ export default class StrakesTTRPG extends Plugin {
 		const raw: unknown = await this.loadData();
 		const loaded: Partial<StrakesSettings> = raw && typeof raw === "object" ? raw : {};
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
+		setTranslateContent(this.settings.translateContent !== false);
 		this.settings.combat = Object.assign({}, DEFAULT_SETTINGS.combat, loaded.combat);
 		// Copia propia: si no, se modificaría el array de DEFAULT_SETTINGS al plegar secciones.
 		this.settings.collapsedMapSections = Array.isArray(loaded.collapsedMapSections) ? [...loaded.collapsedMapSections] : [];

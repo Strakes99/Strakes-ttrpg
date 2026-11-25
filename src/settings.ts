@@ -1,5 +1,5 @@
 import { App, PluginSettingTab, Setting, SettingDefinitionItem, setIcon, setTooltip } from "obsidian";
-import { T } from "./i18n";
+import { setTranslateContent, T } from "./i18n";
 import type StrakesTTRPG from "./main";
 import { ConditionModal, deleteCustomCondition, renderConditionIcon } from "./initiative/conditionUi";
 import { allConditions, CC_BY_URL, customInfo, SRD_URL } from "./initiative/conditions";
@@ -35,7 +35,10 @@ export class StrakesSettingTab extends PluginSettingTab {
 	async setControlValue(key: string, value: unknown): Promise<void> {
 		if ((key === "mapFolder" || key === "statblockFolder") && typeof value === "string") value = value.trim().replace(/\/+$/, "");
 		(this.plugin.settings as unknown as Record<string, unknown>)[key] = value;
+		if (key === "translateContent") setTranslateContent(value === true);
 		await this.save();
+		// Los nombres de las condiciones del SRD de esta pestaña cambian de idioma.
+		if (key === "translateContent") this.update();
 	}
 
 	private async save(): Promise<void> {
@@ -56,6 +59,11 @@ export class StrakesSettingTab extends PluginSettingTab {
 		// Cada sección es una página de los ajustes (1.4): la API de Obsidian no tiene secciones plegables, y
 		// así la lista no queda tan agrupada. La atribución del SRD va al final de todo, fuera de las páginas.
 		return [
+			// General: afecta a statblocks y condiciones, así que va fuera de las páginas, al principio.
+			{
+				type: "group",
+				items: [{ name: T("settings.translateContent"), desc: T("settings.translateContentDesc"), control: { type: "toggle", key: "translateContent" } }],
+			},
 			{
 				type: "page",
 				name: T("settings.playerScreen"),

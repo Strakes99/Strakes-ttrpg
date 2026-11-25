@@ -277,6 +277,8 @@ export interface StrakesSettings {
 	statblockMetric: boolean;
 	/** Statblocks: columnas por defecto ("1": la mitad del ancho; "2": todo el ancho, en dos columnas). */
 	statblockColumns: "1" | "2";
+	/** «Traducir el contenido» (1.4): desactivado, solo se traduce la interfaz; el contenido sale en inglés. */
+	translateContent: boolean;
 }
 
 export const DEFAULT_SETTINGS: StrakesSettings = {
@@ -317,6 +319,7 @@ export const DEFAULT_SETTINGS: StrakesSettings = {
 	statblockFolder: "Statblocks",
 	statblockMetric: false,
 	statblockColumns: "1",
+	translateContent: true,
 };
 
 export const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif"];

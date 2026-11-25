@@ -1,4 +1,4 @@
-import { currentLanguage, numberLocale, T, TranslationKey } from "../i18n";
+import { contentLanguage, TC, TranslationKey } from "../i18n";
 import en from "../i18n/locales/en.json";
 import { ConditionCatalog, conditionById } from "../initiative/conditions";
 import { derive, Derived, signed, signedValue } from "./compute";
@@ -35,8 +35,10 @@ export interface StatblockOptions {
 	catalog: ConditionCatalog;
 }
 
-const tk = (key: string, vars?: Record<string, string | number | null | undefined>) => T(key as TranslationKey, vars);
-const fmt = (n: number) => n.toLocaleString(numberLocale(), { maximumFractionDigits: 2 });
+/** Textos de contenido: en el idioma del contenido (ajuste «Traducir el contenido»). */
+const tk = (key: string, vars?: Record<string, string | number | null | undefined>) => TC(key as TranslationKey, vars);
+/** Números del contenido: separador decimal del idioma del contenido y **sin separador de miles** («5900», «75000»; pedido del desarrollador). */
+const fmt = (n: number) => n.toLocaleString(contentLanguage(), { maximumFractionDigits: 2, useGrouping: false });
 /** Valor a mano o calculado: un número con el formato del idioma, o el texto tal cual. */
 const val = (v: NumOrText) => (typeof v === "number" ? fmt(v) : v);
 const known = (list: readonly string[], id: string) => list.includes(id.toLowerCase());
@@ -45,7 +47,7 @@ type ListFormatCtor = new (lang: string, o: { type: "conjunction" | "disjunction
 const ListFormat = (Intl as unknown as { ListFormat?: ListFormatCtor }).ListFormat;
 /** «A, B o C» al estilo del idioma. */
 function listOr(items: string[]): string {
-	return ListFormat ? new ListFormat(currentLanguage(), { type: "disjunction" }).format(items) : items.join(", ");
+	return ListFormat ? new ListFormat(contentLanguage(), { type: "disjunction" }).format(items) : items.join(", ");
 }
 
 /** Marcas de 5etools que queden en un texto (`{@condition Grappled}`): por ahora, solo su texto. */
@@ -199,7 +201,7 @@ function distance(v: NumOrText, metric: boolean): string {
 
 /** «60 ft., Burrow 40 ft., Fly 80 ft. (hover)»: caminando primero y el resto por orden alfabético. */
 export function speedLine(sb: Statblock, metric: boolean): string {
-	const collator = new Intl.Collator(currentLanguage());
+	const collator = new Intl.Collator(contentLanguage());
 	const hover = tk("statblock.hover");
 	const others = SPEEDS.filter((s) => s !== "walk" && sb.speed[s] !== undefined)
 		.map((s) => ({ s, label: tk(`statblock.speed.${s}`) }))
@@ -315,7 +317,7 @@ function abilityCells(sb: Statblock, d: Derived): AbilityCell[] | null {
 // ---------------------------------------------------------------- competencias y defensas
 
 function skillNames(d: Derived): { name: string; value: string }[] {
-	const collator = new Intl.Collator(currentLanguage());
+	const collator = new Intl.Collator(contentLanguage());
 	return Object.entries(d.skills)
 		.map(([id, v]) => ({ name: tk(`statblock.skill.${id}`), value: signedValue(v) }))
 		.sort((a, b) => collator.compare(a.name, b.name));
@@ -414,11 +416,12 @@ function entryBoxes(e: StatEntry, section: EntrySection): Boxes | undefined {
 
 function entryBlock(e: StatEntry, section: EntrySection): LayoutEntry {
 	const boxes = entryBoxes(e, section);
-	return {
-		target: `entry:${section}:${e.index}`,
-		markdown: hardBreaks(entryLines(entryTitle(e.name, [usesText(e), rechargeText(e)]), e.text)),
-		...(boxes ? { boxes } : {}),
-	};
+	// Sin nombre (y sin usos ni recarga, que van en el paréntesis del nombre): solo el texto. En las
+	// acciones de guarida, como en el libro, en viñeta.
+	const plain = !e.name.trim() && !boxes;
+	const text = plainTags(e.text).trim();
+	const markdown = plain ? (section === "lair_actions" ? `- ${text}` : text) : hardBreaks(entryLines(entryTitle(e.name, [usesText(e), rechargeText(e)]), e.text));
+	return { target: `entry:${section}:${e.index}`, markdown, ...(boxes ? { boxes } : {}) };
 }
 
 const spellName = (s: string) => plainTags(s).trim();
@@ -457,7 +460,7 @@ function spellcastingBlock(b: SpellcastingBlock, d: Derived): LayoutEntry {
 			l.level === 0
 				? tk("statblock.cantrips")
 				: l.slots !== undefined
-					? T("statblock.levelSlots", { level: l.level, count: l.slots })
+					? TC("statblock.levelSlots", { level: l.level, count: l.slots })
 					: tk("statblock.level", { level: l.level });
 		const slots = l.level > 0 && l.slots ? { total: l.slots, used: Math.min(l.used, l.slots), ref: { kind: "level" as const, block: b.index, index: l.index } } : undefined;
 		lines.push({ target: `${target}:level:${l.index}`, label, spells: l.spells.map((s) => ({ name: spellName(s) })), ...(slots ? { boxes: slots } : {}) });
@@ -484,7 +487,7 @@ export function creatureRef(sb: Statblock): string {
 	return articles.includes(first) ? short : tk("statblock.theCreature", { name: short });
 }
 
-const capitalize = (s: string) => s.charAt(0).toLocaleUpperCase(currentLanguage()) + s.slice(1);
+const capitalize = (s: string) => s.charAt(0).toLocaleUpperCase(contentLanguage()) + s.slice(1);
 
 /** Usos de acción legendaria por defecto, si `legendary_uses` está vacío (el valor habitual; pedido del desarrollador). */
 export const DEFAULT_LEGENDARY_USES = 3;
@@ -528,7 +531,7 @@ export function statblockLayout(sb: Statblock, opts: StatblockOptions): Statbloc
 	section("statblock.section.bonus_actions", entries("bonus_actions"));
 	section("statblock.section.reactions", entries("reactions"));
 	section("statblock.section.legendary_actions", entries("legendary_actions"), sb.entries.legendary_actions.length ? legendaryIntro(sb) : undefined, legendaryBoxes);
-	section("statblock.section.mythic_actions", entries("mythic_actions"), sb.mythic_header ? plainTags(sb.mythic_header) : undefined);
+	section("statblock.section.lair_actions", entries("lair_actions"), sb.lair_actions_header ? plainTags(sb.lair_actions_header) : undefined);
 	return {
 		name: sb.name,
 		subtitle: headerLine(sb),

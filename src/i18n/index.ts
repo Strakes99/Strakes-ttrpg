@@ -41,7 +41,32 @@ export function currentLanguage(): string {
  * chocar con los parámetros `t` del código (p. ej. `addText((t) => …)`).
  */
 export function T(key: TranslationKey, vars?: Record<string, string | number | null | undefined>): string {
-	const lang = currentLanguage();
+	return translate(currentLanguage(), key, vars);
+}
+
+/**
+ * Ajuste «Traducir el contenido» (1.4). Activado (por defecto), el contenido sale en el idioma de la
+ * interfaz; desactivado, en inglés, y solo se traduce la interfaz. **Contenido** = lo que viene de las
+ * reglas: todo lo dibujado en los statblocks (etiquetas, tamaños, tipos, características, habilidades,
+ * daños, secciones…), los valores que se eligen en su formulario y el nombre y la descripción de las
+ * condiciones del SRD. Lo fija el plugin al cargar y al cambiar el ajuste.
+ */
+let translateContent = true;
+export function setTranslateContent(on: boolean): void {
+	translateContent = on;
+}
+
+/** Idioma del contenido: el de la interfaz, o inglés si «Traducir el contenido» está desactivado. */
+export function contentLanguage(): string {
+	return translateContent ? currentLanguage() : "en";
+}
+
+/** Texto de contenido (ver `setTranslateContent`): como `T`, pero en el idioma del contenido. */
+export function TC(key: TranslationKey, vars?: Record<string, string | number | null | undefined>): string {
+	return translate(contentLanguage(), key, vars);
+}
+
+function translate(lang: string, key: TranslationKey, vars?: Record<string, string | number | null | undefined>): string {
 	const texts = LOCALES[lang] ?? english;
 	let k: string = key;
 	if (vars && typeof vars.count === "number") {

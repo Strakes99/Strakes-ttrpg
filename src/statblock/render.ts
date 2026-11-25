@@ -1,5 +1,5 @@
 import { App, Component, MarkdownRenderer } from "obsidian";
-import { T } from "../i18n";
+import { T, TC } from "../i18n";
 import { Statblock } from "./data";
 import { Boxes, LabelValue, LayoutEntry, StatblockLayout } from "./layout";
 import { UseRef } from "./uses";
@@ -61,7 +61,7 @@ export async function renderStatblock(
 				const cell = top.createDiv("strakes-stat-top-cell");
 				if (c) pair(cell, c);
 			}
-		if (layout.speed) pair(top.createDiv("strakes-stat-top-cell is-wide"), { label: T("statblock.speed"), value: layout.speed, field: "speed" });
+		if (layout.speed) pair(top.createDiv("strakes-stat-top-cell is-wide"), { label: TC("statblock.speed"), value: layout.speed, field: "speed" });
 	}
 	if (layout.abilities) {
 		const grid = head.createDiv("strakes-stat-abilities");
@@ -71,9 +71,9 @@ export async function renderStatblock(
 		for (const a of layout.abilities) cell(a, { cls: "strakes-stat-ability-score", text: a.score });
 		grid.createDiv();
 		for (const a of layout.abilities) cell(a, { text: a.mod });
-		grid.createDiv({ cls: "strakes-stat-row-label", text: T("statblock.mod") });
+		grid.createDiv({ cls: "strakes-stat-row-label", text: TC("statblock.mod") });
 		for (const a of layout.abilities) cell(a, { text: a.save });
-		grid.createDiv({ cls: "strakes-stat-row-label", text: T("statblock.save") });
+		grid.createDiv({ cls: "strakes-stat-row-label", text: TC("statblock.save") });
 	}
 
 	// Todas las habilidades: tabla de cuatro columnas, de arriba abajo.
@@ -82,8 +82,8 @@ export async function renderStatblock(
 		const grid = mark(sb.createDiv("strakes-stat-all-skills"), "skills");
 		const half = Math.ceil(skills.length / 2);
 		for (let h = 0; h < 2; h++) {
-			grid.createDiv({ cls: "strakes-stat-row-label", text: T("statblock.skillHeader") });
-			grid.createDiv({ cls: "strakes-stat-row-label", text: T("statblock.mod") });
+			grid.createDiv({ cls: "strakes-stat-row-label", text: TC("statblock.skillHeader") });
+			grid.createDiv({ cls: "strakes-stat-row-label", text: TC("statblock.mod") });
 		}
 		for (let i = 0; i < half; i++)
 			for (const s of [skills[i], skills[i + half]]) {
@@ -102,7 +102,7 @@ export async function renderStatblock(
 		const sec = sb.createDiv("strakes-stat-section");
 		const title = mark(sec.createDiv({ cls: "strakes-stat-section-title", text: s.title }), `section:${s.key}`);
 		if (s.boxes) title.appendChild(renderBoxes(s.boxes, onUse));
-		const introTarget = s.key === "legendary_actions" ? "legendary_header" : s.key === "mythic_actions" ? "mythic_header" : `section:${s.key}`;
+		const introTarget = s.key === "legendary_actions" ? "legendary_header" : s.key === "lair_actions" ? "lair_actions_header" : `section:${s.key}`;
 		if (s.intro) renders.push(markdown(mark(sec.createDiv("strakes-stat-entry"), introTarget), s.intro));
 		for (const e of s.entries) renders.push(renderEntry(mark(sec.createDiv("strakes-stat-entry"), e.target), e, markdown, onUse, mark));
 	}

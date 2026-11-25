@@ -956,7 +956,6 @@
 	"statblock.section.bonus_actions": "Acciones Adicionales",
 	"statblock.section.reactions": "Reacciones",
 	"statblock.section.legendary_actions": "Acciones Legendarias",
-	"statblock.section.mythic_actions": "Acciones Míticas",
 	"statblock.spellcastingName": "Lanzamiento de conjuros",
 	"statblock.atWill": "A voluntad",
 	"statblock.perDayEach": "{{n}}/día cada uno",
@@ -1075,7 +1074,6 @@
 	"sbForm.legendaryUses": "Usos",
 	"sbForm.legendaryUsesLair": "En la guarida",
 	"sbForm.legendaryHeader": "Introducción (vacía = generada)",
-	"sbForm.mythicHeader": "Introducción",
 	"sbForm.otherHint": "No se ven en el statblock: sirven para filtrar en las Bases.",
 	"sbForm.source": "Fuente",
 	"sbForm.page": "Página",
@@ -1111,5 +1109,10 @@
 	"sbForm.resetUses": "Restablecer usos",
 	"statblock.spellSaveDc": "CD de salvación de conjuros",
 	"statblock.spellAttack": "Bonificador de ataque con conjuros",
-	"sbForm.section.challenge": "Desafío"
+	"sbForm.section.challenge": "Desafío",
+	"settings.translateContent": "Traducir el contenido",
+	"settings.translateContentDesc": "Statblocks (etiquetas, tamaños, tipos, características, habilidades, secciones…) y condiciones de las reglas básicas en el idioma de la interfaz. Desactivado: solo se traduce la interfaz y ese contenido sale en inglés. Tus propios textos nunca se traducen.",
+	"statblock.section.lair_actions": "Acciones de Guarida",
+	"sbForm.lairActionsHeader": "Introducción",
+	"sbForm.lairActionsHeaderPlaceholder": "En la cuenta de iniciativa 20 (perdiendo los empates), la criatura realiza una acción de guarida…"
 }

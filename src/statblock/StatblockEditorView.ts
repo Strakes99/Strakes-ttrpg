@@ -105,6 +105,7 @@ export class StatblockEditorView extends ItemView {
 				this.app.workspace.requestSaveLayout();
 			}),
 		);
+		this.registerEvent(this.plugin.events.on("settings", () => this.renderAll()));
 		this.registerEvent(
 			this.app.vault.on("delete", (file) => {
 				if (file === this.file) this.leaf.detach();

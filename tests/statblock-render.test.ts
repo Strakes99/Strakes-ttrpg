@@ -3,6 +3,8 @@ import { abilityMod, averageHp, derive, lairXpForCr, pbForCr, xpForCr } from "..
 import { nameFromNote, readStatblock } from "../src/statblock/data";
 import { alignmentName, creatureRef, hasBoxes, headerLine, speedLine, StatblockLayout, statblockLayout } from "../src/statblock/layout";
 import { resetUsesIn, setUsedIn } from "../src/statblock/uses";
+import { setTranslateContent, T } from "../src/i18n";
+import { conditionById } from "../src/initiative/conditions";
 import { setLocale, t } from "./helpers";
 
 const catalog = { customConditions: [], conditionOverrides: {} };
@@ -262,9 +264,43 @@ t("es: columnas del statblock (1, 2 o las de los ajustes)", [sb({ columns: 2 }).
 setLocale("en");
 {
 	const l = lay(aboleth);
-	t("en: CR line with XP and lair, number format", l.lines.at(-1), { label: "CR", value: "10 (XP 5,900, or 7,200 in Lair)", field: "cr" });
+	t("en: CR line with XP and lair, number format", l.lines.at(-1), { label: "CR", value: "10 (XP 5900, or 7200 in Lair)", field: "cr" });
 	t("en: generated legendary intro", has(l.sections[2].intro ?? "", "Legendary Action Uses: 3 (4 in Lair). Immediately after another creature's turn, the aboleth can expend a use"), true);
 	t("en: uses", has(entries(l), "***Legendary Resistance (3/Day, or 4/Day in Lair):***"), true);
 	t("en: ability abbreviations", l.abilities?.map((a) => a.label), ["Str", "Dex", "Con", "Int", "Wis", "Cha"]);
 }
 setLocale("es");
+
+// ---------- «Traducir el contenido» desactivado: contenido en inglés, interfaz en español ----------
+{
+	setLocale("es");
+	setTranslateContent(false);
+	const l = lay(aboleth);
+	t("sin traducir el contenido: cabecera, etiquetas y líneas en inglés", [l.subtitle, l.top[0][0]?.label, line(l, "Senses"), l.lines.at(-1)?.value], [
+		"Large Aberration, Lawful Evil",
+		"AC",
+		"Darkvision 120 ft.; Passive Perception 20",
+		"10 (XP 5900, or 7200 in Lair)",
+	]);
+	t("sin traducir el contenido: secciones y usos en inglés", [l.sections.map((x) => x.title), has(entries(l), "(3/Day, or 4/Day in Lair)")], [["Traits", "Actions", "Legendary Actions"], true]);
+	t("sin traducir el contenido: condiciones del SRD en inglés", conditionById("charmed", catalog)?.name, "Charmed");
+	t("sin traducir el contenido: la interfaz sigue en español", T("sbForm.name"), "Nombre");
+	setTranslateContent(true);
+	t("traduciendo el contenido: otra vez en español", [lay(aboleth).subtitle, conditionById("charmed", catalog)?.name], ["Aberración Grande, Legal Malvada", "Hechizado"]);
+}
+t("números del contenido sin separador de miles (también en español)", lay({ cr: "24", lair: true }).lines.at(-1)?.value, "24 (PX 62000, o 75000 en su guarida)");
+
+// ---------- Acciones de guarida (2026-11-24; sustituyen a las míticas, que se quitaron) ----------
+{
+	const l = lay({
+		legendary_actions: [{ name: "Lash", text: "x" }],
+		lair_actions: [{ name: "", text: "The water surges." }, { name: "Grasping Mud", text: "Mud grabs." }],
+		lair_actions_header: "On initiative count 20, the creature takes a lair action.",
+		mythic_actions: [{ name: "Old", text: "y" }],
+	});
+	t("guarida: sección al final, tras las legendarias; las míticas ya no existen", l.sections.map((x) => x.key), ["legendary_actions", "lair_actions"]);
+	t("guarida: introducción y entradas (sin nombre, en viñeta)", [l.sections[1].intro, l.sections[1].entries.map((e) => e.markdown)], [
+		"On initiative count 20, the creature takes a lair action.",
+		["- The water surges.", "***Grasping Mud:*** Mud grabs."],
+	]);
+}
