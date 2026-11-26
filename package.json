@@ -1,6 +1,6 @@
 {
   "name": "strakes-ttrpg",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "description": "Strakes TTRPG: maps, player screen and initiative tracker for Obsidian.",
   "main": "main.js",
   "private": true,
