@@ -1156,6 +1156,7 @@
 	"sbForm.linkCondition": "Condición",
 	"sbForm.linkCreature": "Criatura",
 	"sbForm.linkSpell": "Conjuro",
+	"sbForm.linkName": "Nombre de la criatura",
 	"sbForm.selectToLink": "Selecciona primero el texto que quieres enlazar.",
 	"settings.statblockDisplay": "Presentación de los statblocks",
 	"settings.statblockDisplayDesc": "Presets: qué muestran los statblocks y en qué orden, sus columnas y los metros.",
@@ -1216,5 +1217,10 @@
 	"bestiary.size": "Tamaño",
 	"bestiary.alignment": "Alineamiento",
 	"bestiary.habitat": "Hábitat",
-	"bestiary.source": "Fuente"
+	"bestiary.source": "Fuente",
+	"links.linkAs": "Enlazar como",
+	"links.linkAsKind": "Enlazar como {{kind}}",
+	"sbForm.cut": "Cortar",
+	"sbForm.copy": "Copiar",
+	"sbForm.paste": "Pegar"
 }

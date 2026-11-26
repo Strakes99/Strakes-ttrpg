@@ -1,14 +1,16 @@
-import { contentLanguage, TC, TranslationKey } from "../i18n";
+import { contentLanguage, TC, TranslationKey, translationsOf } from "../i18n";
 import en from "../i18n/locales/en.json";
 import { allConditions, ConditionCatalog, conditionById } from "../initiative/conditions";
 import { derive, Derived, signed, signedValue } from "./compute";
 import { UseRef } from "./uses";
 import { shows, StatblockItem, StatblockPreset } from "./presets";
+import { fillNameTags } from "./nameTags";
 import {
 	ABILITIES,
 	Ability,
 	CREATURE_TYPES,
 	DAMAGE_TYPES,
+	ENTRY_SECTIONS,
 	EntrySection,
 	NumOrText,
 	SENSES,
@@ -51,11 +53,18 @@ function listOr(items: string[]): string {
 	return ListFormat ? new ListFormat(contentLanguage(), { type: "disjunction" }).format(items) : items.join(", ");
 }
 
-/** Marcas de 5etools que queden en un texto: solo su texto (para nombres y conjuros de las listas). */
+/** ¿Es una marca de enlace? (las demás son de los bestiarios: su texto va en la tercera parte). */
+const isLinkTag = (tag: string) => /^(condition|creature|spell)$/i.test(tag);
+
+/**
+ * Las marcas que queden en un texto: solo su texto (para nombres y conjuros de las listas). En las de enlace
+ * el texto es la segunda parte (nombre|texto|libro); en las demás, que solo pueden venir de pegar texto de
+ * un bestiario, la tercera (nombre|libro|texto).
+ */
 export function plainTags(text: string): string {
-	return text.replace(/\{@\w+\s+([^{}]*)\}/g, (_all, inner: string) => {
+	return text.replace(/\{@(\w+)\s+([^{}]*)\}/g, (_all, tag: string, inner: string) => {
 		const parts = inner.split("|");
-		return (parts[2] || parts[0]).trim();
+		return ((isLinkTag(tag) ? parts[1] : parts[2]) || parts[0]).trim();
 	});
 }
 
@@ -66,7 +75,7 @@ export function plainTags(text: string): string {
  */
 export function keepLinks(text: string): string {
 	return text.replace(/\{@(\w+)\s+([^{}]*)\}/g, (all, tag: string, inner: string) => {
-		if (/^(condition|creature|spell)$/i.test(tag)) return all;
+		if (isLinkTag(tag)) return all;
 		const parts = inner.split("|");
 		return (parts[2] || parts[0]).trim();
 	});
@@ -280,7 +289,8 @@ export interface SpellLine {
 	/** Campo del formulario: «spell:0:atWill», «spell:0:perDay:1», «spell:0:level:2». */
 	target: string;
 	label: string;
-	spells: { name: string; boxes?: Boxes }[];
+	/** Cada conjuro: su nombre (en cursiva), la nota de detrás (texto normal, con espacios) y sus casillas. */
+	spells: { name: string; note?: string; boxes?: Boxes }[];
 	/** Casillas de la lista entera (al día sin «cada uno», o los espacios de un nivel), tras la etiqueta. */
 	boxes?: Boxes;
 }
@@ -364,7 +374,7 @@ const damageList = (xs: string[]) => xs.map((x) => (known(DAMAGE_TYPES, x) ? tk(
 function conditionName(x: string, catalog: ConditionCatalog): string {
 	// Como enlace a su ficha (§10.1-4), con su nombre en el idioma del contenido.
 	const info = conditionById(x.toLowerCase(), catalog, true) ?? allConditions(catalog, { includeHidden: true }).find((c) => c.custom && c.name === x);
-	return info ? `{@condition ${info.custom ? info.name : info.id}||${info.name}}` : keepLinks(x);
+	return info ? `{@condition ${info.custom ? info.name : info.id}|${info.name}}` : keepLinks(x);
 }
 
 function sensesLine(sb: Statblock, d: Derived, metric: boolean, passivePerception: boolean): string {
@@ -469,7 +479,48 @@ function entryBlock(e: StatEntry, section: EntrySection): LayoutEntry {
 	return { target: `entry:${section}:${e.index}`, markdown, ...(boxes ? { boxes } : {}) };
 }
 
-const spellName = (s: string) => plainTags(s).trim();
+/**
+ * Un conjuro de una lista: su nombre y, si la tiene, la nota de detrás («{@spell Invisibility} (self only)»,
+ * «{@spell Mage Armor}*»). La nota conserva sus espacios iniciales («*» va pegado, « (…)» con espacio) y sus
+ * marcas de enlace. Sin marca al principio (escritos a mano antes del 2026-11-26), el nombre es lo que va antes
+ * del primer «(» o «*».
+ */
+export function splitSpellItem(item: string): { name: string; note: string } {
+	const s = item.trim();
+	const tag = /^\{@\w+\s+[^{}]*\}/.exec(s);
+	// Sin marca: hasta el primer «(» o «*», con los espacios de antes en la nota.
+	const at = s.search(/[*(]/);
+	const cut = tag ? tag[0].length : at > 0 ? s.slice(0, at).trimEnd().length : s.length;
+	return { name: plainTags(s.slice(0, cut)).trim(), note: keepLinks(s.slice(cut)).trimEnd() };
+}
+
+/**
+ * Lo que se escribe en una lista de conjuros del formulario, para guardarlo (pedido del desarrollador,
+ * 2026-11-26): el nombre va en una marca de conjuro y la nota de detrás («(…)» o «*») queda fuera
+ * («Armadura de Mago (antes del combate)» → «{@spell Armadura de Mago} (antes del combate)»). Si ya lleva
+ * alguna marca `{@`, se guarda tal cual: así se puede escribir cualquier otra cosa.
+ */
+export function spellItemFromInput(text: string): string {
+	const t = text.trim();
+	if (!t || t.includes("{@")) return t;
+	const at = t.search(/[*(]/);
+	const name = (at < 0 ? t : t.slice(0, at)).trim();
+	if (!name) return t;
+	const rest = at < 0 ? "" : t.slice(at).trim();
+	return `{@spell ${name}}${rest ? (rest.startsWith("*") ? rest : ` ${rest}`) : ""}`;
+}
+
+/** Cómo se ve un conjuro de una lista en el formulario: sin marcas («Armadura de Mago (antes del combate)»). */
+export function spellItemLabel(item: string): string {
+	const { name, note } = splitSpellItem(item);
+	return `${name}${plainTags(note)}`;
+}
+
+/** Un conjuro de una lista para la maqueta: nombre y, si la tiene, su nota. */
+const spellEntry = (s: string): { name: string; note?: string } => {
+	const { name, note } = splitSpellItem(s);
+	return note ? { name, note } : { name };
+};
 
 function spellcastingBlock(b: SpellcastingBlock, d: Derived): LayoutEntry {
 	// Usos y recarga del bloque entero («Protective Magic (3/día)»), con sus casillas tras el nombre.
@@ -487,7 +538,7 @@ function spellcastingBlock(b: SpellcastingBlock, d: Derived): LayoutEntry {
 			: undefined;
 	const lines: SpellLine[] = [];
 	const target = `spell:${b.index}`;
-	if (b.at_will.length) lines.push({ target: `${target}:atWill`, label: tk("statblock.atWill"), spells: b.at_will.map((s) => ({ name: spellName(s) })) });
+	if (b.at_will.length) lines.push({ target: `${target}:atWill`, label: tk("statblock.atWill"), spells: b.at_will.map(spellEntry) });
 	for (const p of b.per_day) {
 		const ref = { kind: "perDay" as const, block: b.index, index: p.index };
 		const label = tk(p.each ? "statblock.perDayEach" : "statblock.usesDay", { n: p.uses });
@@ -497,11 +548,11 @@ function spellcastingBlock(b: SpellcastingBlock, d: Derived): LayoutEntry {
 				target: lineTarget,
 				label,
 				spells: p.spells.map((s) => {
-					const name = spellName(s);
-					return { name, boxes: { total: p.uses, used: Math.min(p.usedEach[name] ?? 0, p.uses), ref: { ...ref, spell: name } } };
+					const e = spellEntry(s);
+					return { ...e, boxes: { total: p.uses, used: Math.min(p.usedEach[e.name] ?? 0, p.uses), ref: { ...ref, spell: e.name } } };
 				}),
 			});
-		else lines.push({ target: lineTarget, label, spells: p.spells.map((s) => ({ name: spellName(s) })), boxes: { total: p.uses, used: Math.min(p.used, p.uses), ref } });
+		else lines.push({ target: lineTarget, label, spells: p.spells.map(spellEntry), boxes: { total: p.uses, used: Math.min(p.used, p.uses), ref } });
 	}
 	for (const l of b.levels) {
 		const label =
@@ -511,7 +562,7 @@ function spellcastingBlock(b: SpellcastingBlock, d: Derived): LayoutEntry {
 					? TC("statblock.levelSlots", { level: l.level, count: l.slots })
 					: tk("statblock.level", { level: l.level });
 		const slots = l.level > 0 && l.slots ? { total: l.slots, used: Math.min(l.used, l.slots), ref: { kind: "level" as const, block: b.index, index: l.index } } : undefined;
-		lines.push({ target: `${target}:level:${l.index}`, label, spells: l.spells.map((s) => ({ name: spellName(s) })), ...(slots ? { boxes: slots } : {}) });
+		lines.push({ target: `${target}:level:${l.index}`, label, spells: l.spells.map(spellEntry), ...(slots ? { boxes: slots } : {}) });
 	}
 	const footer = keepLinks(b.footer).trim();
 	return { target, markdown, ...(boxes ? { boxes } : {}), spell: { ...(stats ? { stats } : {}), lines, ...(footer ? { footer } : {}) } };
@@ -526,16 +577,36 @@ export function hasBoxes(layout: StatblockLayout): boolean {
 	);
 }
 
-/** Cómo se refiere el texto a la criatura: «el aboleth», «Strahd». */
+/**
+ * Cómo se refiere el texto a la criatura («el aboleth», «the dragon», «Strahd»): el «Nombre en el texto»
+ * (`short_name`) o, si está vacío, el nombre en minúsculas con el artículo del idioma del contenido. Si
+ * `short_name` ya empieza por un artículo de **cualquier** idioma, se deja tal cual: lo importado lo trae
+ * con el del idioma de sus textos («the lich» en un bestiario en inglés, «la saga» en uno en español).
+ */
 export function creatureRef(sb: Statblock): string {
-	if (sb.named) return sb.name;
+	if (sb.named) return sb.short_name || sb.name;
 	const short = sb.short_name || sb.name.toLowerCase();
-	const articles = tk("statblock.articles").split("|");
+	const articles = translationsOf("statblock.articles").flatMap((a) => a.split("|"));
 	const first = short.split(/\s+/)[0].toLowerCase();
 	return articles.includes(first) ? short : tk("statblock.theCreature", { name: short });
 }
 
 const capitalize = (s: string) => s.charAt(0).toLocaleUpperCase(contentLanguage()) + s.slice(1);
+
+/** El statblock con las marcas `{@name}`/`{@Name}` de sus textos cambiadas por `creatureRef` (`nameTags.ts`). */
+function withNames(sb: Statblock): Statblock {
+	const ref = creatureRef(sb);
+	const fill = (t: string) => fillNameTags(t, ref, capitalize);
+	const entries = { ...sb.entries };
+	for (const s of ENTRY_SECTIONS) entries[s] = sb.entries[s].map((e) => ({ ...e, text: fill(e.text) }));
+	return {
+		...sb,
+		entries,
+		spellcasting: sb.spellcasting.map((b) => ({ ...b, text: fill(b.text), footer: fill(b.footer) })),
+		legendary_header: fill(sb.legendary_header),
+		lair_actions_header: fill(sb.lair_actions_header),
+	};
+}
 
 /** Usos de acción legendaria por defecto, si `legendary_uses` está vacío (el valor habitual; pedido del desarrollador). */
 export const DEFAULT_LEGENDARY_USES = 3;
@@ -557,7 +628,8 @@ export function legendaryIntro(sb: Statblock): string {
 const hardBreaks = (lines: string[]) => lines.map((l, i) => (i < lines.length - 1 ? `${l}  ` : l)).join("\n");
 
 /** La maqueta completa de un statblock. */
-export function statblockLayout(sb: Statblock, opts: StatblockOptions): StatblockLayout {
+export function statblockLayout(source: Statblock, opts: StatblockOptions): StatblockLayout {
+	const sb = withNames(source);
 	const d = derive(sb, sb.all_skills);
 	const sections: LayoutSection[] = [];
 	const section = (key: string, entries: LayoutEntry[], intro?: string, boxes?: Boxes) => {

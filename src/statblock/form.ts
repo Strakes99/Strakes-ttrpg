@@ -16,8 +16,10 @@ import {
 	SPEEDS,
 	Statblock,
 } from "./data";
-import { ALIGNMENTS, alignmentFromInput, alignmentName, creatureRef, legendaryIntro } from "./layout";
+import { ALIGNMENTS, alignmentFromInput, alignmentName, creatureRef, legendaryIntro, spellItemFromInput, spellItemLabel } from "./layout";
 import { Draft } from "./notes";
+import { LinkKind, wrapLinkTag } from "../links/linkTags";
+import { addLinkAsItems } from "../links/linkMenu";
 import { IndexMove, removeMove, swapMove } from "./uses";
 import { allPresets, defaultPreset } from "./presets";
 
@@ -44,6 +46,11 @@ export interface FormContext {
 	rerender(): void;
 	/** Al mover o quitar algo de la lista `list` de la nota: que lo gastado siga a su entrada. */
 	remapUsed(list: string, move: IndexMove): void;
+	/**
+	 * Secciones que el usuario abrió o cerró al contrario de como salen por defecto (por su `target`). Es de
+	 * la vista: se conserva al volver a dibujar el formulario y se vacía al abrir otra nota.
+	 */
+	openSections: Map<string, boolean>;
 }
 
 /**
@@ -123,38 +130,99 @@ const TREASURES = ["any", "arcana", "armaments", "implements", "individual", "re
 
 /**
  * Botón de enlaces de un cuadro de texto (§10.2): con texto seleccionado, Condición, Criatura o Conjuro lo
- * envuelve en su marca (`{@condition texto}`…). El conjuro se ve como texto hasta la 1.6. Sin selección,
- * un aviso.
+ * envuelve en su marca (`{@condition texto}`…; sin selección, un aviso). El conjuro se ve como texto hasta
+ * la 1.6. **Nombre de la criatura** (2026-11-26) pone `{@name}` en el cursor o en lugar de lo seleccionado
+ * (ver `nameTags.ts`), y `{@Name}` si va al principio de una frase o lo seleccionado empieza en mayúscula.
  */
 function linkButton(wrap: HTMLElement, el: HTMLTextAreaElement): void {
 	const b = wrap.createEl("button", { cls: "clickable-icon strakes-sb-link-button", attr: { "aria-label": T("sbForm.link") } });
 	setIcon(b, "link");
 	b.addEventListener("click", (evt) => {
 		evt.preventDefault();
-		const { selectionStart: start, selectionEnd: end, value } = el;
-		const selected = value.slice(start, end);
-		if (!selected.trim()) {
-			new Notice(T("sbForm.selectToLink"));
-			return;
-		}
+		const s = textSelection(el);
 		const menu = new Menu();
-		const add = (label: string, kind: string) =>
+		const add = (label: string, kind: LinkKind) =>
 			menu.addItem((i) =>
 				i.setTitle(label).onClick(() => {
-					// Los espacios de los bordes de la selección se quedan fuera de la marca.
-					const lead = /^\s*/.exec(selected)?.[0] ?? "";
-					const trail = /\s*$/.exec(selected)?.[0] ?? "";
-					const tag = `${lead}{@${kind} ${selected.trim()}}${trail}`;
-					el.setRangeText(tag, start, end, "end");
-					el.dispatchEvent(new Event("input"));
-					el.focus();
+					if (!s.selected.trim()) {
+						new Notice(T("sbForm.selectToLink"));
+						return;
+					}
+					s.insert(wrapLinkTag(s.selected, kind));
 				}),
 			);
 		add(T("sbForm.linkCondition"), "condition");
 		add(T("sbForm.linkCreature"), "creature");
 		add(T("sbForm.linkSpell"), "spell");
+		menu.addSeparator();
+		menu.addItem((i) => i.setTitle(T("sbForm.linkName")).onClick(() => s.insert(nameTagFor(s))));
 		menu.showAtMouseEvent(evt);
 	});
+
+	/**
+	 * Clic derecho en el cuadro de texto (2026-11-26): Cortar, Copiar y Pegar (el menú propio sustituye al del
+	 * sistema, que no se puede ampliar), «Enlazar como» con su submenú (`linkMenu.ts`) y Nombre de la criatura.
+	 */
+	el.addEventListener("contextmenu", (evt) => {
+		evt.preventDefault();
+		const s = textSelection(el);
+		const has = s.selected !== "";
+		const menu = new Menu();
+		menu.addItem((i) =>
+			i
+				.setTitle(T("sbForm.cut"))
+				.setIcon("scissors")
+				.setDisabled(!has)
+				.onClick(() => void navigator.clipboard.writeText(s.selected).then(() => s.insert(""))),
+		);
+		menu.addItem((i) =>
+			i
+				.setTitle(T("sbForm.copy"))
+				.setIcon("copy")
+				.setDisabled(!has)
+				.onClick(() => void navigator.clipboard.writeText(s.selected)),
+		);
+		menu.addItem((i) =>
+			i
+				.setTitle(T("sbForm.paste"))
+				.setIcon("clipboard-paste")
+				.onClick(() => void navigator.clipboard.readText().then((text) => s.insert(text))),
+		);
+		menu.addSeparator();
+		addLinkAsItems(menu, s.selected.trim() !== "", (kind) => s.insert(wrapLinkTag(s.selected, kind)));
+		menu.addItem((i) => i.setTitle(T("sbForm.linkName")).setIcon("user").onClick(() => s.insert(nameTagFor(s))));
+		menu.showAtMouseEvent(evt);
+	});
+}
+
+/** La selección de un cuadro de texto al abrir un menú, y cómo cambiarla luego por otro texto. */
+function textSelection(el: HTMLTextAreaElement): { selected: string; before: string; insert: (text: string) => void } {
+	const { selectionStart: start, selectionEnd: end, value } = el;
+	return {
+		selected: value.slice(start, end),
+		before: value.slice(0, start),
+		insert: (text) => {
+			el.setRangeText(text, start, end, "end");
+			el.dispatchEvent(new Event("input"));
+			el.focus();
+		},
+	};
+}
+
+/**
+ * La marca del nombre para «Nombre de la criatura»: `{@Name}` al principio de una frase o si lo seleccionado
+ * empieza en mayúscula; si no, `{@name}`. Los espacios de los bordes de la selección se quedan.
+ */
+function nameTagFor(s: { selected: string; before: string }): string {
+	const has = s.selected.trim() !== "";
+	const capital = has ? /^\s*\p{Lu}/u.test(s.selected) : sentenceStart(s.before);
+	const tag = capital ? "{@Name}" : "{@name}";
+	return has ? `${/^\s*/.exec(s.selected)?.[0] ?? ""}${tag}${/\s*$/.exec(s.selected)?.[0] ?? ""}` : tag;
+}
+
+/** ¿Empieza una frase lo que va detrás de este texto? (al principio, o tras «.», «!», «?» o un salto de línea). */
+function sentenceStart(before: string): boolean {
+	return /(^|[.!?\n])\s*$/.test(before);
 }
 
 /** Dibuja el formulario en `container`. */
@@ -183,9 +251,17 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 		el.setAttr("data-sb-target", target);
 		return el;
 	};
-	const section = (key: string, target: string): HTMLElement => {
+	/**
+	 * Una sección plegable. Por defecto sale abierta, salvo las de Rasgos en adelante si están vacías
+	 * (`empty`; pedido del desarrollador, 2026-11-26, al crear y al editar). Lo que el usuario abra o cierre
+	 * se recuerda (`ctx.openSections`) aunque el formulario se vuelva a dibujar.
+	 */
+	const section = (key: string, target: string, empty = false): HTMLElement => {
 		const det = mark(container.createEl("details", { cls: "strakes-sb-section" }), `section:${target}`);
-		det.open = true;
+		const byDefault = !empty;
+		det.open = ctx.openSections.get(target) ?? byDefault;
+		// Solo se guarda lo distinto del valor por defecto (el evento también salta al abrirla aquí).
+		det.addEventListener("toggle", () => (det.open === byDefault ? ctx.openSections.delete(target) : ctx.openSections.set(target, det.open)));
 		det.createEl("summary", { text: tk(key) });
 		return det.createDiv("strakes-sb-section-body");
 	};
@@ -300,7 +376,14 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 		parent: HTMLElement,
 		obj: Obj,
 		key: string,
-		opts: { only?: (x: string) => boolean; label?: (x: string) => string; suggest?: () => { value: string; label: string }[]; placeholder?: string } = {},
+		opts: {
+			only?: (x: string) => boolean;
+			label?: (x: string) => string;
+			suggest?: () => { value: string; label: string }[];
+			placeholder?: string;
+			/** Cómo se guarda lo escrito (p. ej. con la marca de conjuro). */
+			toValue?: (x: string) => string;
+		} = {},
 	) => {
 		const wrap = parent.createDiv("strakes-sb-tags");
 		const chips = wrap.createDiv("strakes-sb-tag-list");
@@ -325,6 +408,7 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 			// Escrito con su nombre traducido («Infraoscuridad»): se guarda su valor («underdark»).
 			const match = opts.suggest?.().find((o) => o.label.toLowerCase() === v.toLowerCase());
 			if (match) v = match.value;
+			else if (opts.toValue) v = opts.toValue(v);
 			const list = stringsAt(obj, key);
 			if (!list.includes(v)) obj[key] = [...list, v];
 			field.value = "";
@@ -344,6 +428,12 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 		draw();
 		return wrap;
 	};
+
+	/**
+	 * Listas de conjuros: lo escrito se guarda con su marca de conjuro y la nota fuera (`spellItemFromInput`),
+	 * y se ve sin marcas (`spellItemLabel`).
+	 */
+	const spellTags = () => ({ placeholder: T("sbForm.addSpell"), toValue: spellItemFromInput, label: spellItemLabel });
 
 	// ------------------------------------------------------------ 1. Cabecera
 
@@ -640,10 +730,11 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 		});
 	};
 
-	const entries = (key: EntrySection, extra?: (body: HTMLElement) => void) => {
-		const body = section(`statblock.section.${key}`, key);
-		extra?.(body);
+	/** Una sección de entradas. `filled`: si tiene algo aparte de las entradas (usos legendarios, introducción). */
+	const entries = (key: EntrySection, extra?: (body: HTMLElement) => void, filled = false) => {
 		const list = listAt(draft, key);
+		const body = section(`statblock.section.${key}`, key, !list.length && !filled);
+		extra?.(body);
 		list.forEach((e, i) => {
 			const card = mark(body.createDiv("strakes-sb-card"), `entry:${key}:${i}`);
 			const top = card.createDiv("strakes-sb-card-top");
@@ -665,8 +756,8 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 	// reacción…): se quitó del formulario el 2026-11-23; los conjuros de reacción o acción adicional van en
 	// las listas, y su marca saldrá del propio conjuro (1.6).
 	{
-		const body = section("statblock.section.spellcasting", "spellcasting");
 		const blocks = listAt(draft, "spellcasting");
+		const body = section("statblock.section.spellcasting", "spellcasting", !blocks.length);
 		const abilityOptions: [string, string][] = [["", "—"], ...ABILITIES.map((a): [string, string] => [a, tk(`statblock.ability.${a}`)])];
 		blocks.forEach((b, i) => {
 			const card = mark(body.createDiv("strakes-sb-card"), `spell:${i}`);
@@ -692,7 +783,7 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 						: "",
 				);
 			});
-			tags(mark(row(card, tk("statblock.atWill")), `spell:${i}:atWill`), b, "at_will");
+			tags(mark(row(card, tk("statblock.atWill")), `spell:${i}:atWill`), b, "at_will", spellTags());
 
 			const perDay = listAt(b, "per_day");
 			perDay.forEach((p, j) => {
@@ -702,7 +793,7 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 				line.createSpan({ text: T("sbForm.perDaySuffix") });
 				boolCheck(line, T("sbForm.each"), p, "each");
 				cardButtons(line, perDay, j, `spellcasting.${i}.per_day`);
-				tags(r, p, "spells", { placeholder: T("sbForm.addSpell") });
+				tags(r, p, "spells", spellTags());
 			});
 			const levels = listAt(b, "levels");
 			levels.forEach((l, j) => {
@@ -712,7 +803,7 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 				line.createSpan({ text: T("sbForm.slots") });
 				input(line, l, "slots", { kind: "int", cls: "is-short" });
 				cardButtons(line, levels, j, `spellcasting.${i}.levels`);
-				tags(r, l, "spells", { placeholder: T("sbForm.addSpell") });
+				tags(r, l, "spells", spellTags());
 			});
 			const adds = card.createDiv("strakes-sb-card-top");
 			addButton(adds, T("sbForm.addPerDay"), () => perDay.push({ uses: 1, spells: [] }));
@@ -725,22 +816,32 @@ export function buildForm(container: HTMLElement, ctx: FormContext): void {
 	entries("actions");
 	entries("bonus_actions");
 	entries("reactions");
-	entries("legendary_actions", (body) => {
-		const g = mark(body.createDiv("strakes-sb-grid"), "legendary_uses");
-		input(row(g, T("sbForm.legendaryUses")), draft, "legendary_uses", { kind: "int", cls: "is-short", placeholder: "3" });
-		input(row(g, T("sbForm.legendaryUsesLair")), draft, "legendary_uses_lair", { kind: "int", cls: "is-short" });
-		const r = mark(row(body, T("sbForm.legendaryHeader"), "is-block"), "legendary_header");
-		textarea(r, draft, "legendary_header", (sb) => legendaryIntro({ ...sb, legendary_header: "" }));
-	});
-	entries("lair_actions", (body) => {
-		const r = mark(row(body, T("sbForm.lairActionsHeader"), "is-block"), "lair_actions_header");
-		textarea(r, draft, "lair_actions_header").placeholder = T("sbForm.lairActionsHeaderPlaceholder");
-	});
+	const hasValue = (...keys: string[]) => keys.some((k) => display(draft[k]).trim() !== "");
+	entries(
+		"legendary_actions",
+		(body) => {
+			const g = mark(body.createDiv("strakes-sb-grid"), "legendary_uses");
+			input(row(g, T("sbForm.legendaryUses")), draft, "legendary_uses", { kind: "int", cls: "is-short", placeholder: "3" });
+			input(row(g, T("sbForm.legendaryUsesLair")), draft, "legendary_uses_lair", { kind: "int", cls: "is-short" });
+			const r = mark(row(body, T("sbForm.legendaryHeader"), "is-block"), "legendary_header");
+			textarea(r, draft, "legendary_header", (sb) => legendaryIntro({ ...sb, legendary_header: "" }));
+		},
+		hasValue("legendary_uses", "legendary_uses_lair", "legendary_header"),
+	);
+	entries(
+		"lair_actions",
+		(body) => {
+			const r = mark(row(body, T("sbForm.lairActionsHeader"), "is-block"), "lair_actions_header");
+			textarea(r, draft, "lair_actions_header").placeholder = T("sbForm.lairActionsHeaderPlaceholder");
+		},
+		hasValue("lair_actions_header"),
+	);
 
 	// ------------------------------------------------------------ 7. Otros datos
 
 	{
-		const body = section("sbForm.section.other", "other");
+		const listed = (k: string) => Array.isArray(draft[k]) && (draft[k] as unknown[]).length > 0;
+		const body = section("sbForm.section.other", "other", !hasValue("source", "page") && !listed("habitat") && !listed("treasure"));
 		body.createDiv({ cls: "strakes-sb-hint", text: T("sbForm.otherHint") });
 		const g = body.createDiv("strakes-sb-grid");
 		input(row(g, T("sbForm.source")), draft, "source");

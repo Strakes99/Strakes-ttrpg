@@ -1,18 +1,18 @@
 // 1.4, paso 6: enlaces {@condition}, {@creature}, {@spell}.
 import { findCondition } from "../src/links/linkResolve";
-import { codeRanges, hasLinkTag, normalizeName, splitLinkTags } from "../src/links/linkTags";
+import { codeRanges, hasLinkTag, normalizeName, splitLinkTags, wrapLinkTag } from "../src/links/linkTags";
 import { setLocale, t } from "./helpers";
 
 const catalog = { customConditions: [], conditionOverrides: {} };
 
 t(
-	"marcas: tipo, nombre y texto a mostrar; fuente ignorada",
-	splitLinkTags("A {@condition Grappled|XPHB} y {@creature Goblin||goblins}, {@spell Bola de fuego} {@condition Agarrado}."),
+	"marcas: nombre|texto|libro (el libro, aparte)",
+	splitLinkTags("A {@condition Grappled||XPHB} y {@creature Goblin|goblins}, {@spell Bola de fuego} {@condition Agarrado}."),
 	[
 		"A ",
-		{ kind: "condition", name: "Grappled", display: "Grappled", raw: "{@condition Grappled|XPHB}" },
+		{ kind: "condition", name: "Grappled", display: "Grappled", raw: "{@condition Grappled||XPHB}", source: "XPHB" },
 		" y ",
-		{ kind: "creature", name: "Goblin", display: "goblins", raw: "{@creature Goblin||goblins}" },
+		{ kind: "creature", name: "Goblin", display: "goblins", raw: "{@creature Goblin|goblins}" },
 		", ",
 		{ kind: "spell", name: "Bola de fuego", display: "Bola de fuego", raw: "{@spell Bola de fuego}" },
 		" ",
@@ -47,3 +47,5 @@ t(
 	codeRanges("---\nname: x\n---\nTexto `{@condition A}` y\n```\n{@condition B}\n```\nfin"),
 	[[0, 15], [22, 38], [41, 63]],
 );
+
+t("enlazar como: envuelve lo seleccionado, con los espacios de los bordes fuera", [wrapLinkTag(" Bola de fuego ", "spell"), wrapLinkTag("Goblin", "creature")], [" {@spell Bola de fuego} ", "{@creature Goblin}"]);

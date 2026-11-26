@@ -14,6 +14,8 @@ export interface LinkTag {
 	name: string;
 	/** Lo que se muestra. */
 	display: string;
+	/** El libro de origen (tercera parte), si lo lleva. Aún no se usa: servirá para elegir entre dos con el mismo nombre. */
+	source?: string;
 	/** La marca tal cual, para la vista de edición. */
 	raw: string;
 }
@@ -32,15 +34,29 @@ const KINDS: Record<string, LinkKind> = {
  */
 export const linkTagRe = (): RegExp => /\{@(condition|creature|spell)\s+([^{}]+?)\}/gi;
 
+/** Envuelve lo seleccionado en una marca de enlace; los espacios de los bordes quedan fuera. */
+export function wrapLinkTag(selected: string, kind: LinkKind): string {
+	const lead = /^\s*/.exec(selected)?.[0] ?? "";
+	const trail = /\s*$/.exec(selected)?.[0] ?? "";
+	return `${lead}{@${kind} ${selected.trim()}}${trail}`;
+}
+
 /** ¿Tiene el texto alguna marca de enlace? */
 export function hasLinkTag(text: string): boolean {
 	return linkTagRe().test(text);
 }
 
+/**
+ * Las partes de una marca de enlace (orden decidido por el desarrollador el 2026-11-26, como
+ * `[[nota|alias]]`): **nombre|texto|libro**. `{@condition Prone|derribado}`, `{@creature Aboleth||MM}`.
+ * Es el orden de las notas, no el de los bestiarios (nombre|libro|texto): el importador lo cambia. Sin
+ * compatibilidad con el orden anterior de las notas (`{@creature wolf||wolves}`, hasta la 1.4.2): con el
+ * nuevo, «wolves» se lee como el libro.
+ */
 export function parseLinkTag(raw: string, kindWord: string, body: string): LinkTag {
-	const parts = body.split("|");
-	const name = parts[0].trim();
-	return { kind: KINDS[kindWord.toLowerCase()] ?? "condition", name, display: (parts[2] ?? "").trim() || name, raw };
+	const parts = body.split("|").map((p) => p.trim());
+	const name = parts[0];
+	return { kind: KINDS[kindWord.toLowerCase()] ?? "condition", name, display: parts[1] || name, raw, ...(parts[2] ? { source: parts[2] } : {}) };
 }
 
 /** Parte un texto en trozos de texto y marcas de enlace. */

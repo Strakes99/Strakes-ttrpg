@@ -1,5 +1,6 @@
 import { abilityMod, averageHp, pbForCr, xpForCr } from "./compute";
 import { ABILITIES, SKILLS } from "./data";
+import { findNameRef, insertNameTags } from "./nameTags";
 
 /**
  * Importar statblocks (1.4, paso 5): convierte una criatura en el formato JSON de 5etools en las
@@ -63,8 +64,9 @@ function renderTag(tag: string, body: string): string {
 		case "condition":
 		case "creature":
 		case "spell":
-			// Sin la fuente; con el texto a mostrar solo si es distinto del nombre.
-			return p(2) && p(2) !== p(0) ? `{@${tag} ${p(0)}||${p(2)}}` : `{@${tag} ${p(0)}}`;
+			// En el orden de las notas (nombre|texto|libro; el del bestiario es nombre|libro|texto), sin el libro
+			// y con el texto a mostrar solo si es distinto del nombre.
+			return p(2) && p(2) !== p(0) ? `{@${tag} ${p(0)}|${p(2)}}` : `{@${tag} ${p(0)}}`;
 		case "h":
 			return "*Hit:* ";
 		case "hom":
@@ -830,6 +832,8 @@ export function convertMonster(m: Obj, ctx: ImportContext): ImportedCreature {
 		if (g?.regionalEffects?.length) body.push(`## ${ctx.headings.regionalEffects}\n\n${entriesToMarkdown(g.regionalEffects)}`);
 	}
 
+	nameTags(data, Boolean(m.isNamedCreature));
+
 	const env = arr(m.environment).map((e) => str(e).toLowerCase()).filter(Boolean);
 	if (env.length) data.habitat = env;
 	const treasure = arr(m.treasure).map((e) => str(e).toLowerCase()).filter(Boolean);
@@ -838,6 +842,36 @@ export function convertMonster(m: Obj, ctx: ImportContext): ImportedCreature {
 	if (typeof m.page === "number") data.page = m.page;
 
 	return { name: str(m.name).trim(), source, data, body: body.join("\n\n") };
+}
+
+/**
+ * El nombre en los textos (opción a del desarrollador, 2026-11-26; `nameTags.ts`): busca cómo llaman los
+ * textos a la criatura («the dragon», «el liche»), lo guarda como `short_name` (con su artículo) y lo cambia
+ * por `{@name}`/`{@Name}` en los textos del statblock: entradas, bloques de conjuros (texto y texto
+ * final) e introducciones de las acciones legendarias y de guarida. El cuerpo de la nota (variantes,
+ * efectos regionales) no se toca: lo dibuja Obsidian, que no conoce la marca.
+ */
+function nameTags(data: Obj, named: boolean): void {
+	const entryLists = ["traits", "actions", "bonus_actions", "reactions", "legendary_actions", "lair_actions"]
+		.map((k) => data[k])
+		.filter((v): v is Entry[] => Array.isArray(v));
+	const blocks = Array.isArray(data.spellcasting) ? (data.spellcasting as Block[]) : [];
+	const texts = [
+		...entryLists.flat().map((e) => e.text),
+		...blocks.flatMap((b) => [b.text ?? "", b.footer ?? ""]),
+		str(data.legendary_header),
+		str(data.lair_actions_header),
+	];
+	const found = findNameRef(texts, str(data.name), named);
+	if (!found) return;
+	const tag = (t: string) => insertNameTags(t, found);
+	for (const list of entryLists) for (const e of list) e.text = tag(e.text);
+	for (const b of blocks) {
+		if (b.text) b.text = tag(b.text);
+		if (b.footer) b.footer = tag(b.footer);
+	}
+	for (const k of ["legendary_header", "lair_actions_header"]) if (typeof data[k] === "string") data[k] = tag(data[k]);
+	data.short_name = found.ref;
 }
 
 /** ¿Tiene la criatura un grupo legendario que no está en los archivos cargados? */

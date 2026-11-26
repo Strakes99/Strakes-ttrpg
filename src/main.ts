@@ -30,6 +30,8 @@ import { registerStatblockBlock } from "./statblock/processor";
 import { linkifyElement } from "./links/linkify";
 import { CreatureIndex } from "./links/linkResolve";
 import { linkLivePreview } from "./links/livePreview";
+import { addLinkAsItems } from "./links/linkMenu";
+import { wrapLinkTag } from "./links/linkTags";
 import { newStatblock, statblockFrontmatter } from "./statblock/actions";
 import { importStatblocks } from "./statblock/importUi";
 import { openStatblockEditor, StatblockEditorView, VIEW_TYPE_STATBLOCK } from "./statblock/StatblockEditorView";
@@ -316,6 +318,8 @@ export default class StrakesTTRPG extends Plugin {
 						.setIcon("monitor")
 						.onClick(() => void this.sendToPlayers({ kind: "text", markdown: sel, sourcePath: view.file?.path ?? "" })),
 				);
+				// «Enlazar como» Conjuro / Criatura / Condición (2026-11-26; `links/linkMenu.ts`).
+				addLinkAsItems(menu, true, (kind) => editor.replaceSelection(wrapLinkTag(sel, kind)));
 			}),
 		);
 	}

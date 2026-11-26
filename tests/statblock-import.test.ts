@@ -19,7 +19,7 @@ t(
 	convertText("{@atkr m} {@hit 7}, reach 5 ft. {@h}9 ({@damage 2d6 + 2}) Slashing damage. {@actSave con} {@dc 13}. {@actSaveFail} Poisoned."),
 	"*Melee Attack Roll:* +7, reach 5 ft. *Hit:* 9 (2d6 + 2) Slashing damage. *Constitution Saving Throw:* DC 13. *Failure:* Poisoned.",
 );
-t("marcas: se conservan condition, creature y spell, sin la fuente", convertText("{@condition Grappled|XPHB} and {@spell Fireball|XPHB} and {@creature wolf||wolves}"), "{@condition Grappled} and {@spell Fireball} and {@creature wolf||wolves}");
+t("marcas: se conservan condition, creature y spell, sin la fuente y en el orden de las notas (nombre|texto)", convertText("{@condition Grappled|XPHB} and {@spell Fireball|XPHB} and {@creature wolf||wolves}"), "{@condition Grappled} and {@spell Fireball} and {@creature wolf|wolves}");
 t("marcas: texto a mostrar en la tercera parte", convertText("{@variantrule Cone [Area of Effect]|XPHB|Cone} and {@item chain mail|phb}"), "Cone and chain mail");
 t("marcas: 2014 (ataque con arma, éxito, respuesta con guion)", convertText("{@atk mw,rw} {@actSaveSuccess} {@actResponse d}"), "*Melee or Ranged Weapon Attack:* *Success:* *Response—*");
 t("marcas: libro y aventura, su nombre y no el capítulo", convertText("{@book extreme cold|DMG|5|Extreme Cold} in the {@book Dungeon Master's Guide|DMG}, {@adventure area 23b|WDMM|21|23b. Hall}"), "extreme cold in the Dungeon Master's Guide, area 23b");

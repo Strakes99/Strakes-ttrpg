@@ -156,7 +156,7 @@ t("es: CA con nota conocida, traducida", lay({ ac: 13, ac_note: "chain shirt" })
 t("es: nota de CA con varias partes, sin distinguir mayúsculas", lay({ ac: 20, ac_note: "Plate Armor, shield" }).top[0][0]?.value, "20 (armadura de placas, escudo)");
 t("es: nota de CA desconocida, tal cual", lay({ ac: 15, ac_note: "15 with Mage Armor" }).top[0][0]?.value, "15 (15 with Mage Armor)");
 t("es: sentidos de texto conocidos, traducidos", line(lay({ senses: { blindsight: 30 }, senses_other: ["echolocation", "smells fear"] }), "Sentidos"), "Vista ciega 30 pies, ecolocalización, smells fear");
-t("es: inmunidades de daño y condiciones juntas, con «;»", line(lay({ immunities: ["fire", "poison"], condition_immunities: ["charmed", "Mi condición"] }), "Inmunidades"), "Fuego, Veneno; {@condition charmed||Hechizado}, Mi condición");
+t("es: inmunidades de daño y condiciones juntas, con «;»", line(lay({ immunities: ["fire", "poison"], condition_immunities: ["charmed", "Mi condición"] }), "Inmunidades"), "Fuego, Veneno; {@condition charmed|Hechizado}, Mi condición");
 t("es: resistencias en texto (2014), tal cual", line(lay({ resistances: ["cold", "bludgeoning from nonmagical attacks"] }), "Resistencias"), "Frío, bludgeoning from nonmagical attacks");
 t("es: el paréntesis propio del nombre se junta con «;»", entries(lay({ actions: [{ name: "Fell Glare (Fiend Only)", text: "x", recharge: "long" }] })), "***Fell Glare (Fiend Only; Se recarga tras un descanso largo):*** x");
 t("es: marcas de enlace, se conservan (el dibujo las vuelve enlaces); las demás, su texto", entries(lay({ actions: [{ name: "Garra", text: "Queda {@condition Grappled|XPHB} con {@dice 1d6}." }] })), "***Garra:*** Queda {@condition Grappled|XPHB} con 1d6.");
@@ -174,7 +174,7 @@ t("es: columnas del statblock (1, 2 o las de los ajustes)", [sb({ columns: 2 }).
 				name: "Spellcasting",
 				ability: "cha",
 				text: "The creature casts one of the following spells.",
-				at_will: ["{@spell Mage Hand|XPHB}", "Prestidigitation"],
+				at_will: ["{@spell Mage Hand||XPHB}", "Prestidigitation"],
 				per_day: [{ uses: 1, each: true, spells: ["Fireball", "Fly"] }],
 				levels: [{ level: 1, slots: 4, spells: ["Shield"] }, { level: 0, spells: ["Light"] }],
 				footer: "Pie.",

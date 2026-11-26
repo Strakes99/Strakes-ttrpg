@@ -1156,6 +1156,7 @@
 	"sbForm.linkCondition": "Condition",
 	"sbForm.linkCreature": "Creature",
 	"sbForm.linkSpell": "Spell",
+	"sbForm.linkName": "Creature name",
 	"sbForm.selectToLink": "First select the text you want to link.",
 	"settings.statblockDisplay": "Statblock display",
 	"settings.statblockDisplayDesc": "Presets: what statblocks show and in what order, their columns and meters.",
@@ -1216,5 +1217,10 @@
 	"bestiary.size": "Size",
 	"bestiary.alignment": "Alignment",
 	"bestiary.habitat": "Habitat",
-	"bestiary.source": "Source"
+	"bestiary.source": "Source",
+	"links.linkAs": "Link as",
+	"links.linkAsKind": "Link as {{kind}}",
+	"sbForm.cut": "Cut",
+	"sbForm.copy": "Copy",
+	"sbForm.paste": "Paste"
 }

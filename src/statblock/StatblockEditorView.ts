@@ -40,6 +40,8 @@ export class StatblockEditorView extends ItemView {
 	private previewComponent: Component | null = null;
 	private undoButton!: HTMLElement;
 	private redoButton!: HTMLElement;
+	/** Secciones del formulario abiertas o cerradas a mano (ver `FormContext.openSections`). */
+	private openSections = new Map<string, boolean>();
 
 	constructor(
 		leaf: WorkspaceLeaf,
@@ -174,6 +176,8 @@ export class StatblockEditorView extends ItemView {
 		if (reset) {
 			this.history = [JSON.stringify(this.draft)];
 			this.historyIndex = 0;
+			// Otra nota (o la misma, abierta de nuevo): las secciones vuelven a salir como por defecto.
+			this.openSections.clear();
 		} else this.pushHistory();
 		this.renderAll();
 	}
@@ -252,7 +256,7 @@ export class StatblockEditorView extends ItemView {
 	private renderAll(): void {
 		if (!this.formEl) return;
 		this.updateHistoryButtons();
-		const scroll = this.formEl.scrollTop;
+		const restoreScroll = keepScroll(this.formEl);
 		if (!this.file) {
 			this.formEl.empty();
 			this.formEl.createDiv({ cls: "strakes-sb-hint", text: T("sbForm.noFile") });
@@ -269,8 +273,9 @@ export class StatblockEditorView extends ItemView {
 				const file = this.file;
 				if (file) void remapUsed(this.app, file, list, move).then(() => this.schedulePreview());
 			},
+			openSections: this.openSections,
 		});
-		this.formEl.scrollTop = scroll;
+		restoreScroll();
 		void this.renderPreview();
 	}
 
@@ -317,11 +322,29 @@ export class StatblockEditorView extends ItemView {
 		this.previewComponent?.unload();
 		this.previewComponent = new Component();
 		this.previewComponent.load();
+		const restoreScroll = keepScroll(this.previewEl);
 		this.previewEl.empty();
 		await renderStatblock(this.app, this.previewEl, layout, this.file.path, this.previewComponent, statblockColumns(sb, preset.columns), undefined, true, (el) =>
 			linkifyElement(this.plugin, el),
 		);
+		restoreScroll();
 	}
+}
+
+/**
+ * Guarda el desplazamiento de un elemento y de todos los que lo contienen, y devuelve con qué
+ * restaurarlo. Al vaciar el formulario (o la vista previa) para dibujarlo de nuevo, su contenedor se
+ * encoge un momento y lo que se desplaza vuelve arriba. No siempre es el mismo elemento: con la pestaña
+ * ancha se desplaza el formulario; con la estrecha (formulario y vista previa uno debajo de otro), la
+ * vista entera. Antes solo se guardaba el del formulario: es la causa más probable de que, al añadir una
+ * acción adicional, el formulario volviera al principio (visto por el desarrollador el 2026-11-26).
+ */
+function keepScroll(el: HTMLElement): () => void {
+	const saved: [HTMLElement, number][] = [];
+	for (let p: HTMLElement | null = el; p; p = p.parentElement) if (p.scrollTop) saved.push([p, p.scrollTop]);
+	return () => {
+		for (const [p, top] of saved) p.scrollTop = top;
+	};
 }
 
 /**

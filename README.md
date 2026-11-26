@@ -134,8 +134,8 @@ Write `{@condition Grappled}`, `{@creature Goblin}` or `{@spell Fireball}` in an
 - **Conditions**: Ctrl/Cmd+hover shows the condition's card; clicking pins it.
 - **Creatures**: Ctrl/Cmd+hover shows the creature's statblock, with working checkboxes; clicking opens its note (Ctrl/Cmd+click, in a new tab). A creature is found by its note name (without the prefix and suffix) or its `name` property.
 - **Spells**: shown in italics for now.
-- `{@condition Prone||knocked down}` shows other text. Links that aren't found are dimmed. Nothing is converted inside code.
-- In the statblock form, select some text and use the link button next to the text box to mark it.
+- `{@condition Prone|knocked down}` shows other text, as in `[[note|alias]]`. An optional third part names the book (`{@creature Aboleth||MM}`); it isn't used yet. Links that aren't found are dimmed. Nothing is converted inside code.
+- **Right-click** selected text in the editor (source mode or Live Preview) or in a statblock form text box → *Link as* → *Spell*, *Creature* or *Condition*. The statblock form also has a link button next to each text box.
 
 ## Translations
 
@@ -164,6 +164,7 @@ Anything you leave out is shown in English, so a partial translation works. The 
 - **The player screen** is a regular view opened with `workspace.openPopoutLeaf()`.
 - **Collapsed properties on new statblock notes** use the internal `app.foldManager` (there is no public API to fold a note's properties). It is guarded: if it is missing, notes are created with their properties expanded.
 - **Links in Live Preview** are a CodeMirror 6 view plugin registered with `registerEditorExtension`.
+- **"Link as" submenu** in the editor's context menu uses the internal `MenuItem.setSubmenu()` (the public API has no submenus; Obsidian uses it for its own menus). It is guarded: if it is missing, the three options are added as plain items.
 - **The statblock form tab** calls the internal `leaf.updateHeader()` to refresh its title when its note is renamed. It is guarded: if it is missing, the title updates the next time the tab is opened.
 - **Network and telemetry**: none.
 

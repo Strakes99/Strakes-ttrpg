@@ -179,6 +179,9 @@ async function renderEntry(
 		line.spells.forEach((s, i) => {
 			if (i) row.appendText(", ");
 			row.createEl("em", { text: s.name });
+			// La nota, en texto normal, como en los libros («*Invisibilidad* (solo sobre sí mismo)»). Sus marcas
+			// de enlace las convierte `linkify` al final.
+			if (s.note) row.appendText(s.note);
 			if (s.boxes) row.appendChild(renderBoxes(s.boxes, onUse));
 		});
 	}
