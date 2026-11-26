@@ -1,6 +1,7 @@
 /**
  * Enlaces de las notas y los statblocks (1.4, paso 6; §12): `{@condition Grappled}`, `{@creature Goblin}` y
- * `{@spell Fireball}`, con sus nombres en español `{@condicion …}`, `{@criatura …}` y `{@hechizo …}`. La
+ * `{@spell Fireball}`. Solo con el nombre de la marca en inglés: las españolas (`{@condicion …}`,
+ * `{@criatura …}`, `{@hechizo …}`) se quitaron el 2026-11-25, para que todas las notas las escriban igual. La
  * forma completa es `{@tipo nombre|fuente|texto}`: se muestra `texto` si lo hay; si no, `nombre`. La fuente
  * (el libro, en los datos de 5etools) se ignora. Sin DOM (se prueba en los tests).
  */
@@ -19,13 +20,8 @@ export interface LinkTag {
 
 const KINDS: Record<string, LinkKind> = {
 	condition: "condition",
-	condicion: "condition",
-	"condición": "condition",
 	creature: "creature",
-	criatura: "creature",
 	spell: "spell",
-	hechizo: "spell",
-	conjuro: "spell",
 };
 
 /**
@@ -34,7 +30,7 @@ const KINDS: Record<string, LinkKind> = {
  * previa de `linkifyElement` hacía que se saltara la primera marca de un texto (visto en el Liche,
  * 2026-11-25: de «{@spell Counterspell} or {@spell Shield}» solo se convertía Shield).
  */
-export const linkTagRe = (): RegExp => /\{@(condition|condici[oó]n|creature|criatura|spell|hechizo|conjuro)\s+([^{}]+?)\}/gi;
+export const linkTagRe = (): RegExp => /\{@(condition|creature|spell)\s+([^{}]+?)\}/gi;
 
 /** ¿Tiene el texto alguna marca de enlace? */
 export function hasLinkTag(text: string): boolean {

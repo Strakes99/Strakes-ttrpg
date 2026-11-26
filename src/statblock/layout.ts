@@ -60,13 +60,13 @@ export function plainTags(text: string): string {
 }
 
 /**
- * Como `plainTags`, pero **conserva las marcas de enlace** (`{@condition}`, `{@creature}`, `{@spell}` y sus
- * nombres en español): el dibujo las convierte en enlaces (paso 6). Para los textos de rasgos, acciones,
+ * Como `plainTags`, pero **conserva las marcas de enlace** (`{@condition}`, `{@creature}`, `{@spell}`): el
+ * dibujo las convierte en enlaces (paso 6). Para los textos de rasgos, acciones,
  * introducciones y líneas.
  */
 export function keepLinks(text: string): string {
 	return text.replace(/\{@(\w+)\s+([^{}]*)\}/g, (all, tag: string, inner: string) => {
-		if (/^(condition|condici[oó]n|creature|criatura|spell|hechizo|conjuro)$/i.test(tag)) return all;
+		if (/^(condition|creature|spell)$/i.test(tag)) return all;
 		const parts = inner.split("|");
 		return (parts[2] || parts[0]).trim();
 	});

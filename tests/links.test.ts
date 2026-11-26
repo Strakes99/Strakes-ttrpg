@@ -1,4 +1,4 @@
-// 1.4, paso 6: enlaces {@condition}, {@creature}, {@spell} (y sus nombres en español).
+// 1.4, paso 6: enlaces {@condition}, {@creature}, {@spell}.
 import { findCondition } from "../src/links/linkResolve";
 import { codeRanges, hasLinkTag, normalizeName, splitLinkTags } from "../src/links/linkTags";
 import { setLocale, t } from "./helpers";
@@ -6,20 +6,25 @@ import { setLocale, t } from "./helpers";
 const catalog = { customConditions: [], conditionOverrides: {} };
 
 t(
-	"marcas: tipo, nombre y texto a mostrar; fuente ignorada; nombres en español",
-	splitLinkTags("A {@condition Grappled|XPHB} y {@criatura Goblin||goblins}, {@hechizo Bola de fuego} {@condición Agarrado}."),
+	"marcas: tipo, nombre y texto a mostrar; fuente ignorada",
+	splitLinkTags("A {@condition Grappled|XPHB} y {@creature Goblin||goblins}, {@spell Bola de fuego} {@condition Agarrado}."),
 	[
 		"A ",
 		{ kind: "condition", name: "Grappled", display: "Grappled", raw: "{@condition Grappled|XPHB}" },
 		" y ",
-		{ kind: "creature", name: "Goblin", display: "goblins", raw: "{@criatura Goblin||goblins}" },
+		{ kind: "creature", name: "Goblin", display: "goblins", raw: "{@creature Goblin||goblins}" },
 		", ",
-		{ kind: "spell", name: "Bola de fuego", display: "Bola de fuego", raw: "{@hechizo Bola de fuego}" },
+		{ kind: "spell", name: "Bola de fuego", display: "Bola de fuego", raw: "{@spell Bola de fuego}" },
 		" ",
-		{ kind: "condition", name: "Agarrado", display: "Agarrado", raw: "{@condición Agarrado}" },
+		{ kind: "condition", name: "Agarrado", display: "Agarrado", raw: "{@condition Agarrado}" },
 		".",
 	],
 );
+{
+	// Las marcas con el nombre en español se quitaron el 2026-11-25: ya no son enlaces.
+	const text = "{@condicion Agarrado} {@condición Agarrado} {@criatura Goblin} {@hechizo Bola de fuego} {@conjuro Escudo}";
+	t("marcas: las de nombre en español no son enlaces", [hasLinkTag(text), splitLinkTags(text)], [false, [text]]);
+}
 {
 	// Regresión (Liche, 2026-11-25): comprobar el texto antes de partirlo hacía saltar la primera marca.
 	const text = "The lich casts {@spell Counterspell} or {@spell Shield} in response.";

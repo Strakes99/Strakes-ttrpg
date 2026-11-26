@@ -101,6 +101,8 @@ t("etiquetas de los libros", ["MM", "XMM", "XPHB", "XDMG", "VGM"].map(bookLabel)
 	t("sentidos: distancia, o texto con su nota", d.senses, { darkvision: 60, blindsight: "10 ft. (blind beyond this radius)", truesight: "120 ft. (unimpeded by magical Darkness)" });
 	t("idiomas: frases partidas unidas y telepatía aparte", d.languages, ["Common", "Elvish, and Sylvan but can't speak them", "Infernal", "telepathy 60 ft."]);
 	t("equipo: sin el libro, con cantidad", d.gear, ["Longbow", "Javelin (6)"]);
+	const g = conv({ gear: ["bastón|xphb", "smith's tools|xphb", { item: "óleo sagrado", quantity: 2 }, "half-plate armor"] }).data;
+	t("equipo: mayúsculas con tildes y apóstrofos", g.gear, ["Bastón", "Smith's Tools", "Óleo Sagrado (2)", "Half-Plate Armor"]);
 }
 
 // ---------- Rasgos, acciones y entradas anidadas ----------

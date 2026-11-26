@@ -433,7 +433,11 @@ function languages(v: unknown): string[] {
 	return out;
 }
 
-const titleCase = (s: string) => s.replace(/\b([a-z])/g, (c) => c.toUpperCase());
+/**
+ * Mayúscula inicial en cada palabra. Una letra con tilde o un apóstrofo no empiezan palabra (con `\b`,
+ * «bastón» salía «BastóN» y «smith's», «Smith'S»).
+ */
+const titleCase = (s: string) => s.replace(/(^|[^\p{L}\p{M}'’])(\p{Ll})/gu, (_all, pre: string, c: string) => pre + c.toUpperCase());
 
 function gearList(v: unknown): string[] {
 	return arr(v)

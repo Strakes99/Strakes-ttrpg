@@ -129,7 +129,7 @@ A statblock is a note: the creature's data lives in the note's properties, and a
 
 ## Links to conditions, creatures and spells
 
-Write `{@condition Grappled}`, `{@creature Goblin}` or `{@spell Fireball}` in any note (the Spanish `{@condicion …}`, `{@criatura …}` and `{@hechizo …}` work too). In reading view and Live Preview they become links:
+Write `{@condition Grappled}`, `{@creature Goblin}` or `{@spell Fireball}` in any note. In reading view and Live Preview they become links:
 
 - **Conditions**: Ctrl/Cmd+hover shows the condition's card; clicking pins it.
 - **Creatures**: Ctrl/Cmd+hover shows the creature's statblock, with working checkboxes; clicking opens its note (Ctrl/Cmd+click, in a new tab). A creature is found by its note name (without the prefix and suffix) or its `name` property.
