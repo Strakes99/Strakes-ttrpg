@@ -1,7 +1,7 @@
 {
   "id": "strakes-ttrpg",
   "name": "Strakes TTRPG",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "minAppVersion": "1.13.0",
   "description": "TTRPG toolkit for game masters: image maps with markers, routes, travel times and fog of war; a player screen; an initiative tracker with conditions; and D&D 5e statblocks with a form editor, use checkboxes and JSON import.",
   "author": "Strakes99",
