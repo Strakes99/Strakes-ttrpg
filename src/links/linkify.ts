@@ -16,17 +16,20 @@ import { hasLinkTag, LinkTag, splitLinkTags } from "./linkTags";
  *  - Conjuro: hasta la 1.6 (hechizos), solo su nombre en cursiva.
  */
 
+/**
+ * Los ayudantes de Obsidian (`createEl`, `createSpan`, `createFragment`) de la ventana del documento: cada
+ * ventana emergente tiene los suyos, y así el elemento nace en su documento. La revisión de la tienda pide
+ * estos ayudantes en lugar de `document.createElement` (aviso `prefer-create-el`, 1.4.0 a 1.4.2).
+ */
+function helpers(doc: Document): Window & typeof globalThis {
+	const win = doc.defaultView;
+	return win && typeof win.createEl === "function" ? win : window;
+}
+
 /** Elemento de un enlace. */
 export function createLinkEl(plugin: StrakesTTRPG, tag: LinkTag, doc: Document = activeDocument): HTMLElement {
-	if (tag.kind === "spell") {
-		const em = doc.createElement("em");
-		em.addClass("strakes-link-spell");
-		em.setText(tag.display);
-		return em;
-	}
-	const el = doc.createElement("span");
-	el.addClass("strakes-link", `is-${tag.kind}`);
-	el.setText(tag.display);
+	if (tag.kind === "spell") return helpers(doc).createEl("em", { cls: "strakes-link-spell", text: tag.display });
+	const el = helpers(doc).createSpan({ cls: ["strakes-link", `is-${tag.kind}`], text: tag.display });
 	const found = tag.kind === "condition" ? !!findCondition(tag.name, plugin.settings) : !!plugin.creatures.find(tag.name);
 	if (!found) {
 		el.addClass("is-unresolved");
@@ -76,9 +79,9 @@ export function linkifyElement(plugin: StrakesTTRPG, root: HTMLElement): void {
 		nodes.push(text);
 	}
 	for (const text of nodes) {
-		const frag = doc.createDocumentFragment();
+		const frag = helpers(doc).createFragment();
 		for (const part of splitLinkTags(text.data)) {
-			if (typeof part === "string") frag.appendChild(doc.createTextNode(part));
+			if (typeof part === "string") frag.appendText(part);
 			else frag.appendChild(createLinkEl(plugin, part, doc));
 		}
 		text.replaceWith(frag);
