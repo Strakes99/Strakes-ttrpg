@@ -14,7 +14,7 @@ export interface LinkTag {
 	name: string;
 	/** Lo que se muestra. */
 	display: string;
-	/** El libro de origen (tercera parte), si lo lleva. Aún no se usa: servirá para elegir entre dos con el mismo nombre. */
+	/** El libro de origen (tercera parte), si lo lleva: elige entre criaturas con el mismo nombre (`creatureLookup`). */
 	source?: string;
 	/** La marca tal cual, para la vista de edición. */
 	raw: string;
@@ -48,7 +48,8 @@ export function hasLinkTag(text: string): boolean {
 
 /**
  * Las partes de una marca de enlace (orden decidido por el desarrollador el 2026-11-26, como
- * `[[nota|alias]]`): **nombre|texto|libro**. `{@condition Prone|derribado}`, `{@creature Aboleth||MM}`.
+ * `[[nota|alias]]`): **nombre|texto|libro**. `{@condition Prone|derribado}`, `{@creature Aboleth||MM}` (el Aboleth
+ * cuya propiedad `source` es MM).
  * Es el orden de las notas, no el de los bestiarios (nombre|libro|texto): el importador lo cambia. Sin
  * compatibilidad con el orden anterior de las notas (`{@creature wolf||wolves}`, hasta la 1.4.2): con el
  * nuevo, «wolves» se lee como el libro.

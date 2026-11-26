@@ -94,7 +94,7 @@ class LinkPopover {
 
 	private renderCreature(title: HTMLElement, body: HTMLElement, tag: LinkTag): void {
 		const { app, settings } = this.plugin;
-		const file = this.plugin.creatures.find(tag.name);
+		const file = this.plugin.creatures.find(tag.name, tag.source);
 		const fm: unknown = file ? app.metadataCache.getFileCache(file)?.frontmatter : undefined;
 		if (!file || !isStatblock(fm)) {
 			title.setText(tag.display);

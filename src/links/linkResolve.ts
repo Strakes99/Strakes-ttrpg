@@ -4,6 +4,7 @@ import { allConditions, ConditionCatalog, ConditionInfo } from "../initiative/co
 import type StrakesTTRPG from "../main";
 import { isStatblock, nameFromNote } from "../statblock/data";
 import { normalizeName } from "./linkTags";
+import { bookLabel } from "../statblock/import5e";
 
 /**
  * A qué apunta un enlace (1.4, paso 6). Los nombres se comparan sin mayúsculas ni acentos, en cualquier
@@ -32,37 +33,95 @@ export function findCondition(name: string, catalog: ConditionCatalog): Conditio
  * **nombre de la nota** (sin el prefijo ni el sufijo, o tal cual) sobre la propiedad `name` (decisión del
  * desarrollador, 2026-11-24): `{@creature Aboleth}` → «ST-Aboleth»; `{@creature Aboleth (MM'24)}` → la otra.
  * Entre iguales, la primera por orden alfabético de la ruta, para que no cambie de un día a otro.
+ *
+ * **Con libro** (`{@creature Aboleth||MM}`, decidido el 2026-11-26): entre las notas con ese nombre, la que
+ * tiene ese libro en `source` (ver `creatureLookup`).
  */
 export class CreatureIndex {
-	private map: Map<string, TFile> | null = null;
+	private lookup: ((name: string, source?: string) => TFile | null) | null = null;
 
 	constructor(private plugin: StrakesTTRPG) {}
 
 	invalidate(): void {
-		this.map = null;
+		this.lookup = null;
 	}
 
-	find(name: string): TFile | null {
-		if (!this.map) this.map = this.build();
-		return this.map.get(normalizeName(name)) ?? null;
+	/** La nota de una criatura por su nombre y, si el enlace lo da, su libro. */
+	find(name: string, source?: string): TFile | null {
+		if (!this.lookup) this.lookup = this.build();
+		return this.lookup(name, source);
 	}
 
-	private build(): Map<string, TFile> {
+	private build(): (name: string, source?: string) => TFile | null {
 		const { app, settings } = this.plugin;
-		const byNote = new Map<string, TFile>();
-		const byName = new Map<string, TFile>();
-		const files = app.vault.getMarkdownFiles().sort((a, b) => a.path.localeCompare(b.path));
-		for (const file of files) {
+		const notes: CreatureNote<TFile>[] = [];
+		for (const file of app.vault.getMarkdownFiles().sort((a, b) => a.path.localeCompare(b.path))) {
 			const fm: unknown = app.metadataCache.getFileCache(file)?.frontmatter;
 			if (!isStatblock(fm)) continue;
-			for (const n of [nameFromNote(file.basename, settings.statblockPrefix, settings.statblockSuffix), file.basename].map(normalizeName))
-				if (n && !byNote.has(n)) byNote.set(n, file);
-			const own = (fm as { name?: unknown }).name;
-			const n = typeof own === "string" ? normalizeName(own) : "";
-			if (n && !byName.has(n)) byName.set(n, file);
+			const { name, source } = fm as { name?: unknown; source?: unknown };
+			notes.push({
+				file,
+				noteNames: [nameFromNote(file.basename, settings.statblockPrefix, settings.statblockSuffix), file.basename],
+				name: typeof name === "string" ? name : "",
+				source: typeof source === "string" ? source : "",
+			});
 		}
-		// El nombre de la nota manda: lo que solo coincide por `name` se añade si no está ya.
-		for (const [n, file] of byName) if (!byNote.has(n)) byNote.set(n, file);
-		return byNote;
+		return creatureLookup(notes);
 	}
+}
+
+/** Una nota de statblock para buscarla (`F`: su archivo; en los tests, cualquier cosa). */
+export interface CreatureNote<F> {
+	file: F;
+	/** El nombre de la nota sin prefijo ni sufijo, y tal cual. */
+	noteNames: string[];
+	/** Su propiedad `name`. */
+	name: string;
+	/** Su propiedad `source` (el libro: «MM», «XMM»…). */
+	source: string;
+}
+
+/**
+ * ¿Es de ese libro? Sin distinguir mayúsculas, por su código («MM») o por la etiqueta con la que el plugin
+ * lo pone en los nombres de las notas («MM'14», `bookLabel`).
+ */
+export function sourceMatches(noteSource: string, wanted: string): boolean {
+	const s = noteSource.trim();
+	const w = wanted.trim().toUpperCase();
+	return !!s && !!w && (s.toUpperCase() === w || bookLabel(s).toUpperCase() === w);
+}
+
+/**
+ * Búsqueda de criaturas (en orden: las primeras ganan los empates). Sin libro: manda el nombre de la nota
+ * sobre la propiedad `name`. Con libro: entre todas las notas con ese nombre (de la nota o `name`), la
+ * primera de ese libro; si ninguna lo es, como sin libro.
+ */
+export function creatureLookup<F>(notes: CreatureNote<F>[]): (name: string, source?: string) => F | null {
+	const byNote = new Map<string, F>();
+	const byName = new Map<string, F>();
+	const candidates = new Map<string, CreatureNote<F>[]>();
+	for (const note of notes) {
+		const keys = new Set<string>();
+		for (const n of note.noteNames.map(normalizeName)) {
+			if (!n) continue;
+			keys.add(n);
+			if (!byNote.has(n)) byNote.set(n, note.file);
+		}
+		const own = normalizeName(note.name);
+		if (own) {
+			keys.add(own);
+			if (!byName.has(own)) byName.set(own, note.file);
+		}
+		for (const k of keys) candidates.set(k, [...(candidates.get(k) ?? []), note]);
+	}
+	// El nombre de la nota manda: lo que solo coincide por `name` se añade si no está ya.
+	for (const [n, file] of byName) if (!byNote.has(n)) byNote.set(n, file);
+	return (name, source) => {
+		const key = normalizeName(name);
+		if (source) {
+			const hit = candidates.get(key)?.find((note) => sourceMatches(note.source, source));
+			if (hit) return hit.file;
+		}
+		return byNote.get(key) ?? null;
+	};
 }

@@ -30,7 +30,7 @@ function helpers(doc: Document): Window & typeof globalThis {
 export function createLinkEl(plugin: StrakesTTRPG, tag: LinkTag, doc: Document = activeDocument): HTMLElement {
 	if (tag.kind === "spell") return helpers(doc).createEl("em", { cls: "strakes-link-spell", text: tag.display });
 	const el = helpers(doc).createSpan({ cls: ["strakes-link", `is-${tag.kind}`], text: tag.display });
-	const found = tag.kind === "condition" ? !!findCondition(tag.name, plugin.settings) : !!plugin.creatures.find(tag.name);
+	const found = tag.kind === "condition" ? !!findCondition(tag.name, plugin.settings) : !!plugin.creatures.find(tag.name, tag.source);
 	if (!found) {
 		el.addClass("is-unresolved");
 		el.setAttr("aria-label", T("links.notFound", { name: tag.name }));
@@ -57,7 +57,7 @@ export function createLinkEl(plugin: StrakesTTRPG, tag: LinkTag, doc: Document =
 		e.stopPropagation();
 		if (tag.kind === "condition") showLinkPopover(plugin, el, tag, true);
 		else {
-			const file = plugin.creatures.find(tag.name);
+			const file = plugin.creatures.find(tag.name, tag.source);
 			if (file) void plugin.app.workspace.getLeaf(Keymap.isModEvent(e) || false).openFile(file);
 		}
 	});

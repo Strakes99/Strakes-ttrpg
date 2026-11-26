@@ -1,5 +1,5 @@
 // 1.4, paso 6: enlaces {@condition}, {@creature}, {@spell}.
-import { findCondition } from "../src/links/linkResolve";
+import { creatureLookup, findCondition, sourceMatches } from "../src/links/linkResolve";
 import { codeRanges, hasLinkTag, normalizeName, splitLinkTags, wrapLinkTag } from "../src/links/linkTags";
 import { setLocale, t } from "./helpers";
 
@@ -49,3 +49,19 @@ t(
 );
 
 t("enlazar como: envuelve lo seleccionado, con los espacios de los bordes fuera", [wrapLinkTag(" Bola de fuego ", "spell"), wrapLinkTag("Goblin", "creature")], [" {@spell Bola de fuego} ", "{@creature Goblin}"]);
+
+// ---------- Criaturas con libro ({@creature Aboleth||MM}, 2026-11-26) ----------
+{
+	const notes = [
+		{ file: "ST-Aboleth (MM'14)", noteNames: ["Aboleth (MM'14)", "ST-Aboleth (MM'14)"], name: "Aboleth", source: "MM" },
+		{ file: "ST-Aboleth", noteNames: ["Aboleth", "ST-Aboleth"], name: "Aboleth", source: "XMM" },
+		{ file: "ST-Goblin", noteNames: ["Goblin", "ST-Goblin"], name: "Goblin", source: "" },
+	];
+	const find = creatureLookup(notes);
+	t("libro: sin libro, manda el nombre de la nota", find("Aboleth"), "ST-Aboleth");
+	t("libro: con libro, la de ese libro aunque otra se llame así", [find("Aboleth", "MM"), find("Aboleth", "mm"), find("Aboleth", "XMM")], ["ST-Aboleth (MM'14)", "ST-Aboleth (MM'14)", "ST-Aboleth"]);
+	t("libro: también por la etiqueta de los nombres de nota («MM'14»)", find("Aboleth", "MM'14"), "ST-Aboleth (MM'14)");
+	t("libro: si ninguna es de ese libro, como sin libro", [find("Aboleth", "VGM"), find("Goblin", "MM")], ["ST-Aboleth", "ST-Goblin"]);
+	t("libro: nombre inexistente", find("Nadie", "MM"), null);
+	t("libro: comparar", [sourceMatches("XMM", "mm'24"), sourceMatches("", "MM"), sourceMatches("MM", "")], [true, false, false]);
+}

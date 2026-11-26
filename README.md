@@ -134,7 +134,7 @@ Write `{@condition Grappled}`, `{@creature Goblin}` or `{@spell Fireball}` in an
 - **Conditions**: Ctrl/Cmd+hover shows the condition's card; clicking pins it.
 - **Creatures**: Ctrl/Cmd+hover shows the creature's statblock, with working checkboxes; clicking opens its note (Ctrl/Cmd+click, in a new tab). A creature is found by its note name (without the prefix and suffix) or its `name` property.
 - **Spells**: shown in italics for now.
-- `{@condition Prone|knocked down}` shows other text, as in `[[note|alias]]`. An optional third part names the book (`{@creature Aboleth||MM}`); it isn't used yet. Links that aren't found are dimmed. Nothing is converted inside code.
+- `{@condition Prone|knocked down}` shows other text, as in `[[note|alias]]`. An optional third part names the book, to pick between creatures with the same name: `{@creature Aboleth||MM}` goes to the Aboleth note whose `source` property is MM. Links that aren't found are dimmed. Nothing is converted inside code.
 - **Right-click** selected text in the editor (source mode or Live Preview) or in a statblock form text box → *Link as* → *Spell*, *Creature* or *Condition*. The statblock form also has a link button next to each text box.
 
 ## Translations
