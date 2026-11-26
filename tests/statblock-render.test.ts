@@ -108,7 +108,9 @@ t("en: caminando primero y el resto por orden alfabético, con (hover)", speedLi
 t("en: en metros entre paréntesis", speedLine(sb({ speed: { walk: 25 } }), true), "25 ft. (7.5 m)");
 setLocale("es");
 t("es: orden alfabético del idioma y metros con coma", speedLine(sb({ speed: { walk: 25, swim: 40, fly: 30 } }), true), "25 pies (7,5 m), Nadar 40 pies (12 m), Volar 30 pies (9 m)");
-t("es: velocidad en texto, tal cual", speedLine(sb({ speed: { walk: "30 ft. (only in water)" } }), false), "30 ft. (only in water)");
+t("es: velocidad en texto: los pies, traducidos; lo demás, tal cual", speedLine(sb({ speed: { walk: "30 ft. (only in water)" } }), false), "30 pies (only in water)");
+t("es: velocidad en texto con alternativa y metros", speedLine(sb({ speed: { walk: "30 ft., or 40 ft. (solo en forma de lobo)" } }), true), "30 pies (9 m), o 40 pies (12 m) (solo en forma de lobo)");
+t("es: sentido en texto con frase conocida", line(lay({ senses: { blindsight: "60 ft. (blind beyond this radius)" } }), "Sentidos"), "Vista ciega 60 pies (ciego más allá de este radio)");;
 
 // ---------- Callout completo ----------
 {

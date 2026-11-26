@@ -102,6 +102,10 @@ function renderTag(tag: string, body: string): string {
 			return p(1) || `${p(0)} percent`;
 		case "quickref":
 			return p(4) || p(0);
+		case "book":
+		case "adventure":
+			// {@book extreme cold|DMG|5|Extreme Cold}: la tercera parte es el capítulo, no el texto a mostrar.
+			return p(0);
 		case "note":
 			return `*${body}*`;
 		case "b":
@@ -428,16 +432,21 @@ function languages(v: unknown): string[] {
 	for (const raw of arr(v).map((x) => plainText(str(x)))) {
 		if (!raw) continue;
 		if (out.length && /^(and|but|or)\b/i.test(raw)) out[out.length - 1] += `, ${raw}`;
-		else out.push(...raw.split(/;\s*/).filter(Boolean));
+		else out.push(raw);
 	}
-	return out;
+	// La telepatía tras «;» va aparte, también cuando la frase se unió a la anterior («…, and Primordial but can't
+	// speak; telepathy 120 ft.», el Kraken: antes se quedaba pegada).
+	return out.flatMap((x) => x.split(/;\s*/)).filter(Boolean);
 }
 
 /**
  * Mayúscula inicial en cada palabra. Una letra con tilde o un apóstrofo no empiezan palabra (con `\b`,
- * «bastón» salía «BastóN» y «smith's», «Smith'S»).
+ * «bastón» salía «BastóN» y «smith's», «Smith'S»). Desde el 2026-11-26, las palabras pequeñas van en minúscula.
  */
-const titleCase = (s: string) => s.replace(/(^|[^\p{L}\p{M}'’])(\p{Ll})/gu, (_all, pre: string, c: string) => pre + c.toUpperCase());
+/** Artículos, preposiciones y conjunciones (inglés y español): en minúscula salvo al principio («Potion of Healing», «Cota de Malla»). */
+const SMALL_WORDS = new Set("a an the of and or in on with for to de del la el los las y o e u en con sin para por al un una contra sobre".split(" "));
+const titleCase = (s: string) =>
+	s.replace(/[\p{L}\p{M}'’]+/gu, (word: string, at: number) => (at > 0 && SMALL_WORDS.has(word.toLowerCase()) ? word.toLowerCase() : word.charAt(0).toUpperCase() + word.slice(1)));
 
 function gearList(v: unknown): string[] {
 	return arr(v)

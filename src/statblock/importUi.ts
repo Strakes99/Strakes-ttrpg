@@ -256,10 +256,21 @@ function confirmDuplicates(app: App, plugin: StrakesTTRPG, list: Candidate[]): P
 				this.titleEl.setText(T("sbImport.duplicatesTitle"));
 				this.contentEl.addClass("strakes-import");
 				this.contentEl.createEl("p", { text: T("sbImport.duplicatesDesc", { count: list.length }) });
+				// «Seleccionar todas» y «Ninguna» (pedido del desarrollador, 2026-11-25: al importar un segundo bestiario son cientos).
+				const boxes: HTMLInputElement[] = [];
+				const bar = this.contentEl.createDiv("strakes-import-bar");
+				const setAll = (on: boolean) => {
+					keep.clear();
+					if (on) for (const c of list) keep.add(c);
+					for (const cb of boxes) cb.checked = on;
+				};
+				bar.createEl("button", { text: T("sbImport.selectAll") }).addEventListener("click", () => setAll(true));
+				bar.createEl("button", { text: T("sbImport.selectNone") }).addEventListener("click", () => setAll(false));
 				const listEl = this.contentEl.createDiv("strakes-import-list");
 				for (const c of list) {
 					const row = listEl.createEl("label", { cls: "strakes-import-row" });
 					const cb = row.createEl("input", { type: "checkbox" });
+					boxes.push(cb);
 					cb.addEventListener("change", () => (cb.checked ? keep.add(c) : keep.delete(c)));
 					row.createSpan({ cls: "strakes-import-name", text: c.name });
 					const existing = existingNote(plugin, c.name);

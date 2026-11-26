@@ -207,8 +207,20 @@ export function headerLine(sb: Statblock): string {
 
 // ---------------------------------------------------------------- defensa y características
 
+/**
+ * Una distancia escrita como texto («30 ft., or 40 ft. (wolf form only)», «60 ft. (blind beyond this radius)»,
+ * como las deja el importador): cada «N ft.» pasa a la distancia del idioma (y a metros, si toca), el «or» entre
+ * distancias se traduce y las frases conocidas entre paréntesis, también. Lo demás, tal cual.
+ */
+function distanceText(text: string, metric: boolean): string {
+	return text
+		.replace(/(\d+(?:\.\d+)?)\s*ft\.?(?![\p{L}\d])/gu, (_all, n: string) => distance(Number(n), metric))
+		.replace(/\bor\b(?=\s+\d)/g, tk("statblock.distanceOr"))
+		.replace(/\(([^()]*)\)/g, (_all, inner: string) => `(${knownPhrases(inner, SENSE_TEXT, "statblock.senseText")})`);
+}
+
 function distance(v: NumOrText, metric: boolean): string {
-	if (typeof v !== "number") return v;
+	if (typeof v !== "number") return distanceText(v, metric);
 	const feet = tk("statblock.feet", { n: fmt(v) });
 	return metric ? `${feet} (${tk("statblock.meters", { n: fmt(Math.round(v * 3) / 10) })})` : feet;
 }

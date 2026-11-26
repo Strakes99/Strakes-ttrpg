@@ -22,6 +22,7 @@ t(
 t("marcas: se conservan condition, creature y spell, sin la fuente", convertText("{@condition Grappled|XPHB} and {@spell Fireball|XPHB} and {@creature wolf||wolves}"), "{@condition Grappled} and {@spell Fireball} and {@creature wolf||wolves}");
 t("marcas: texto a mostrar en la tercera parte", convertText("{@variantrule Cone [Area of Effect]|XPHB|Cone} and {@item chain mail|phb}"), "Cone and chain mail");
 t("marcas: 2014 (ataque con arma, éxito, respuesta con guion)", convertText("{@atk mw,rw} {@actSaveSuccess} {@actResponse d}"), "*Melee or Ranged Weapon Attack:* *Success:* *Response—*");
+t("marcas: libro y aventura, su nombre y no el capítulo", convertText("{@book extreme cold|DMG|5|Extreme Cold} in the {@book Dungeon Master's Guide|DMG}, {@adventure area 23b|WDMM|21|23b. Hall}"), "extreme cold in the Dungeon Master's Guide, area 23b");
 t("marcas: summonSpellLevel", convertText("{@damage 1d8 + 3 + summonSpellLevel}"), "1d8 + 3 + the spell's level");
 t("marcas: anidadas", convertText("{@b {@i text}}"), "***text***");
 t("texto suelto: se escapa el Markdown", convertText("Cure Wounds* and [hover] 1. One"), "Cure Wounds\\* and \\[hover\\] 1. One");
@@ -103,6 +104,10 @@ t("etiquetas de los libros", ["MM", "XMM", "XPHB", "XDMG", "VGM"].map(bookLabel)
 	t("equipo: sin el libro, con cantidad", d.gear, ["Longbow", "Javelin (6)"]);
 	const g = conv({ gear: ["bastón|xphb", "smith's tools|xphb", { item: "óleo sagrado", quantity: 2 }, "half-plate armor"] }).data;
 	t("equipo: mayúsculas con tildes y apóstrofos", g.gear, ["Bastón", "Smith's Tools", "Óleo Sagrado (2)", "Half-Plate Armor"]);
+	const small = conv({ gear: ["potion of healing|xphb", "cota de malla", "a bag of holding", "herramientas de ladrón"] }).data;
+	t("equipo: artículos y preposiciones en minúscula, salvo al principio", small.gear, ["Potion of Healing", "Cota de Malla", "A Bag of Holding", "Herramientas de Ladrón"]);
+	const kraken = conv({ languages: ["understands Abyssal", "Celestial", "Infernal", "and Primordial but can't speak; telepathy 120 ft."] }).data;
+	t("idiomas: la telepatía tras «;» va aparte aunque la frase se una a la anterior", kraken.languages, ["understands Abyssal", "Celestial", "Infernal, and Primordial but can't speak", "telepathy 120 ft."]);
 }
 
 // ---------- Rasgos, acciones y entradas anidadas ----------
